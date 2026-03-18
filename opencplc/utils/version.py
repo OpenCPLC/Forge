@@ -3,7 +3,7 @@
 import sys, subprocess, re, json, urllib.parse
 from typing import Literal
 import packaging.version
-from xaeian import Print, Color as c, Ico, DIR, PATH
+from xaeian import Print, Color as c, DIR, PATH
 from .common import is_yes, color_url
 
 p = Print()

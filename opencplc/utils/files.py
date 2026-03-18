@@ -2,7 +2,7 @@
 
 import os
 from datetime import datetime
-from xaeian import Print, Color as c, Ico, FILE, PATH
+from xaeian import Print, Color as c, FILE, PATH
 
 p = Print()
 

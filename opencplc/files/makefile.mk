@@ -108,9 +108,15 @@ clean_all:
 clr: clean
 clr_all: clean_all
 
+dist: all
+	cp $(BUILD)/$(TARGET).bin $(PRO)/$(TARGET).bin
+	cp $(BUILD)/$(TARGET).hex $(PRO)/$(TARGET).hex
+#	copy "$(subst /,\,$(BUILD)\$(TARGET).bin)" "$(subst /,\,$(PRO)\$(TARGET).bin)"
+#	copy "$(subst /,\,$(BUILD)\$(TARGET).hex)" "$(subst /,\,$(PRO)\$(TARGET).hex)"
+
 erase:
 	$(OPENOCD) "init; halt; stm32g0x mass_erase 0; reset halt; exit"
 
-.PHONY: all build flash run clean clean_all clr clr_all erase
+.PHONY: all build flash run clean clean_all clr clr_all erase dist
 
 -include $(shell find $(BUILD) -name "*.d" 2>/dev/null)

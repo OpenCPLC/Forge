@@ -1,7 +1,7 @@
 # opencplc/utils/install.py
 
 import os, sys, subprocess, re
-from xaeian import Print, Color as c, Ico, FILE, PATH
+from xaeian import Print, Color as c, FILE, PATH
 from .common import is_yes
 from .network import download, unzip
 from .version import version_older_than
@@ -63,7 +63,7 @@ def program_version(cmd:str) -> str|None:
 
 def install(name:str, url:str, path:str, yes:bool=False, unpack:bool=True):
   if not yes and not is_yes(f"Install {name}"):
-    p.err(f"See instructions at https://github.com/OpenCPLC/Forge")
+    p.err(f"See instructions at {c.GREY}https://{c.END}github.com/OpenCPLC/Forge")
     sys.exit(1)
   try:
     full_url = f"{url}/{name}.zip" if unpack else f"{url}/{name}"

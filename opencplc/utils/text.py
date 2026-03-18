@@ -1,7 +1,7 @@
 # opencplc/utils/text.py
 
 import re
-from xaeian import Print, Color as c, Ico, replace_start
+from xaeian import Print, Color as c, replace_start
 
 p = Print()
 

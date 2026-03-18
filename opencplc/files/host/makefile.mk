@@ -62,6 +62,10 @@ clean_all:
 clr: clean
 clr_all: clean_all
 
-.PHONY: all build run clean clean_all clr clr_all
+dist: all
+	cp $(EXE) $(PRO)/$(notdir $(EXE))
+#	copy "$(subst /,\,$(EXE))" "$(subst /,\,$(PRO)\$(notdir $(EXE)))"
+
+.PHONY: all build run clean clean_all clr clr_all dist
 
 -include $(shell find $(BUILD) -name "*.d" 2>/dev/null)

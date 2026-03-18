@@ -65,6 +65,7 @@ Plik `makefile` udostępnia również kilka innych funkcji. Oto pełna lista:
 - **`make run`**: Wykonuje `make build`, a następnie `make flash`
 - **`make clean`** lub `make clr`: Usuwa zbudowane pliki wsadowe dla aktywnego projektu
 - `make clean_all` lub `make clr_all`: Usuwa zbudowane pliki wsadowe dla wszystkich projektów
+- `make dist`: Kopiuje pliki `.bin` i `.hex` do folderu projektu
 - **`make erase`**: Całkowicie czyści pamięć mikrokontrolera _(**erase** full chip)_
 
 ## ⚙️ Config
@@ -139,7 +140,7 @@ workspace/
 
 Jeśli IntelliSense przestanie działać poprawnie, użyj `F1` → _C/C++: Reset IntelliSense Database_.
 
-## 🖥️ Platforma Host
+## 🖥️ Host
 
 Forge wspiera platformę **Host** do rozwijania i testowania kodu na PC (Windows/Linux) bez sprzętu embedded:
 

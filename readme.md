@@ -65,6 +65,7 @@ make run    # run = build + flash
 - **`make run`**: Does `make build`, then `make flash`
 - **`make clean`** or `make clr`: Removes built files for active project
 - `make clean_all` or `make clr_all`: Removes built files for all projects
+- `make dist`: Copies `.bin` and `.hex` files to the project folder
 - **`make erase`**: Completely wipes microcontroller memory _(**erase** full chip)_
 
 ## ⚙️ Config
@@ -139,7 +140,7 @@ workspace/
 
 If IntelliSense stops working, use `F1` → _C/C++: Reset IntelliSense Database_.
 
-## 🖥️ Host Platform
+## 🖥️ Host
 
 Forge supports **Host** platform for developing and testing code on PC (Windows/Linux) without embedded hardware:
 
