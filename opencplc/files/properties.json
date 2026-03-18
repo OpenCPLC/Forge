@@ -1,0 +1,34 @@
+{
+  "configurations": [
+    {
+      "name": "${NAME}",
+      "includePath": [
+        "${workspaceFolder}/${LIB_PATH}/hal/arm/**",
+        "${workspaceFolder}/${LIB_PATH}/hal/stm32/**",
+        "${workspaceFolder}/${LIB_PATH}/hal/${HAL}/**",
+        "${workspaceFolder}/${LIB_PATH}/lib/**",
+        "${workspaceFolder}/${LIB_PATH}/plc/brd/*",
+        "${workspaceFolder}/${LIB_PATH}/plc/brd/${BOARD_LOWER}/**",
+        "${workspaceFolder}/${LIB_PATH}/plc/com/**",
+        "${workspaceFolder}/${LIB_PATH}/plc/per/**",
+        "${workspaceFolder}/${PRO_PATH}/**"
+      ],
+      "defines": [
+        "OpenCPLC",
+        "${PLATFORM}",
+        "${FAMILY}",
+        "${DEFINE}"
+      ],
+      "cStandard": "c11",
+      "cppStandard": "c++17",
+      "intelliSenseMode": "gcc-arm",
+      "compilerPath": "${env:ARMGCC}/arm-none-eabi-gcc.exe",
+      "compilerArgs": [
+        "-mcpu=${CPU}",
+        "-mthumb"
+      ],
+      "configurationProvider": "ms-vscode.makefile-tools"
+    }
+  ],
+  "version": 4
+}

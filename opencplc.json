@@ -1,0 +1,20 @@
+{
+  "version": "latest",
+  "paths": {
+    "projects": "./projects",
+    "examples": "./examples",
+    "framework": "./opencplc",
+    "build": "./build"
+  },
+  "default": {
+    "chip": "STM32G0C1",
+    "flash": "492kB",
+    "ram": "144kB",
+    "optLevel": "Og"
+  },
+  "pwsh": false,
+  "available-versions": [
+    "develop",
+    "main"
+  ]
+}

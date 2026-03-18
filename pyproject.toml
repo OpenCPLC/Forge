@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "opencplc"
+version = "0.1.0"
+description = "Project configuration and build tool for OpenCPLC"
+readme = "readme.md"
+license = {text = "MIT"}
+requires-python = ">=3.12"
+authors = [{name = "Xaeian"}]
+keywords = ["embedded", "stm32", "opencplc", "build", "forge"]
+dependencies = ["xaeian", "packaging"]
+
+[project.scripts]
+opencplc = "opencplc.__main__:main"
+
+[project.urls]
+Repository = "https://github.com/OpenCPLC/Forge"
+
+[tool.setuptools.packages.find]
+include = ["opencplc*"]

@@ -1,0 +1,11 @@
+{
+  "recommendations": [
+    "ms-vscode.cpptools",
+    "ms-vscode.cpptools-themes",
+    "ms-vscode.makefile-tools",
+    "ms-vscode.hexeditor",
+    "mechatroner.rainbow-csv",
+    "marus25.cortex-debug",
+    "jeff-hykin.better-cpp-syntax"
+  ]
+}
