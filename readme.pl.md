@@ -2,29 +2,29 @@
 
 **Forge** jest aplikacją konsolową usprawniającą pracę z **OpenCPLC**, którego zadaniem jest dostosowanie środowiska pracy tak, aby 👨‍💻programista-automatyk mógł skupić się na tworzeniu aplikacji, a nie walce z konfiguracją ekosystemu i kompilacją programu. Dostępny jest jako pakiet **Python [`pip`](https://pypi.org/project/opencplc)** lub jako samodzielny plik wykonywalny **`opencplc.exe`** z 🚀[Releases](https://github.com/OpenCPLC/Forge/releases) _(w tym przypadku należy ręcznie dodać jego lokalizację do zmiennych systemowych **PATH**)_
 
-```bash
+```sh
 pip install opencplc
 ```
 
 Po prostu w wybranej lokalizacji _(którą uznasz za workspace)_ odpal [CMD](#-console) i wpisz:
 
-```bash
+```sh
 opencplc -n <project_name> -b <board>
-opencplc -n blinky -b Uno
+opencplc -n myapp -b Uno
 ```
 
 Wówczas w [lokalizacji z projektami](#️-config) `${projects}` tworzony jest katalog _(lub drzewo katalogów)_ zgodny z przekazaną nazwą `<project_name>`. Powstają w nim dwa pliki: `main.c` i `main.h`, które stanowią minimalny zestaw plików projektu. Nie można ich usuwać ani przenosić do podkatalogów.
 
 Gdy będziemy mieli więcej projektów, będziemy mogli swobodnie przełączać się między nimi.
 
-```bash
+```sh
 opencplc <project_name>
-opencplc blinky
+opencplc myapp
 ```
 
 Projekty możemy też wybierać po numerze z listy:
 
-```bash
+```sh
 opencplc -l  # wyświetl listę projektów
 opencplc 3   # załaduj projekt #3 z listy
 ```
@@ -40,7 +40,7 @@ W przypadku zmiany wartości konfiguracyjnych `PRO_x` w pliku **`main.h`** lub m
 
 niezbędne jest ponowne załadowanie projektu. Jeśli projekt jest już aktywny, nie trzeba podawać jego nazwy `-r --reload`:
 
-```bash
+```sh
 opencplc <project_name>
 opencplc -r
 ```
@@ -51,7 +51,7 @@ Tutaj _(upraszczając)_ kończy się zadanie programu **Forge**, a dalsza praca 
 
 Jeżeli mamy poprawnie przygotowaną konfigurację projektu oraz plik `makefile` wygenerowany za pomocą programu ⚒️**Forge**, to aby zbudować i wgrać program na sterownik PLC, wystarczy otworzyć konsolę w przestrzeni roboczej _(workspace)_ i wpisać:
 
-```bash
+```sh
 make build  # buduj projekt C do programu binarnego
 make flash  # wgraj plik binarny do pamięci sterownika PLC
 # lub
@@ -88,7 +88,7 @@ W pierwszej kolejności **Forge** zainstaluje **GNU Arm Embedded Toolchain**, **
 
 Następnie, w razie konieczności, skopiuje framework OpenCPLC z [repozytorium](https://github.com/OpenCPLC/Core) do folderu `${framework}` podanego w pliku konfiguracyjnym `opencplc.json`. Zostanie sklonowana wersja z pliku konfiguracyjnego lub wskazana za pomocą `-f --framework`:
 
-```bash
+```sh
 opencplc <project_name> --new -f 1.0.2
 opencplc <project_name> --new -f develop
 ```
@@ -144,7 +144,7 @@ Jeśli IntelliSense przestanie działać poprawnie, użyj `F1` → _C/C++: Reset
 
 Forge wspiera platformę **Host** do rozwijania i testowania kodu na PC (Windows/Linux) bez sprzętu embedded:
 
-```bash
+```sh
 opencplc -n myapp -c Host # projekt desktopowy
 ```
 
@@ -159,61 +159,47 @@ Platforma HOST dostarcza stub'y dla modułów zależnych od sprzętu (GPIO, time
 
 ## 🚩 Flags
 
-Oprócz podstawowych flag opisanych powyżej, istnieje jeszcze kilka, które mogą pozostać niezmienione, ale warto znać ich istnienie. Poniżej znajduje się lista wszystkich flag:
+#### Podstawowe
 
-### Podstawowe
+- **`name`**: Nazwa projektu, domyślny pierwszy argument. Wyznacza ścieżkę `${projects}/name` i jest powiązana z plikami wsadowymi (`.bin`, `.hex`, `.elf`). Można też podać numer z listy `-l`.
+- `-n --new`: Tworzy nowy projekt o wskazanej nazwie.
+- `-e --example`: Wczytuje przykład z repozytorium [Demo](https://github.com/OpenCPLC/Demo).
+- `-r --reload`: Odczytuje nazwę projektu z istniejącego `makefile` i regeneruje pliki projektowe. Nie wymaga podania `name`.
+- `-d --delete`: Usuwa projekt o wskazanej nazwie.
+- `-g --get`: Pobiera projekt z GitHub/GitLab lub zdalnego ZIP i dodaje jako nowy. Drugi argument to referencja (`branch`, `tag`). Jeśli `name` nie podano, odczytuje go z `@name` w `main.h`.
 
-| Flaga | Opis |
-|-------|------|
-| **`name`** | Nazwa projektu. Parametr domyślny przekazywany jako pierwszy. Będzie również stanowić ścieżkę do projektu: `${projects}/name`, a końcowe pliki wsadowe _(`.bin`, `.hex`, `.elf`)_ będą z nią ściśle skorelowane. Można też podać numer projektu z listy `-l`. |
-| `-n --new` | Tworzy nowy projekt o wskazanej nazwie. |
-| `-e --example` | Wczytuje przykład demonstracyjny o wskazanej nazwie z repozytorium [Demo](https://github.com/OpenCPLC/Demo). |
-| `-r --reload` | Pobiera nazwę projektu oraz określa, czy jest to przykład, na podstawie wcześniej wygenerowanego pliku `makefile`, a następnie generuje pliki projektowe na nowo. Wówczas nie jest wymagane podawania nazwy **`name`**. |
-| `-d --delete` | Usuwa wybrany projekt ze wskazaną nazwą **`name`**. |
-| `-g --get` | Pobiera projekt z serwisu GIT _(**GitHub**, **GitLab**, ...)_ lub zdalnego pliku ZIP i dodaje go jako nowy. Jako drugi argument _(pierwszym jest link)_ można przekazać referencję _(`branch`, `tag`)_. Jeśli nie została określona nazwa projektu **`name`**, zostanie podjęta próba odczytania jej z pola `@name` z pliku `main.h`. |
+#### Konfiguracja sprzętu
 
-### Konfiguracja sprzętu
+- `-b --board`: Model sterownika PLC: `Uno`, `Dio`, `Aio`, `Eco`, `Custom` lub `None` dla czystego mikrokontrolera. Tryb `Custom` udostępnia warstwę PLC bez gotowego mapowania peryferiów.
+- `-c --chip`: Mikrokontroler lub platforma: `STM32G081`, `STM32G0C1`, `STM32WB55`, `HOST`. Bez `-b` projekt działa bez warstwy PLC, tylko HAL i biblioteki standardowe. Przydatne dla Nucleo lub własnego hardware.
+- `-m --memory`: Pamięć w kB: `FLASH RAM [RESERVED]`. `RESERVED` zostaje odjęte od FLASH w pliku linkera `flash.ld`. _(tylko STM32)_
 
-| Flaga | Opis |
-|-------|------|
-| `-b --board` | Model sterownika PLC dla nowego projektu: `Uno`, `Dio`, `Aio`, `Eco`, `Custom` dla własnej konstrukcji lub `None` dla pracy z czystym mikrokontrolerem. Tryb `Custom` udostępnia warstwę PLC, ale bez gotowego mapowania peryferiów: konfigurację należy uzupełnić samodzielnie. |
-| `-c --chip` | Mikrokontroler lub platforma: `STM32G081`, `STM32G0C1`, `STM32WB55`, `HOST` (kompilacja na PC). Gdy podany bez `-b --board`, projekt działa bez warstwy PLC: dostępny jest wyłącznie HAL i biblioteki standardowe frameworka. Przydatne przy pracy z płytkami Nucleo lub własnym hardware. |
-| `-m --memory` | Ilość pamięci w kB: `FLASH RAM [RESERVED]`. Parametr `RESERVED` określa pamięć zarezerwowaną na konfigurację i EEPROM, która zostanie odjęta od FLASH w pliku linkera `flash.ld`. _(tylko STM32)_ |
+#### Konfiguracja kompilacji
 
-### Konfiguracja kompilacji
+- `-f --framework`: Wersja frameworka: `latest`, `develop`, `1.0.0`. Jeśli nie podano, odczytywana z `opencplc.json`.
+- `-o --opt-level`: Poziom optymalizacji: `O0` _(debug)_, `Og` _(domyślny)_, `O1`, `O2`, `O3`. Poziomy `O2`/`O3` wyświetlają ostrzeżenie dla STM32, dozwolone dla `HOST`.
 
-| Flaga | Opis |
-|-------|------|
-| `-f --framework` | Wersja framework'a: `latest`, `develop`, `1.0.0`. Jeśli nie zostanie podana, zostanie odczytana z pola `version` w pliku konfiguracyjnym `opencplc.json`. |
-| `-o --opt-level` | Poziom optymalizacji kodu dla kompilacji: `O0` _(debug)_, `Og` _(domyślny)_, `O1`, `O2`, `O3`. Poziomy `O2`, `O3` wyświetlają ostrzeżenie dla STM32 _(problemy z timingiem/debugowaniem)_, ale są dozwolone dla HOST. |
+#### Informacje
 
-### Informacje
+- `-l --list`: Wyświetla listę projektów lub przykładów (z flagą `-e`).
+- `-i --info`: Zwraca informacje o aktywnym projekcie, w tym wersje projektu i frameworka.
+- `-F --framework-versions`: Wyświetla dostępne wersje frameworka OpenCPLC.
+- `-v --version`: Wyświetla wersję ⚒️Forge i link do repozytorium.
 
-| Flaga | Opis |
-|-------|------|
-| `-l --list` | Wyświetla listę istniejących projektów lub przykładów, gdy aktywna jest flaga `-e --example`. |
-| `-i --info` | Zwraca podstawowe informacje o wskazanym lub aktywnym projekcie, w tym wersję projektu i framework'a. |
-| `-F --framework-versions` | Wyświetla wszystkie dostępne wersje framework'a OpenCPLC. |
-| `-v --version` | Wyświetla wersję programu ⚒️Forge oraz link do repozytorium. |
+#### Narzędzia
 
-### Narzędzia
+- `-a --assets`: Pobiera materiały pomocnicze _(dokumentacja, diagramy)_. Opcjonalnie przyjmuje nazwę folderu docelowego.
+- `-u --update`: Sprawdza i instaluje aktualizacje ⚒️Forge. Można podać konkretną wersję lub `latest`.
+- `-y --yes`: Automatycznie potwierdza wszystkie pytania _(tryb nieinteraktywny)_.
 
-| Flaga | Opis |
-|-------|------|
-| `-a --assets` | Pobiera materiały pomocnicze przydatne podczas projektowania _(dokumentacja, diagramy)_. Jako wartość można przekazać nazwę folderu, w którym paczka zostanie umieszczona. |
-| `-u --update` | Sprawdza dostępność aktualizacji i aktualizuje program ⚒️Forge. Można podać konkretną wersję lub `latest`. |
-| `-y --yes` | Automatycznie potwierdza wszystkie pytania _(tryb nieinteraktywny)_. |
+#### Hash utilities
 
-### Hash utilities
+- `-hl --hash-list`: Generuje enum z hashem DJB2 dla listy tagów.
+- `-ht --hash-title`: Nazwa typu enum dla generatora hashy.
+- `-hd --hash-define`: Używa `#define` zamiast `enum`.
 
-| Flaga | Opis |
-|-------|------|
-| `-hl --hash-list` | Generuje enum z hashem DJB2 dla listy tagów. |
-| `-ht --hash-title` | Nazwa typu enum dla generatora hash'y. |
-| `-hd --hash-define` | Używa `#define` zamiast `enum` dla wyjścia hash'y. |
-
-🗑️Usuwanie i 💾kopiowanie projektów można oczywiście wykonywać bezpośrednio z poziomu systemu operacyjnego.
-Każdy projekt przechowuje wszystkie niezbędne informacje o sobie w pliku `main.h`, a jego obecność jest automatycznie wykrywana podczas uruchamiania programu.
+🗑️ Usuwanie i 💾 kopiowanie projektów można wykonywać bezpośrednio z poziomu systemu operacyjnego.
+Każdy projekt przechowuje wszystkie niezbędne informacje w pliku `main.h`, a jego obecność jest automatycznie wykrywana podczas uruchamiania programu.
 
 ## 📟 Console
 
@@ -223,26 +209,30 @@ Konsola systemowa jest dostępna w wielu aplikacjach, takich jak **Command Promp
 
 ## 📋 Przykłady użycia
 
-```bash
+```sh
 # Tworzenie nowego projektu
-opencplc -n myapp -b Uno                  # Projekt dla sterownika OpenCPLC Uno
-opencplc -n myapp -b Eco -m 128 36        # Projekt dla Eco z pamięcią 128kB/36kB
-opencplc -n myapp -b Custom -c STM32G081  # Własny hardware z warstwą PLC (bez mapowania peryferiów)
-opencplc -n myapp -c STM32G081            # Projekt bare-metal dla STM32G081 (np. Nucleo)
-opencplc -n myapp -c Host                 # Projekt desktopowy (Windows/Linux)
+opencplc -n myapp -b Uno                  # projekt dla sterownika OpenCPLC Uno
+opencplc -n myapp -b Eco -m 128 36        # projekt dla Eco z pamięcią 128kB/36kB
+opencplc -n myapp -b Custom -c STM32G081  # własny hardware z warstwą PLC (bez mapowania peryferiów)
+opencplc -n myapp -c STM32G081            # projekt bare-metal dla STM32G081 (np. Nucleo)
+opencplc -n myapp -c Host                 # projekt desktopowy (Windows/Linux)
+
 # Zarządzanie projektami
-opencplc myapp      # Załaduj projekt 'myapp'
-opencplc 3          # Załaduj projekt #3 z listy
-opencplc -r         # Przeładuj aktywny projekt
-opencplc -l         # Lista wszystkich projektów
-opencplc -i         # Informacje o aktywnym projekcie
+opencplc myapp      # załaduj projekt 'myapp'
+opencplc 3          # załaduj projekt #3 z listy
+opencplc -r         # przeładuj aktywny projekt
+opencplc -l         # lista wszystkich projektów
+opencplc -i         # informacje o aktywnym projekcie
+
 # Przykłady demonstracyjne
-opencplc -e blinky  # Załaduj przykład 'blinky'
-opencplc -e -l      # Lista dostępnych przykładów
+opencplc -e blinky  # załaduj przykład 'blinky'
+opencplc -e -l      # lista dostępnych przykładów
+
 # Pobieranie projektów
 opencplc -g https://github.com/user/repo
 opencplc -g https://github.com/user/repo v1.0.0
+
 # Aktualizacje
-opencplc -u         # Aktualizuj Forge do najnowszej wersji
-opencplc -F         # Pokaż dostępne wersje framework'a
+opencplc -u         # aktualizuj Forge do najnowszej wersji
+opencplc -F         # pokaż dostępne wersje Core
 ```

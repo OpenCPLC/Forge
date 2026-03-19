@@ -10,4 +10,4 @@ py -m PyInstaller --onefile ^
   --name opencplc ^
   --icon=opencplc.ico ^
   --add-data "opencplc/files;opencplc/files" ^
-  dist.py
+  .build.py

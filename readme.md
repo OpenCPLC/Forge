@@ -10,7 +10,7 @@ Just pick a folder _(your workspace)_ open [CMD](#-console) and type:
 
 ```bash
 opencplc -n <project_name> -b <board>
-opencplc -n blinky -b Uno
+opencplc -n myapp -b Uno
 ```
 
 This creates a directory _(or directory tree)_ in [projects location](#️-config) `${projects}` matching the name `<project_name>`. Two files are created inside: `main.c` and `main.h`: the minimal project setup. Don't delete them or move to subfolders.
@@ -19,7 +19,7 @@ When you have more projects, you can switch between them freely:
 
 ```bash
 opencplc <project_name>
-opencplc blinky
+opencplc myapp
 ```
 
 You can also pick projects by number from list:
@@ -159,61 +159,49 @@ Host platform provides stub implementations for hardware-dependent modules (GPIO
 
 ## 🚩 Flags
 
-Besides basic flags described above, there's few more that can stay unchanged but worth knowing. Full list:
+Beyond the basic flags described above, there are a few more worth knowing. Full list:
 
-### Basic
+#### Basic
 
-| Flag | Description |
-|------|-------------|
-| **`name`** | Project name. Default param passed first. Also becomes project path: `${projects}/name`, and output files _(`.bin`, `.hex`, `.elf`)_ are tied to it. Can also be project number from `-l` list. |
-| `-n --new` | Creates new project with given name. |
-| `-e --example` | Loads demo example with given name from [Demo](https://github.com/OpenCPLC/Demo) repository. |
-| `-r --reload` | Gets project name and checks if it's example from existing `makefile`, then regenerates project files. No need to pass **`name`**. |
-| `-d --delete` | Deletes project with given **`name`**. |
-| `-g --get` | Downloads project from GIT _(**GitHub**, **GitLab**, ...)_ or remote ZIP and adds as new. Second argument _(first is link)_ can be reference _(`branch`, `tag`)_. If **`name`** not specified, tries to read it from `@name` field in `main.h`. |
+- **`name`**: Project name. Default first argument. Also defines the project path: `${projects}/name`, and output files (`.bin`, `.hex`, `.elf`) are tied to it. Can also be a project number from the `-l` list.
+- `-n --new`: Creates a new project with the given name.
+- `-e --example`: Loads a demo example by name from the [Demo](https://github.com/OpenCPLC/Demo) repository.
+- `-r --reload`: Reads the project name and example flag from an existing `makefile`, then regenerates project files. **`name`** is not required.
+- `-d --delete`: Deletes the project with the given **`name`**.
+- `-g --get`: Downloads a project from Git (**GitHub**, **GitLab**, ...) or a remote ZIP and adds it as a new project. The second argument (first is the link) can be a reference (`branch`, `tag`). If **`name`** is not specified, it tries to read it from the `@name` field in `main.h`.
 
-### Hardware config
+#### Hardware config
 
-| Flag | Description |
-|------|-------------|
-| `-b --board` | PLC board for new project: `Uno`, `Dio`, `Aio`, `Eco`, `Custom` for own design or `None` for bare microcontroller. `Custom` gives you the PLC layer without peripheral mapping: fill it in yourself. |
-| `-c --chip` | Microcontroller or platform: `STM32G081`, `STM32G0C1`, `STM32WB55`, `HOST` (compile for PC). When used without `-b --board`, project runs without PLC layer: only HAL and standard framework libraries. Good for Nucleo boards or custom hardware. |
-| `-m --memory` | Memory in kB: `FLASH RAM [RESERVED]`. `RESERVED` param is memory for config and EEPROM, subtracted from FLASH in linker file `flash.ld`. _(STM32 only)_ |
+- `-b --board`: PLC board for the new project: `Uno`, `Dio`, `Aio`, `Eco`, `Custom` for a custom design, or `None` for a bare microcontroller. `Custom` provides the PLC layer without peripheral mapping — fill it in manually.
+- `-c --chip`: Microcontroller or platform: `STM32G081`, `STM32G0C1`, `STM32WB55`, `HOST` (compile for PC). Without `-b --board`, the project runs without the PLC layer — only HAL and standard framework libraries. Useful for Nucleo boards or custom hardware.
+- `-m --memory`: Memory in kB: `FLASH RAM [RESERVED]`. `RESERVED` is the memory allocated for config and EEPROM, subtracted from FLASH in the linker file `flash.ld`. _(STM32 only)_
 
-### Build config
+#### Build config
 
-| Flag | Description |
-|------|-------------|
-| `-f --framework` | Framework version: `latest`, `develop`, `1.0.0`. If not passed, read from `version` field in `opencplc.json`. |
-| `-o --opt-level` | Compiler optimization level: `O0` _(debug)_, `Og` _(default)_, `O1`, `O2`, `O3`. Levels `O2`, `O3` show warning for STM32 _(timing/debugging issues)_ but are allowed for HOST. |
+- `-f --framework`: Framework version: `latest`, `develop`, `1.0.0`. If not provided, read from the `version` field in `opencplc.json`.
+- `-o --opt-level`: Compiler optimization level: `O0` _(debug)_, `Og` _(default)_, `O1`, `O2`, `O3`. Levels `O2` and `O3` show a warning for STM32 _(timing/debugging issues)_ but are allowed for `HOST`.
 
-### Info
+#### Info
 
-| Flag | Description |
-|------|-------------|
-| `-l --list` | Shows list of projects or examples when `-e --example` flag is active. |
-| `-i --info` | Returns basic info about specified or active project, including project and framework version. |
-| `-F --framework-versions` | Shows all available OpenCPLC framework versions. |
-| `-v --version` | Shows ⚒️Forge version and repo link. |
+- `-l --list`: Lists existing projects, or examples when `-e --example` is active.
+- `-i --info`: Returns basic info about the specified or active project, including project and framework versions.
+- `-F --framework-versions`: Lists all available OpenCPLC framework versions.
+- `-v --version`: Shows the ⚒️Forge version and repository link.
 
-### Tools
+#### Tools
 
-| Flag | Description |
-|------|-------------|
-| `-a --assets` | Downloads helper materials for design _(docs, diagrams)_. Can pass folder name where package goes. |
-| `-u --update` | Checks for updates and updates ⚒️Forge. Can specify version or `latest`. |
-| `-y --yes` | Auto-confirms all prompts _(non-interactive mode)_. |
+- `-a --assets`: Downloads helper materials for design _(docs, diagrams)_. Optionally accepts a folder name as destination.
+- `-u --update`: Checks for and installs ⚒️Forge updates. Accepts a specific version or `latest`.
+- `-y --yes`: Auto-confirms all prompts _(non-interactive mode)_.
 
-### Hash utilities
+#### Hash utilities
 
-| Flag | Description |
-|------|-------------|
-| `-hl --hash-list` | Generates enum with DJB2 hash from tag list. |
-| `-ht --hash-title` | Enum type name for hash generator. |
-| `-hd --hash-define` | Uses `#define` instead of `enum` for hash output. |
+- `-hl --hash-list`: Generates an enum with DJB2 hashes from a tag list.
+- `-ht --hash-title`: Enum type name for the hash generator.
+- `-hd --hash-define`: Uses `#define` instead of `enum` for hash output.
 
-🗑️Deleting and 💾copying projects can obviously be done directly from OS.
-Each project stores all needed info about itself in `main.h`, and its presence is auto-detected on program start.
+🗑️ Deleting and 💾 copying projects can be done directly from the OS.
+Each project stores all the information it needs in `main.h`, and its presence is auto-detected on startup.
 
 ## 📟 Console
 
@@ -225,24 +213,28 @@ System console is available in many apps like **Command Prompt**, **PowerShell**
 
 ```bash
 # Creating new project
-opencplc -n myapp -b Uno                  # Project for OpenCPLC Uno board
-opencplc -n myapp -b Eco -m 128 36        # Project for Eco with 128kB/36kB memory
-opencplc -n myapp -b Custom -c STM32G081  # Custom hardware with PLC layer (no peripheral mapping)
-opencplc -n myapp -c STM32G081            # Bare-metal project for STM32G081 (e.g. Nucleo)
-opencplc -n myapp -c Host                 # Desktop project (Windows/Linux)
+opencplc -n myapp -b Uno                  # project for OpenCPLC Uno board
+opencplc -n myapp -b Eco -m 128 36        # project for Eco with 128kB/36kB memory
+opencplc -n myapp -b Custom -c STM32G081  # custom hardware with PLC layer (no peripheral mapping)
+opencplc -n myapp -c STM32G081            # bare-metal project for STM32G081 (e.g. Nucleo)
+opencplc -n myapp -c Host                 # desktop project (Windows/Linux)
+
 # Managing projects
-opencplc myapp      # Load project 'myapp'
-opencplc 3          # Load project #3 from list
-opencplc -r         # Reload active project
-opencplc -l         # List all projects
-opencplc -i         # Info about active project
+opencplc myapp      # load project 'myapp'
+opencplc 3          # load project #3 from list
+opencplc -r         # reload active project
+opencplc -l         # list all projects
+opencplc -i         # info about active project
+
 # Demo examples
-opencplc -e blinky  # Load example 'blinky'
-opencplc -e -l      # List available examples
+opencplc -e blinky  # load example 'blinky'
+opencplc -e -l      # list available examples
+
 # Downloading projects
 opencplc -g https://github.com/user/repo
 opencplc -g https://github.com/user/repo v1.0.0
+
 # Updates
-opencplc -u         # Update Forge to latest version
-opencplc -F         # Show available framework versions
+opencplc -u         # update Forge to latest version
+opencplc -F         # show available Core versions
 ```
