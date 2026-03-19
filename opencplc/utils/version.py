@@ -81,5 +81,5 @@ def git_clone_missing(url:str, path:str, ref:str, yes:bool=False, required:bool=
     p.err(f"You can download it manually from {color_url(url)}")
     sys.exit(0)
   git_clone(url, full_path, ref)
-  p.ok(f"Cloned to {c.GREY}{PATH.local(full_path)}{c.END}")
+  p.ok(f"Cloned {c.ORANGE}{url}{c.END} to {c.GREY}{PATH.local(full_path)}{c.END}")
   return True

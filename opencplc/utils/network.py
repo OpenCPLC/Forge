@@ -55,7 +55,8 @@ def project_remote(url:str, path:str, ref:str|None=None, name:str="") -> str:
     name_line = re.sub(r"[<>:\"|?*]", "", name_line).replace("\\", "/").strip()
     parts = name_line.split()
     if not parts:
-      p.err("Failed to read project name")
+      p.err(f"Failed to read project name from {c.BLUE}main.h{c.END}")
+      p.inf(f"Provide project name as a positional argument")
       sys.exit(1)
     name = parts[-1]
   dst = PATH.resolve(f"{path}/{name}", read=False)

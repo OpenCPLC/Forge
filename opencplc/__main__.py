@@ -34,9 +34,9 @@ def main():
   if versions:
     forge_cfg["available-versions"] = versions
   else:
-    p.wrn(f"No access to {c.BLUE}GitHub{c.END}")
+    p.wrn(f"No internet access or {c.BLUE}GitHub{c.END} is not responding")
     if "available-versions" not in forge_cfg:
-      p.err("First run requires network access")
+      p.err("First run requires network access to fetch available framework versions")
       sys.exit(1)
   JSON.save_pretty("opencplc.json", forge_cfg)
   forge_cfg["version"] = utils.version_real(forge_cfg["version"], forge_cfg["available-versions"][0])
@@ -70,6 +70,7 @@ def main():
     if target != VER:
       p.inf(f"Installed: {c.ORANGE}{VER}{c.END}")
       p.inf(f"{'Latest' if new_ver else 'Target'}: {c.BLUE}{target}{c.END}")
+      p.run(f"{'Update' if new_ver else 'Replace'} required")
       utils.install("forge.exe", f"{URL_FORGE}/releases/download/{target}", ".", args.yes, False)
     else:
       p.ok(f"Forge is at {'latest' if new_ver else 'target'} version {c.BLUE}{VER}{c.END}")
@@ -115,7 +116,8 @@ def main():
   # Reload/info mode - get name from makefile
   if not args.name and (args.reload or args.info):
     if not make_info:
-      p.err(f"No {c.ORANGE}makefile{c.END} - provide project name")
+      p.err(f"No {c.ORANGE}makefile{c.END} found - required for reload and info")
+      p.inf(f"Provide project name as positional argument")
       sys.exit(1)
     pro_rel = PATH.local(make_info["PRO"])
     example_rel = PATH.local(PATHS["examples"])
@@ -131,6 +133,7 @@ def main():
   utils.install_toolchains(is_embedded, args.yes)
   if utils.RESET_CONSOLE:
     p.inf("Reset console after finishing work")
+    p.inf("This will reload system PATH with newly installed tools")
     sys.exit(0)
   # Verify compiler works
   if not utils.verify_compiler(is_embedded):
@@ -185,6 +188,7 @@ def main():
   if not args.name and not args.reload and not args.info:
     p.err(f"Name {c.YELLOW}name{c.END} not provided")
     p.inf(f"Provide project name or use flag {flag.r}")
+    p.run(f"To reload the currently active project use flag {flag.r}")
     sys.exit(1)
   if args.name:
     valid, reason = utils.validate_project_name(args.name)
@@ -214,6 +218,7 @@ def main():
   if args.new:
     if args.name.lower() in (n.lower() for n in PRO.keys()):
       p.err(f"{noun} {c.MAGNTA}{args.name}{c.END} already exists")
+      p.run(f"Use a different name or load it without flag {flag.n}")
       sys.exit(1)
     # Check for nested projects
     new_name = args.name.replace("\\", "/").strip("/")
@@ -255,7 +260,10 @@ def main():
     # Load existing project
     if args.name.lower() not in (n.lower() for n in PRO.keys()):
       p.err(f"{noun} {c.MAGNTA}{args.name}{c.END} does not exist")
-      p.run(f"Use flag {flag.n} to create new")
+      if args.example:
+        p.run(f"Check available examples with flag {flag.l} or download with {flag.e}")
+      else:
+        p.run(f"Use flag {flag.n} to create a new project")
       sys.exit(1)
     main_h_path = PATH.resolve(f"{PRO[args.name]}/main.h", read=False)
     if not FILE.exists(main_h_path):
@@ -273,6 +281,7 @@ def main():
     info = info1 | info2
     if not info.get("PRO_CHIP"):
       p.err(f"File {c.ORANGE}main.h{c.END} missing PRO_CHIP definition")
+      p.inf(f"Check {c.ORANGE}{PATHS['pro']}/main.h{c.END}")
       sys.exit(1)
     # Get project version from main.h
     pro_ver = info.get("PRO_VERSION", fw_ver)
@@ -327,7 +336,7 @@ def main():
         CFG["fw_ver"] = pro_ver
         PATHS["fw"] = fw_path
     # Warn about ignored flags
-    msg = f"is ignored when loading existing {noun.lower()}"
+    msg = f"is ignored when loading an existing {noun.lower()} — it's read from {c.ORANGE}main.h{c.END}"
     if args.chip: p.wrn(f"Flag {flag.c} {msg}")
     if args.memory: p.wrn(f"Flag {flag.m} {msg}")
   # Normalize opt-level

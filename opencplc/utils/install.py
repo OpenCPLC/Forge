@@ -96,13 +96,14 @@ def install_missing_add_path(
       ENV.add_variable(var, path)
     if not ENV.path_exists(path):
       if (var and ENV.add_path(f"%{var}%")) or ENV.add_path(path):
-        p.ok(f"Path for {c.YELLOW}{cmd}{c.END} added to PATH")
+        p.ok(f"Path for {c.YELLOW}{cmd}{c.END} added to system environment variables")
       else:
-        p.err(f"Failed to add path for {c.YELLOW}{cmd}{c.END}")
+        p.err(f"Failed to add path for {c.YELLOW}{cmd}{c.END} to system environment variables")
         sys.exit(1)
       RESET_CONSOLE = True
   elif min_ver and version_older_than(ver, min_ver):
-    p.wrn(f"{c.YELLOW}{cmd}{c.END} v{c.ORANGE}{ver}{c.END} - min required: {c.BLUE}{min_ver}{c.END}")
+    p.wrn(f"Program {c.YELLOW}{cmd}{c.END} is installed in version {c.ORANGE}{ver}{c.END}")
+    p.inf(f"Minimum required version is {c.BLUE}{min_ver}{c.END}")
   return ver
 
 def install_toolchains(is_embedded:bool, yes:bool):

@@ -81,6 +81,8 @@ def get_project_list(path:str) -> dict[str, str]:
     name = PATH.local(pro_path, path)
     if name.lower() not in (n.lower() for n in result.keys()):
       result[name] = pro_path
+    else:
+      p.wrn(f"Duplicate project name {c.RED}{name}{c.END} at {c.YELLOW}{pro_path}{c.END}")
   return result
 
 def check_write_permission(path:str) -> bool:
