@@ -1,8 +1,6 @@
 # opencplc/__init__.py
 
-from .config import VER
-
-__version__ = VER
+__version__ = "0.1.1"
 __repo__ = "OpenCPLC/Forge"
 __python__ = ">=3.12"
 __description__ = "Project configuration and build tool for OpenCPLC"

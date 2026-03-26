@@ -152,14 +152,14 @@ def scan_package_data(pkg_dir:str) -> list[str]:
     parts = f.split("/")
     if len(parts) > 1:
       subdir = parts[0]
-      ext = PATH.extension(f)
+      ext = PATH.ext(f)
       dirs_with_data.setdefault(subdir, set())
       if ext:
         dirs_with_data[subdir].add(f"*{ext}")
       else:
         dirs_with_data[subdir].add("*")
     else:
-      ext = PATH.extension(f)
+      ext = PATH.ext(f)
       dirs_with_data.setdefault("", set())
       if ext:
         dirs_with_data[""].add(f"*{ext}")
@@ -198,7 +198,7 @@ def build_extras(pkg_dir:str, modules:set[str], subpackages:set[str]) -> dict[st
 def get_meta(pkg_dir:str) -> dict:
   """Extract metadata from `__init__.py`."""
   meta = {
-    "version": "0.1.0",
+    "version": "0.0.0",
     "repo": "",
     "python": ">=3.10",
     "description": "",

@@ -1,7 +1,5 @@
 # opencplc/config.py
 
-VER = "0.1.1"
-
 # GitHub URLs
 URL_GIT = "https://github.com/OpenCPLC"
 URL_FTP = "http://sqrt.pl/opencplc"

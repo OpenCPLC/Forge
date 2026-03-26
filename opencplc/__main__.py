@@ -2,12 +2,12 @@
 
 import signal, sys
 from xaeian import Print, Color as c, Ico, FILE, DIR, JSON, PATH, replace_end
-from .config import VER, URL_FTP, URL_CORE, URL_FORGE, URL_DEMO
+from .config import URL_FTP, URL_CORE, URL_FORGE, URL_DEMO
 from .args import flag, load_args, check_flags
 from .platforms import resolve_chip
 from .templates import load_templates
 from .project import generate_project
-from . import utils
+from . import utils, __version__
 
 p = Print()
 
@@ -45,7 +45,7 @@ def main():
   # Print-only actions
   exit_flag = False
   if args.version:
-    p.inf(f"OpenCPLC Forge {c.BLUE}{VER}{c.END}")
+    p.inf(f"OpenCPLC Forge {c.BLUE}{__version__}{c.END}")
     p.gap(utils.color_url("https://github.com/OpenCPLC/Forge"))
     exit_flag = True
   if args.framework_versions:
@@ -67,13 +67,13 @@ def main():
       p.err(f"No access to {c.BLUE}GitHub{c.END}")
       sys.exit(1)
     target = utils.version_real(args.update, versions[0])
-    if target != VER:
-      p.inf(f"Installed: {c.ORANGE}{VER}{c.END}")
+    if target != __version__:
+      p.inf(f"Installed: {c.ORANGE}{__version__}{c.END}")
       p.inf(f"{'Latest' if new_ver else 'Target'}: {c.BLUE}{target}{c.END}")
       p.run(f"{'Update' if new_ver else 'Replace'} required")
       utils.install("forge.exe", f"{URL_FORGE}/releases/download/{target}", ".", args.yes, False)
     else:
-      p.ok(f"Forge is at {'latest' if new_ver else 'target'} version {c.BLUE}{VER}{c.END}")
+      p.ok(f"Forge is at {'latest' if new_ver else 'target'} version {c.BLUE}{__version__}{c.END}")
     exit_flag = True
   if args.assets:
     DIR.ensure(args.assets)
