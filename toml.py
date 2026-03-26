@@ -2,7 +2,9 @@
 
 """
 Auto-generate pyproject.toml from package source analysis.
-Scans Python files, detects modules, reads __extras__ declarations.
+Scans Python files, detects modules, reads __extras__ declarations,
+auto-discovers third-party dependencies from imports, and detects
+non-Python files for package-data.
 
 Each module/subpackage declares its own extras via __extras__:
   Tuple form: __extras__ = ("group", ["pkg1", "pkg2"])
@@ -21,6 +23,33 @@ import ast, sys
 from xaeian import FILE, DIR, PATH, Print, Color as c
 
 p = Print()
+
+#----------------------------------------------------------------------------- Import-to-PyPI map
+
+IMPORT_MAP = {
+  "PIL": "Pillow",
+  "cv2": "opencv-python",
+  "yaml": "PyYAML",
+  "serial": "pyserial",
+  "usb": "pyusb",
+  "gi": "PyGObject",
+  "bs4": "beautifulsoup4",
+  "attr": "attrs",
+  "sklearn": "scikit-learn",
+  "skimage": "scikit-image",
+  "wx": "wxPython",
+  "Crypto": "pycryptodome",
+  "nacl": "PyNaCl",
+  "google.protobuf": "protobuf",
+  "jose": "python-jose",
+  "dotenv": "python-dotenv",
+  "magic": "python-magic",
+  "dateutil": "python-dateutil",
+  "webview": "pywebview",
+  "docx": "python-docx",
+  "pptx": "python-pptx",
+  "lxml": "lxml",
+}
 
 #------------------------------------------------------------------------------------ Internals
 
@@ -54,6 +83,10 @@ def _scan_extras_from_file(path:str) -> dict[str, list[str]]:
           return _parse_extras(node.value)
   return {}
 
+def _top_level(name:str) -> str:
+  """Extract top-level module from dotted import name."""
+  return name.split(".")[0]
+
 #------------------------------------------------------------------------------------- Analysis
 
 def scan_package(pkg_dir:str) -> tuple[set[str], set[str]]:
@@ -67,6 +100,82 @@ def scan_package(pkg_dir:str) -> tuple[set[str], set[str]]:
     if PATH.is_file(PATH.join(pkg_dir, name, "__init__.py")):
       subpackages.add(name)
   return modules, subpackages
+
+def scan_imports(pkg_dir:str, pkg_name:str) -> set[str]:
+  """Scan all `.py` files in package for third-party imports.
+
+  Args:
+    pkg_dir: Package directory path.
+    pkg_name: Package name (to exclude self-imports).
+
+  Returns:
+    Set of PyPI package names detected from imports.
+  """
+  stdlib = sys.stdlib_module_names
+  internal = {pkg_name}
+  py_files = DIR.file_list(pkg_dir, exts=[".py"])
+  raw_imports: set[str] = set()
+  for fpath in py_files:
+    try:
+      tree = ast.parse(FILE.load(fpath))
+    except Exception:
+      continue
+    for node in ast.walk(tree):
+      if isinstance(node, ast.Import):
+        for alias in node.names:
+          raw_imports.add(alias.name)
+      elif isinstance(node, ast.ImportFrom):
+        if node.module and node.level == 0:
+          raw_imports.add(node.module)
+  third_party: set[str] = set()
+  for name in raw_imports:
+    top = _top_level(name)
+    if top in stdlib: continue
+    if top in internal: continue
+    if top.startswith("_"): continue
+    # Check full dotted name first, then top-level
+    pypi = IMPORT_MAP.get(name) or IMPORT_MAP.get(top) or top
+    third_party.add(pypi)
+  return third_party
+
+def scan_package_data(pkg_dir:str) -> list[str]:
+  """Detect non-Python files that need `package-data` declaration.
+
+  Returns:
+    List of glob patterns like `"files/*"`, `"templates/*.html"`.
+  """
+  all_files = DIR.file_list(pkg_dir, local=True)
+  dirs_with_data: dict[str, set[str]] = {}
+  for f in all_files:
+    if f.endswith(".py") or f.endswith(".pyc"): continue
+    if f.startswith("__"): continue
+    parts = f.split("/")
+    if len(parts) > 1:
+      subdir = parts[0]
+      ext = PATH.extension(f)
+      dirs_with_data.setdefault(subdir, set())
+      if ext:
+        dirs_with_data[subdir].add(f"*{ext}")
+      else:
+        dirs_with_data[subdir].add("*")
+    else:
+      ext = PATH.extension(f)
+      dirs_with_data.setdefault("", set())
+      if ext:
+        dirs_with_data[""].add(f"*{ext}")
+      else:
+        dirs_with_data[""].add("*")
+  patterns = []
+  for subdir, exts in sorted(dirs_with_data.items()):
+    if not subdir:
+      for ext in sorted(exts):
+        patterns.append(ext)
+    elif exts == {"*"} or len(exts) > 3:
+      patterns.append(f"{subdir}/*")
+    else:
+      for ext in sorted(exts):
+        patterns.append(f"{subdir}/{ext}")
+  return patterns
 
 def build_extras(pkg_dir:str, modules:set[str], subpackages:set[str]) -> dict[str, list[str]]:
   """Build extras dict by scanning `__extras__` in modules and subpackages."""
@@ -128,7 +237,11 @@ def get_meta(pkg_dir:str) -> dict:
 
 #------------------------------------------------------------------------------------- Generate
 
-def generate_toml(pkg_name:str, meta:dict, extras:dict[str, list[str]]) -> str:
+def generate_toml(
+  pkg_name:str, meta:dict,
+  extras:dict[str, list[str]],
+  package_data:list[str]|None=None,
+) -> str:
   """Generate pyproject.toml content."""
   lines = [
     '[build-system]',
@@ -171,16 +284,22 @@ def generate_toml(pkg_name:str, meta:dict, extras:dict[str, list[str]]) -> str:
   lines.append('[tool.setuptools.packages.find]')
   lines.append(f'include = ["{pkg_name}*"]')
   lines.append('')
+  if package_data:
+    lines.append('[tool.setuptools.package-data]')
+    pat_str = ", ".join(f'"{p}"' for p in package_data)
+    lines.append(f'{pkg_name} = [{pat_str}]')
+    lines.append('')
   return "\n".join(lines)
 
 #--------------------------------------------------------------------------------------- Public
 
-def generate(package:str, output:str|None=None):
+def generate(package:str, output:str|None=None, auto_deps:bool=False):
   """Generate pyproject.toml for given package directory.
 
   Args:
     package: Package directory path.
     output: Output file path (default: parent/pyproject.toml).
+    auto_deps: Scan imports for third-party dependencies.
   """
   pkg_dir = PATH.resolve(package)
   if not PATH.is_dir(pkg_dir):
@@ -190,6 +309,20 @@ def generate(package:str, output:str|None=None):
   meta = get_meta(pkg_dir)
   modules, subpackages = scan_package(pkg_dir)
   extras = build_extras(pkg_dir, modules, subpackages)
+  package_data = scan_package_data(pkg_dir)
+  if auto_deps:
+    scanned = scan_imports(pkg_dir, pkg_name)
+    # Exclude extras deps — they're optional, not required
+    extras_all = set()
+    for deps in extras.values():
+      extras_all.update(deps)
+    scanned -= extras_all
+    # Merge with declared __dependencies__
+    declared = set(meta["dependencies"])
+    new_deps = scanned - declared
+    if new_deps:
+      p.wrn(f"Auto-detected: {c.TURQUS}{', '.join(sorted(new_deps))}{c.END}")
+    meta["dependencies"] = sorted(declared | scanned)
   p.inf(f"Package: {c.TURQUS}{pkg_name}{c.END} {meta['version']}")
   if meta["repo"]:
     p.gap(f"https://github.com/{c.SKY}{meta['repo']}{c.END}")
@@ -201,10 +334,12 @@ def generate(package:str, output:str|None=None):
   if extras:
     for name, deps in sorted(extras.items(), key=lambda x: (x[0] == "all", x[0])):
       p.item(f"[{c.SKY}{name}{c.END}]: {c.GREY}{', '.join(deps)}{c.END}")
+  if package_data:
+    p.inf(f"Package data: {c.GREY}{', '.join(package_data)}{c.END}")
   if meta.get("scripts"):
     for cmd, entry in meta["scripts"].items():
       p.item(f"Script: {c.TURQUS}{cmd}{c.END} -> {c.GREY}{entry}{c.END}")
-  toml = generate_toml(pkg_name, meta, extras)
+  toml = generate_toml(pkg_name, meta, extras, package_data)
   out = output or PATH.join(PATH.dirname(pkg_dir), "pyproject.toml")
   FILE.save(out, toml)
   p.ok(f"Generated {c.GREY}{PATH.dirname(out)}/{c.END}{c.ORANGE}{PATH.basename(out)}{c.END}")
@@ -215,6 +350,7 @@ EXAMPLES = """
 examples:
   py toml.py xaeian              Generate from package dir
   py toml.py xaeian -o out.toml  Custom output path
+  py toml.py xaeian --auto-deps  Auto-detect dependencies from imports
 """
 
 if __name__ == "__main__":
@@ -233,6 +369,8 @@ if __name__ == "__main__":
   parser.add_argument("package", metavar="PACKAGE", help="Package directory to scan")
   parser.add_argument("-o", "--output", default=None, metavar="PATH",
     help="Output file (default: parent/pyproject.toml)")
+  parser.add_argument("-a", "--auto-deps", action="store_true",
+    help="Auto-detect third-party dependencies from imports")
   parser.add_argument("-h", "--help", action="help", help="Show this help message and exit")
   args = parser.parse_args()
-  generate(args.package, args.output)
+  generate(args.package, args.output, args.auto_deps)
