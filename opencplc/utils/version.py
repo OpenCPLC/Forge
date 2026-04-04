@@ -33,7 +33,7 @@ def git_clone(url:str, path:str, ref:str|None=None, drop_on_err:bool=False):
   result = subprocess.run(cmd, capture_output=True, text=True)
   if result.returncode:
     if drop_on_err and PATH.exists(path): DIR.remove(path, force=True)
-    p.err(f"Clone failed: {c.ORANGE}{url}{c.END}")
+    p.err(f"Clone failed: {c.TEAL}{url}{c.END}")
     sys.exit(1)
 
 def git_get_refs(
@@ -81,5 +81,5 @@ def git_clone_missing(url:str, path:str, ref:str, yes:bool=False, required:bool=
     p.err(f"You can download it manually from {color_url(url)}")
     sys.exit(0)
   git_clone(url, full_path, ref)
-  p.ok(f"Cloned {c.ORANGE}{url}{c.END} to {c.GREY}{PATH.local(full_path)}{c.END}")
+  p.ok(f"Cloned {c.TEAL}{url}{c.END} to {c.GREY}{PATH.local(full_path)}{c.END}")
   return True

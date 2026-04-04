@@ -38,6 +38,7 @@ def main():
     if "available-versions" not in forge_cfg:
       p.err("First run requires network access to fetch available framework versions")
       sys.exit(1)
+  forge_cfg["pwsh"] = utils.is_pwsh() # Auto-detect shell type
   JSON.save_pretty("opencplc.json", forge_cfg)
   forge_cfg["version"] = utils.version_real(forge_cfg["version"], forge_cfg["available-versions"][0])
   # Parse arguments
@@ -132,9 +133,8 @@ def main():
   # Install toolchains based on platform
   utils.install_toolchains(is_embedded, args.yes)
   if utils.RESET_CONSOLE:
-    p.inf("Reset console after finishing work")
-    p.inf("This will reload system PATH with newly installed tools")
-    sys.exit(0)
+    p.wrn(f"New tools were installed and added to system PATH")
+    p.tip(f"Restart your console after finishing to use them directly")
   # Verify compiler works
   if not utils.verify_compiler(is_embedded):
     compiler = "arm-none-eabi-gcc" if is_embedded else "gcc"

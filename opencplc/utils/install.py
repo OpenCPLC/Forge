@@ -18,10 +18,24 @@ FTP_PATH = "http://sqrt.pl"
 INSTALL_PATH = "C:"
 RESET_CONSOLE = False
 
+def _broadcast_env_change():
+  """Notify Windows that environment variables changed."""
+  try:
+    import ctypes
+    HWND_BROADCAST = 0xFFFF
+    WM_SETTINGCHANGE = 0x001A
+    SMTO_ABORTIFHUNG = 0x0002
+    ctypes.windll.user32.SendMessageTimeoutW(
+      HWND_BROADCAST, WM_SETTINGCHANGE, 0,
+      "Environment", SMTO_ABORTIFHUNG, 5000, ctypes.byref(ctypes.c_ulong(0))
+    )
+  except Exception:
+    pass
+
 class ENV:
   @staticmethod
   def path_exists(path:str) -> bool:
-    return path in os.environ.get("PATH", "")
+    return path.lower() in (e.lower() for e in os.environ.get("PATH", "").split(";"))
 
   @staticmethod
   def var_exists(var:str) -> bool:
@@ -33,9 +47,19 @@ class ENV:
     try:
       key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Environment", 0,
         winreg.KEY_SET_VALUE | winreg.KEY_READ)
-      current, _ = winreg.QueryValueEx(key, "Path")
-      winreg.SetValueEx(key, "Path", 0, winreg.REG_EXPAND_SZ, f"{current};{path}")
+      try:
+        current, _ = winreg.QueryValueEx(key, "Path")
+      except FileNotFoundError:
+        current = ""
+      entries = [e.strip() for e in current.split(";") if e.strip()]
+      if path.lower() in (e.lower() for e in entries):
+        winreg.CloseKey(key)
+        return True
+      entries.append(path)
+      winreg.SetValueEx(key, "Path", 0, winreg.REG_EXPAND_SZ, ";".join(entries))
       winreg.CloseKey(key)
+      _broadcast_env_change()
+      os.environ["PATH"] = path + ";" + os.environ.get("PATH", "")
       return True
     except Exception:
       return False
@@ -48,6 +72,8 @@ class ENV:
         winreg.KEY_SET_VALUE | winreg.KEY_READ)
       winreg.SetValueEx(key, name, 0, winreg.REG_EXPAND_SZ, value)
       winreg.CloseKey(key)
+      _broadcast_env_change()
+      os.environ[name] = value
       return True
     except Exception:
       return False
@@ -108,8 +134,8 @@ def install_missing_add_path(
 
 def install_toolchains(is_embedded:bool, yes:bool):
   """Install required toolchains based on platform."""
-  install_missing_add_path("Git", "git", None, yes, "2.47.1")
-  install_missing_add_path("Make", "make", None, yes, "4.4.1")
+  install_missing_add_path("Git", "git", None, yes, "2.20.0")
+  install_missing_add_path("Make", "make", None, yes, "4.3.0")
   if is_embedded:
     install_missing_add_path("ArmGCC", "arm-none-eabi-gcc", "ARMGCC", yes, "14.2.1")
     install_missing_add_path("OpenOCD", "openocd", None, yes, "0.12.0")

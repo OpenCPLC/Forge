@@ -1,7 +1,6 @@
 # opencplc/host.py
 
-import json
-from xaeian import Print, Color as c, FILE, DIR, PATH
+from xaeian import Print, Color as c, FILE, PATH, JSON
 
 p = Print()
 
@@ -74,10 +73,8 @@ def generate_properties(name:str, c_includes:str, define:str, fw_rel:str, pro_re
   }
 
 def save_json(path:str, data:dict):
-  DIR.ensure(path, is_file=True)
   rewrite = FILE.exists(path)
-  with open(path, "w", encoding="utf-8") as f:
-    json.dump(data, f, indent=2)
+  JSON.save_pretty(path, data)
   name = PATH.basename(path)
   folder = PATH.dirname(path)
   action = "Overwritten" if rewrite else "Created"

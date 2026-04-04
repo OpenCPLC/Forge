@@ -1,6 +1,6 @@
 # opencplc/utils/common.py
 
-import sys, platform
+import sys, os, platform
 from typing import Any
 from xaeian import Print, Color as c, Ico
 
@@ -67,3 +67,14 @@ def validate_project_name(name:str) -> tuple[bool, str]:
   if name != name.strip(): return False, "Name cannot start/end with spaces"
   if len(name) > 100: return False, "Name too long (max 100 chars)"
   return True, ""
+
+def detect_shell() -> str:
+  """Detect current shell: 'pwsh', 'cmd', or 'bash'."""
+  if "PSModulePath" in os.environ:
+    return "pwsh"
+  if detect_os() == "windows":
+    return "cmd"
+  return "bash"
+
+def is_pwsh() -> bool:
+  return detect_shell() == "pwsh"

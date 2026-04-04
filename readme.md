@@ -79,12 +79,12 @@ On first run ⚒️Forge creates config file **`opencplc.json`**. It contains:
   - `framework`: Directory with all OpenCPLC framework versions. Subdirectories are created for versions like `major.minor.patch`, `develop` or `main`. Each contains files for that framework version. Only needed versions are downloaded.
   - `build`: Directory with built applications
 - `default`: Default values _(`chip`, `flash`, `ram`, `optLevel`)_ for params not passed when creating new project
-- **`pwsh`**: Setting this to `true` makes `makefile` for **PowerShell**. For `false` it's **Bash** version.
+- **`pwsh`**: Detected automatically. When `true`, `makefile` uses **PowerShell** syntax. For `false` it's **Bash** version.
 - `available-versions`: List of all available framework versions. Set automatically.
 
 ## 🤔 How works?
 
-First **Forge** installs **GNU Arm Embedded Toolchain**, **OpenOCD**, **Make**, **Git** client and sets system variables if these apps aren't visible from console. For HOST platform, **MinGW** (GCC for Windows) is installed instead of ARM toolchain. If you don't want anyone messing with your system, you can [set it up manually](self-install.md). When ⚒️**Forge** installs missing apps, it asks to reset console because system variables load on startup and new ones were added.
+First **Forge** installs **GNU Arm Embedded Toolchain**, **OpenOCD**, **Make**, **Git** client and sets system variables if these apps aren't visible from console. For HOST platform, **MinGW** (GCC for Windows) is installed instead of ARM toolchain. If you don't want anyone messing with your system, you can [set it up manually](self-install.md). When ⚒️**Forge** installs missing apps, it adds them to system PATH and continues. Restart your console afterward to use them directly.
 
 Then if needed, it clones OpenCPLC framework from [repository](https://github.com/OpenCPLC/Core) to `${framework}` folder from `opencplc.json`. Version from config or specified with `-f --framework` gets cloned:
 

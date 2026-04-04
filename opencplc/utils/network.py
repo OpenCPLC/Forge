@@ -1,6 +1,6 @@
 # opencplc/utils/network.py
 
-import sys, re, zipfile, io
+import sys, re
 import urllib.request
 from xaeian import Print, Color as c, FILE, DIR, PATH
 from .version import git_clone
@@ -23,11 +23,10 @@ def download(url:str, save_path:str="", timeout:float=10) -> bytes:
     sys.exit(1)
 
 def unzip(data:bytes, path:str, drop_on_err:bool=True):
-  """Extract ZIP archive."""
+  """Extract ZIP archive from bytes."""
   try:
-    DIR.ensure(path)
-    zipfile.ZipFile(io.BytesIO(data)).extractall(path)
-  except zipfile.BadZipFile:
+    DIR.unzip_bytes(data, path)
+  except Exception:
     if drop_on_err:
       DIR.remove(path, force=True)
     p.err("Invalid ZIP file")
