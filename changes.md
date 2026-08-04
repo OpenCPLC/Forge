@@ -2,25 +2,25 @@
 
 ## `0.2.0` ST-Link & versions
 
-- `stlink` in `opencplc.json`: programmer pinned to a project
-- Environment variables set system-wide
-- Version = folder in `opencplc/`, any branch or tag name allowed
+- Bind a programmer to a project, so `make flash` hits the right board
+- Toolchains land in the system PATH _(admin console required)_
+- A version is a folder in `opencplc/`, cloned from GitHub when missing
 
 ## `0.1.3` Windows fixes
 
-- PATH applies immediately after toolchain install
-- `pwsh` shell auto-detect
+- Installed toolchains work right away, without reopening the console
+- `pwsh` is detected automatically
 
 ## `0.1.2` Fix
 
-- Nested package-data in wheel _(`files/flash/*.ld`)_
+- Linker scripts ship with the package again
 
 ## `0.1.1` Packaging
 
-- `xaeian` added to dependencies, template files included in wheel
+- `xaeian` declared as a dependency and templates bundled, so `pip install` gives a working tool
 
 ## `0.1.0` Initial release
 
-- CLI for OpenCPLC projects: create, reload, download and build with a single command
-- Targets: STM32G0, STM32WB and HOST _(Windows/Linux)_
-- Installable via `pip`
+- One command to create, load, download and build an OpenCPLC project
+- Targets STM32G0, STM32WB and HOST _(Windows/Linux)_
+- Installable with `pip`
