@@ -12,5 +12,5 @@
     "ram": "144kB",
     "optLevel": "Og"
   },
-  "pwsh": false
+  "windows": true
 }

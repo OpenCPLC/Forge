@@ -1,6 +1,6 @@
 # opencplc/utils/common.py
 
-import sys, os, platform
+import sys, platform
 from typing import Any
 from xaeian import Print, Color as c, Ico
 
@@ -13,21 +13,6 @@ def detect_os() -> str:
   elif system == "darwin": return "macos"
   return "unknown"
 
-def is_windows() -> bool:
-  return detect_os() == "windows"
-
-def is_linux() -> bool:
-  return detect_os() == "linux"
-
-def to_int(value:Any) -> int|None:
-  if value is None: return None
-  s = str(value)
-  digits = ""
-  for ch in s:
-    if ch.isdigit(): digits += ch
-    else: break
-  return int(digits) if digits else None
-
 def is_yes(msg:str="Proceed automatically") -> bool:
   yn = f"[{c.GREEN}YES{c.END}/{c.RED}NO{c.END}]"
   print(f"{Ico.INF} {msg}? {yn}:", end=" ")
@@ -35,8 +20,8 @@ def is_yes(msg:str="Proceed automatically") -> bool:
   return ans in ("yes", "y", "true", "tak", "t")
 
 def color_url(url:str) -> str:
-  return url.replace("https://", f"{c.GREY}https://{c.END}").replace(
-    "OpenCPLC", f"{c.TURQUS}OpenCPLC{c.END}")
+  """Repository URL: grey scheme, teal body."""
+  return url.replace("https://", f"{c.GREY}https://{c.END}{c.TEAL}") + c.END
 
 def assign_name(name:Any, flag:Any, msg:str) -> tuple[str, Any]:
   if isinstance(flag, str):
@@ -67,14 +52,3 @@ def validate_project_name(name:str) -> tuple[bool, str]:
   if name != name.strip(): return False, "Name cannot start/end with spaces"
   if len(name) > 100: return False, "Name too long (max 100 chars)"
   return True, ""
-
-def detect_shell() -> str:
-  """Detect current shell: 'pwsh', 'cmd', or 'bash'."""
-  if "PSModulePath" in os.environ:
-    return "pwsh"
-  if detect_os() == "windows":
-    return "cmd"
-  return "bash"
-
-def is_pwsh() -> bool:
-  return detect_shell() == "pwsh"

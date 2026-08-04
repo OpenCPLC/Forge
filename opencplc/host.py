@@ -4,15 +4,19 @@ from xaeian import Print, Color as c, FILE, PATH, JSON
 
 p = Print()
 
+def expand(path:str, fw_rel:str, pro_rel:str) -> str:
+  """Expand makefile $(LIB)/$(PRO) shorthands to real paths."""
+  return path.replace("$(LIB)", fw_rel).replace("$(PRO)", pro_rel)
+
 def generate_tasks(c_sources:str, c_includes:str, target:str, fw_rel:str, pro_rel:str, is_windows:bool) -> dict:
   args = ["-g"]
   for inc in c_includes.split():
     if inc.startswith("-I"):
-      path = inc[2:].replace("$(LIB)", fw_rel).replace("$(PRO)", pro_rel)
+      path = expand(inc[2:], fw_rel, pro_rel)
       args.append("-I${workspaceRoot}/" + path.lstrip("./"))
   for src in c_sources.replace("\\\n", " ").split():
     if src.endswith(".c"):
-      path = src.replace("$(LIB)", fw_rel).replace("$(PRO)", pro_rel)
+      path = expand(src, fw_rel, pro_rel)
       args.append("${workspaceRoot}/" + path.lstrip("./"))
   exe = f"{target}.exe" if is_windows else target
   args += ["-o", "${workspaceRoot}/" + exe]
@@ -55,7 +59,7 @@ def generate_properties(name:str, c_includes:str, define:str, fw_rel:str, pro_re
   paths = ["${workspaceFolder}/**"]
   for inc in c_includes.split():
     if inc.startswith("-I"):
-      path = inc[2:].replace("$(LIB)", fw_rel).replace("$(PRO)", pro_rel)
+      path = expand(inc[2:], fw_rel, pro_rel)
       paths.append("${workspaceFolder}/" + path.lstrip("./"))
   defines = ["HOST", define, "_DEBUG"]
   if is_windows: defines += ["UNICODE", "_UNICODE"]

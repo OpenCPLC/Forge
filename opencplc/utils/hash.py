@@ -16,12 +16,12 @@ def c_code_enum(hash_list:list[str], title:str="", define:bool=False) -> str:
     "".join(ch for ch in title.upper() if ch.isalpha()) + ("_HASH_" if define else "_Hash_")
     if title else "HASH_"
   )
-  lines = ["\n"] if define else [f"\n{c.MAGENTA}typedef enum{c.END} " + "{\n"]
+  lines = ["\n"] if define else [f"\n{c.MAGNTA}typedef enum{c.END} " + "{\n"]
   for name in hash_list:
     val = hash_string(name.lower())
     if define:
       cname = re.sub(r'[^a-zA-Z0-9]', '_', name.upper())
-      lines.append(f"{c.MAGENTA}#define {c.BLUE}{prefix}{cname}{c.END} {c.GREEN}{val}{c.END}\n")
+      lines.append(f"{c.MAGNTA}#define {c.BLUE}{prefix}{cname}{c.END} {c.GREEN}{val}{c.END}\n")
     else:
       cname = "".join(ch for ch in name.title() if ch.isalpha())
       lines.append(f"  {c.CYAN}{prefix}{cname}{c.END} = {c.GREEN}{val}{c.END},\n")

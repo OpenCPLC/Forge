@@ -18,6 +18,7 @@ def files_list(path:str="", ext:str="") -> dict[str, list[str]]:
   return result
 
 def files_mdate(path:str="") -> dict[str, datetime]:
+  """All files under path with their modification dates."""
   result = {}
   path = PATH.resolve(path) if path else PATH.resolve(".")
   if not os.path.isdir(path): return result
@@ -27,7 +28,8 @@ def files_mdate(path:str="") -> dict[str, datetime]:
       result[fp] = datetime.fromtimestamp(os.path.getmtime(fp))
   return result
 
-def files_mdate_max(path:str="", ext=None):
+def files_mdate_max(path:str="", ext=None) -> tuple[str, datetime]|None:
+  """Newest file under path, optionally filtered by extensions."""
   dates = files_mdate(path)
   if not dates: return None
   if ext:
@@ -39,11 +41,12 @@ def files_mdate_max(path:str="", ext=None):
   return next(k for k, v in dates.items() if v == max_dt), max_dt
 
 def last_modification(path:str="", ext=None) -> str:
+  """Newest file formatted for display."""
   result = files_mdate_max(path, ext=ext)
-  if not result: return "Unknown"
+  if not result: return f"{c.GREY}Unknown{c.END}"
   fp, dt = result
   rel = PATH.local(fp, path) if path else PATH.basename(fp)
-  return f"{c.BLUE}{rel} {c.GREY}({dt:%Y-%m-%d %H:%M:%S}){c.END}"
+  return f"{c.BLUE}{rel}{c.END} {c.GREY}({dt:%Y-%m-%d %H:%M:%S}){c.END}"
 
 def create_file(
   name: str,
@@ -74,15 +77,16 @@ def create_file(
   return fp
 
 def get_project_list(path:str) -> dict[str, str]:
+  """Folders containing main.h, keyed by name relative to path."""
   path = PATH.resolve(path) if path else PATH.resolve(".")
-  files = files_list(path, "main.h")
   result = {}
-  for pro_path in files.keys():
+  for pro_path, files in files_list(path, ".h").items():
+    if not any(PATH.basename(f) == "main.h" for f in files): continue
     name = PATH.local(pro_path, path)
-    if name.lower() not in (n.lower() for n in result.keys()):
+    if name.lower() not in (n.lower() for n in result):
       result[name] = pro_path
     else:
-      p.wrn(f"Duplicate project name {c.RED}{name}{c.END} at {c.YELLOW}{pro_path}{c.END}")
+      p.wrn(f"Duplicate project name {c.MAGNTA}{name}{c.END} at {c.ORANGE}{pro_path}{c.END}")
   return result
 
 def check_write_permission(path:str) -> bool:

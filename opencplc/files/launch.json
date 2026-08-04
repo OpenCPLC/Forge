@@ -22,9 +22,10 @@
       "device": "${DEVICE}",
       "configFiles": [
         "interface/stlink.cfg",
-        "target/stm32g0x.cfg"
+        "target/${OPENOCD_TARGET}.cfg"
       ],
-      "svdFile": "${FRAMEWORK_PATH}/hal/svd/${SVD}",
+      "openOCDPreConfigLaunchCommands": ["adapter serial ${STLINK}"],
+      "svdFile": "${LIB_PATH}/hal/svd/${SVD}",
       "preLaunchTask": "make"
     }
   ]

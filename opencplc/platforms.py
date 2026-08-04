@@ -72,7 +72,7 @@ def parse_chip(name:str) -> dict:
   chip_key = next((k for k in CHIPS if k.upper() == name_upper), None)
   if not chip_key:
     p.err(f"Unknown chip: {c.MAGNTA}{name}{c.END}")
-    p.inf(f"Available: {', '.join(CHIPS.keys())}")
+    p.inf(f"Available: {', '.join(f'{c.PINK}{k}{c.END}' for k in CHIPS)}")
     sys.exit(1)
   cfg = CHIPS[chip_key].copy()
   cfg["chip"] = chip_key
@@ -83,36 +83,29 @@ def parse_chip(name:str) -> dict:
   return cfg
 
 def resolve_chip(chip_arg:str, board_arg:str) -> tuple[dict, str|None]:
+  """Chip config + board name from -c/-b. Board picks its chip, memory and clock."""
   board_lower = board_arg.lower() if board_arg else ""
-  chip_lower = chip_arg.lower() if chip_arg else ""
-  # Host
-  if chip_lower == "host":
+  if chip_arg and chip_arg.lower() == "host":
     cfg = parse_chip("HOST")
     cfg["freq_Hz"] = 0
     return cfg, None
-  # Bare metal
+  # Bare metal - safe boot clock
   if not board_arg or board_lower == "none":
     cfg = parse_chip(chip_arg or "STM32G0C1")
     cfg["freq_Hz"] = 16000000
     return cfg, None
-  # Chip only
-  if chip_arg and not board_arg:
-    cfg = parse_chip(chip_arg)
-    cfg["freq_Hz"] = 16000000
-    return cfg, None
-  # Custom board
+  # Custom board - chip is mandatory
   if board_lower == "custom":
     if not chip_arg:
-      p.err(f"Custom board requires chip {flag.c}")
+      p.err(f"{c.TURQUS}Custom{c.END} board requires chip {flag.c}")
       sys.exit(1)
     cfg = parse_chip(chip_arg)
     cfg["freq_Hz"] = 64000000
     return cfg, "Custom"
-  # OpenCPLC board
   board_key = next((k for k in BOARDS if k.lower() == board_lower), None)
   if not board_key:
     p.err(f"Unknown board: {c.MAGNTA}{board_arg}{c.END}")
-    p.inf(f"Available: {', '.join(k for k in BOARDS if k != 'Custom')}, Custom, None")
+    p.inf(f"Available: {', '.join(f'{c.TURQUS}{k}{c.END}' for k in BOARDS)}, {c.TURQUS}None{c.END}")
     sys.exit(1)
   board_cfg = BOARDS[board_key]
   cfg = parse_chip(board_cfg["chip"])

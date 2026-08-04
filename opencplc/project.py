@@ -10,54 +10,45 @@ from . import host as host_utils
 
 p = Print()
 
-def collect_sources(cfg:dict, paths:dict, ext:str) -> str:
-  sources = {}
+def scan_tree(cfg:dict, paths:dict, ext:str) -> dict[str, list[str]]:
+  """Project source tree: HAL + lib + PLC drivers (with board) + project files."""
+  found = {}
   for sub in get_hal_dirs(cfg["hal"]):
     sub_path = f"{paths['hal']}/{sub}"
     if PATH.exists(sub_path):
-      sources.update(utils.files_list(sub_path, ext))
-  sources.update(utils.files_list(paths["lib"], ext))
+      found.update(utils.files_list(sub_path, ext))
+  found.update(utils.files_list(paths["lib"], ext))
   if cfg.get("board"):
-    sources.update(utils.files_list(paths["plc"], ext))
-  sources.update(utils.files_list(paths["pro"], ext))
-  result = ""
-  for folder, files in sources.items():
-    for f in files:
-      if cfg.get("board"):
-        brd_prefix = f"{paths['plc']}/brd/"
-        if brd_prefix in folder and not folder.startswith(f"{brd_prefix}{cfg['board'].lower()}"):
-          continue
-      rel = PATH.local(f)
-      rel = replace_start(rel, paths["pro_rel"], "$(PRO)")
-      rel = replace_start(rel, paths["fw_rel"], "$(LIB)")
-      if utils.last_line_len(result) > 80:
-        result += "\\\n"
-      result += rel + " "
-  return result.rstrip()
+    found.update(utils.files_list(paths["plc"], ext))
+  found.update(utils.files_list(paths["pro"], ext))
+  return found
 
-def collect_includes(cfg:dict, paths:dict) -> str:
-  includes = {}
-  for sub in get_hal_dirs(cfg["hal"]):
-    sub_path = f"{paths['hal']}/{sub}"
-    if PATH.exists(sub_path):
-      includes.update(utils.files_list(sub_path, ".h"))
-  includes.update(utils.files_list(paths["lib"], ".h"))
-  if cfg.get("board"):
-    includes.update(utils.files_list(paths["plc"], ".h"))
-  includes.update(utils.files_list(paths["pro"], ".h"))
+def other_board(cfg:dict, paths:dict, folder:str) -> bool:
+  """Driver folders of boards other than the selected one are excluded."""
+  if not cfg.get("board"): return False
+  brd = f"{paths['plc']}/brd/"
+  return brd in folder and not folder.startswith(f"{brd}{cfg['board'].lower()}")
+
+def makefile_list(items:list[str], paths:dict, prefix:str="") -> str:
+  """Wrapped makefile list with $(PRO)/$(LIB) shorthands."""
   result = ""
-  for folder in includes.keys():
-    if cfg.get("board"):
-      brd_prefix = f"{paths['plc']}/brd/"
-      if brd_prefix in folder and not folder.startswith(f"{brd_prefix}{cfg['board'].lower()}"):
-        continue
-    rel = PATH.local(folder)
+  for item in items:
+    rel = PATH.local(item)
     rel = replace_start(rel, paths["pro_rel"], "$(PRO)")
     rel = replace_start(rel, paths["fw_rel"], "$(LIB)")
     if utils.last_line_len(result) > 80:
       result += "\\\n"
-    result += f"-I{rel} "
+    result += f"{prefix}{rel} "
   return result.rstrip()
+
+def collect_sources(cfg:dict, paths:dict, ext:str) -> str:
+  tree = scan_tree(cfg, paths, ext)
+  files = [f for folder, fs in tree.items() if not other_board(cfg, paths, folder) for f in fs]
+  return makefile_list(files, paths)
+
+def collect_includes(cfg:dict, paths:dict) -> str:
+  folders = [f for f in scan_tree(cfg, paths, ".h") if not other_board(cfg, paths, f)]
+  return makefile_list(folders, paths, "-I")
 
 def generate_project(cfg:dict, paths:dict, forge_cfg:dict, is_example:bool=False):
   templates = load_templates()
@@ -68,13 +59,13 @@ def generate_project(cfg:dict, paths:dict, forge_cfg:dict, is_example:bool=False
   noun = "Example" if is_example else "Project"
   rel_path = PATH.local(paths["pro"])
   path_prefix = replace_end(rel_path, cfg["pro_name"], "")
-  p.inf(f"{noun} {c.GREY}{path_prefix}{c.END}{c.BLUE}{cfg['pro_name']}{c.END}")
+  p.inf(f"{noun} {c.GREY}{path_prefix}{c.END}{c.TEAL if is_example else c.BLUE}{cfg['pro_name']}{c.END}")
   if cfg.get("board"):
     chip_msg = f"{c.TURQUS}{cfg['board'].capitalize()}{c.END} PLC"
   elif is_embedded:
     chip_msg = f"{c.PINK}{cfg['chip']}{c.END}"
   else:
-    chip_msg = f"{c.CYAN}{cfg['platform']}{c.END} {c.GREY}({'Windows' if is_windows else 'Linux'}){c.END}"
+    chip_msg = f"{c.PINK}{cfg['platform']}{c.END} {c.GREY}({'Windows' if is_windows else 'Linux'}){c.END}"
   p.gap(f"using framework version {c.VIOLET}{cfg['fw_ver']}{c.END} configured for {chip_msg}")
   # Create project directory
   DIR.ensure(paths["pro"])
@@ -82,10 +73,10 @@ def generate_project(cfg:dict, paths:dict, forge_cfg:dict, is_example:bool=False
   paths["fw_rel"] = PATH.local(paths["fw"])
   paths["pro_rel"] = PATH.local(paths["pro"])
   paths["build_rel"] = PATH.local(paths.get("build", "build"))
+  target = f"{'example-' if is_example else ''}{cfg['pro_name'].replace('/', '-')}"
   # Common substitution dict
   subs = {
     "${NAME}": cfg["pro_name"],
-    "${PREFIX}": "example-" if is_example else "",
     "${LIB_PATH}": paths["fw_rel"],
     "${PRO_PATH}": paths["pro_rel"],
     "${BUILD_PATH}": paths["build_rel"],
@@ -117,7 +108,7 @@ def generate_project(cfg:dict, paths:dict, forge_cfg:dict, is_example:bool=False
     "${CPU}": cfg["cpu"],
     "${DEVICE}": cfg["device"],
     "${SVD}": cfg.get("svd", ""),
-    "${TARGET}": f"{'example-' if is_example else ''}{cfg['pro_name'].replace('/', '-')}",
+    "${TARGET}": target,
     "${PLATFORM_DEFINE}": cfg["define"],
     "${INTELLISENSE_MODE}": "windows-gcc-x64" if is_windows else "linux-gcc-x64",
     "${EXE_EXT}": ".exe" if is_windows else "",
@@ -178,11 +169,12 @@ def generate_project(cfg:dict, paths:dict, forge_cfg:dict, is_example:bool=False
     "${GCC_PATH}": "",
     "${OPENOCD_PATH}": "",
     "${OPENOCD_TARGET}": cfg.get("openocd", ""),
+    "${STLINK}": (forge_cfg.get("stlink") or {}).get(cfg["pro_name"], ""),
   })
   # Makefile - always regenerate
   FILE.remove("makefile")
   makefile = tpl.get("makefile.mk", templates["makefile.mk"])
-  if forge_cfg.get("pwsh") and is_embedded:
+  if forge_cfg.get("windows") and is_embedded:
     makefile = utils.swap_comment_lines(makefile)
   utils.create_file("makefile", makefile, "", subs, rewrite=True)
   # VSCode - always regenerate (platform switch)
@@ -194,7 +186,9 @@ def generate_project(cfg:dict, paths:dict, forge_cfg:dict, is_example:bool=False
     elif cfg.get("board").lower() == "custom":
       props = "\n".join(ln for ln in props.splitlines() if "/plc/brd/" not in ln)
     utils.create_file("c_cpp_properties.json", props, ".vscode", subs, rewrite=True)
-    utils.create_file("launch.json", tpl.get("launch.json", templates["launch.json"]), ".vscode", subs, rewrite=True)
+    launch = tpl.get("launch.json", templates["launch.json"])
+    stlink_drop = "" if subs["${STLINK}"] else "openOCDPreConfigLaunchCommands"
+    utils.create_file("launch.json", launch, ".vscode", subs, remove_line=stlink_drop, rewrite=True)
     utils.create_file("tasks.json", tpl.get("tasks.json", templates["tasks.json"]), ".vscode", subs, rewrite=True)
   else:
     # HOST platform

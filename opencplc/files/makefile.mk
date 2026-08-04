@@ -1,8 +1,13 @@
 NAME = ${NAME}
-TARGET = ${PREFIX}$(subst /,-,$(NAME))
+TARGET = ${TARGET}
 LIB = ${LIB_PATH}
 PRO = ${PRO_PATH}
 BUILD = ${BUILD_PATH}
+
+SHELL := /bin/sh
+# SHELL := cmd.exe
+.SHELLFLAGS := -c
+# .SHELLFLAGS := /c
 
 C_SOURCES = \
 ${C_SOURCES}
@@ -53,24 +58,24 @@ all: $(BUILD)/$(TARGET).elf $(BUILD)/$(TARGET).hex $(BUILD)/$(TARGET).bin
 
 OBJECTS = $(patsubst %.c,$(BUILD)/%.o,$(C_SOURCES))
 C_DIRS := $(sort $(dir $(shell find . -name "*.c")))
-# C_DIRS := $(sort $(shell powershell -Command "Get-ChildItem -Recurse -Filter *.c | Select-Object -ExpandProperty DirectoryName"))
+# C_DIRS := $(sort $(dir $(subst \,/,$(shell cmd /c "dir /s /b *.c"))))
 vpath %.c $(C_DIRS)
 OBJECTS += $(patsubst %.s,$(BUILD)/%.o,$(ASM_SOURCES))
 ASM_DIRS := $(sort $(dir $(shell find . -name "*.s")))
-# ASM_DIRS := $(sort $(shell powershell -Command "Get-ChildItem -Recurse -Filter *.s | Select-Object -ExpandProperty DirectoryName"))
+# ASM_DIRS := $(sort $(dir $(subst \,/,$(shell cmd /c "dir /s /b *.s 2>nul"))))
 vpath %.s $(ASM_DIRS)
 
 $(OBJECTS): $(PRO)/main.h
 
-$(BUILD)/%.o: %.c Makefile | $(dir $(BUILD)/%)
+$(BUILD)/%.o: %.c makefile | $(dir $(BUILD)/%)
 	@mkdir -p $(dir $@)
 #	@cmd /c if not exist "$(subst /,\,$(dir $@))" mkdir "$(subst /,\,$(dir $@))"
 	$(CC) -c $(CFLAGS) -Wa,-a,-ad,-alms=$(BUILD)/$(<:%.c=%.lst) $< -o $@
 
-$(BUILD)/%.o: %.s Makefile | $(dir $(BUILD)/%)
+$(BUILD)/%.o: %.s makefile | $(dir $(BUILD)/%)
 	$(AS) -c $(CFLAGS) $< -o $@
 
-$(BUILD)/$(TARGET).elf: $(OBJECTS) Makefile
+$(BUILD)/$(TARGET).elf: $(OBJECTS) makefile $(LD_SCRIPT)
 	$(CC) $(OBJECTS) $(LDFLAGS) -o $@
 	$(SZ) $@
 
@@ -84,7 +89,11 @@ $(dir $(BUILD)/%):
 	@mkdir -p $@
 #	@if not exist "$(subst /,\,$@)" (mkdir "$(subst /,\,$@)")
 
-OPENOCD = ${OPENOCD_PATH}openocd -f interface/stlink.cfg -f target/${OPENOCD_TARGET}.cfg -c
+STLINK = ${STLINK}
+ifneq ($(STLINK),)
+OPENOCD_SERIAL = -c "adapter serial $(STLINK)"
+endif
+OPENOCD = ${OPENOCD_PATH}openocd -f interface/stlink.cfg $(OPENOCD_SERIAL) -f target/${OPENOCD_TARGET}.cfg -c
 
 build: all
 
@@ -95,9 +104,9 @@ run: all flash
 
 clean:
 	@if [ -d "$(BUILD)/$(LIB)" ]; then rm -rf "$(BUILD)/$(LIB)"; fi
-#	@if exist "$(BUILD)\$(LIB)" (cmd /c "rmdir /s /q $(BUILD)\$(LIB)")
+#	@if exist "$(BUILD)\$(subst /,\,$(LIB))" (cmd /c "rmdir /s /q $(BUILD)\$(subst /,\,$(LIB))")
 	@if [ -d "$(BUILD)/$(PRO)" ]; then rm -rf "$(BUILD)/$(PRO)"; fi
-#	@if exist "$(BUILD)\$(PRO)" (cmd /c "rmdir /s /q $(BUILD)\$(PRO)")
+#	@if exist "$(BUILD)\$(subst /,\,$(PRO))" (cmd /c "rmdir /s /q $(BUILD)\$(subst /,\,$(PRO))")
 	@find $(BUILD) -type f -name '$(TARGET).*' -exec rm -f {} +
 #	@cmd /c "del /q $(BUILD)\$(TARGET).*"
 
@@ -110,8 +119,8 @@ clr_all: clean_all
 
 dist: all
 	cp $(BUILD)/$(TARGET).bin $(PRO)/$(TARGET).bin
-	cp $(BUILD)/$(TARGET).hex $(PRO)/$(TARGET).hex
 #	copy "$(subst /,\,$(BUILD)\$(TARGET).bin)" "$(subst /,\,$(PRO)\$(TARGET).bin)"
+	cp $(BUILD)/$(TARGET).hex $(PRO)/$(TARGET).hex
 #	copy "$(subst /,\,$(BUILD)\$(TARGET).hex)" "$(subst /,\,$(PRO)\$(TARGET).hex)"
 
 erase:
@@ -120,3 +129,4 @@ erase:
 .PHONY: all build flash run clean clean_all clr clr_all erase dist
 
 -include $(shell find $(BUILD) -name "*.d" 2>/dev/null)
+# -include $(subst \,/,$(shell cmd /c "dir /s /b $(BUILD)\*.d 2>nul"))

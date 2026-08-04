@@ -14,11 +14,12 @@ class Flag:
   d = f"{Color.GREY}-d --delete{Color.END}"
   g = f"{Color.GREY}-g --get{Color.END}"
   f = f"{Color.GREY}-f --framework{Color.END}"
-  F = f"{Color.GREY}-F --framework_versions{Color.END}"
+  F = f"{Color.GREY}-F --framework-versions{Color.END}"
   b = f"{Color.GREY}-b --board{Color.END}"
   c = f"{Color.GREY}-c --chip{Color.END}"
   m = f"{Color.GREY}-m --memory{Color.END}"
   o = f"{Color.GREY}-o --opt-level{Color.END}"
+  l = f"{Color.GREY}-l --list{Color.END}"
   i = f"{Color.GREY}-i --info{Color.END}"
 
 flag = Flag()
@@ -149,13 +150,12 @@ def load_args() -> Args:
     hash_define=ns.hash_define,
   )
 
-def check_flags(args, *flags:tuple[str, str]) -> str|None:
-  """Check for mutually exclusive flags. Pass (attr, display) tuples."""
-  used_attr, used_disp = None, None
+def check_flags(args, *flags:tuple[str, str]):
+  """Exit when mutually exclusive flags are combined. Pass (attr, display) tuples."""
+  used = None
   for attr, disp in flags:
     if getattr(args, attr, False):
-      if used_attr:
-        p.err(f"Flags {used_disp}, {disp} cannot be used together")
+      if used:
+        p.err(f"Flags {used}, {disp} cannot be used together")
         sys.exit(1)
-      used_attr, used_disp = attr, disp
-  return used_attr
+      used = disp

@@ -20,30 +20,6 @@ def line_remove(text:str, phrase:str, limit:int=1) -> str:
       out.append(ln)
   return "\n".join(out)
 
-def line_replace(text:str, phrase:str, new:str, limit:int=1) -> str:
-  """Replace lines containing phrase, preserving indent."""
-  lines = text.splitlines()
-  out, count = [], 0
-  for ln in lines:
-    if phrase in ln and count < limit:
-      indent = len(ln) - len(ln.lstrip())
-      out.append(" " * indent + new)
-      count += 1
-    else:
-      out.append(ln)
-  return "\n".join(out)
-
-def line_add_before(text:str, phrase:str, new_line:str, limit:int=1) -> str:
-  """Add line before lines containing phrase."""
-  lines = text.splitlines()
-  out, count = [], 0
-  for ln in lines:
-    if phrase in ln and count < limit:
-      out.append(new_line)
-      count += 1
-    out.append(ln)
-  return "\n".join(out)
-
 def lines_clear(lines:list[str], comment:str="#") -> list[str]:
   """Strip comments and join continuation lines."""
   result = []
@@ -62,7 +38,8 @@ def lines_clear(lines:list[str], comment:str="#") -> list[str]:
   return result
 
 def swap_comment_lines(text:str, comment:str="#", next_line:bool=False) -> str:
-  """Swap commented/uncommented state of lines."""
+  """Swap commented/uncommented state of paired lines.
+  The active partner sits above the comment, or below when next_line is True."""
   lines = text.splitlines()
   i = 0
   while i < len(lines):
@@ -104,14 +81,9 @@ def get_vars(
   if required:
     for pf in prefixes:
       if pf not in result:
-        p.wrn(f"Variable {c.MAGENTA}{pf}{c.END} not found")
+        p.wrn(f"Variable {c.SKY}{pf}{c.END} not found")
         return {}
   return result
-
-def get_var(lines:list[str], name:str, sep:str="=", trim:str="") -> str|None:
-  """Get single variable value."""
-  v = get_vars(lines, [name], sep, trim, required=False)
-  return v.get(name)
 
 def find_missing_keys(template:dict, subject:dict, prefix:str="") -> list[str]:
   """Find keys present in template but missing in subject (recursive)."""

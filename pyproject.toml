@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "opencplc"
-version = "0.1.3"
+version = "0.2.0"
 description = "Project configuration and build tool for OpenCPLC"
 readme = "readme.md"
 license = {text = "MIT"}
@@ -24,3 +24,7 @@ include = ["opencplc*"]
 
 [tool.setuptools.package-data]
 opencplc = ["files/**"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_functions = ["*"]

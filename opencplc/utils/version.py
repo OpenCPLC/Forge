@@ -9,11 +9,30 @@ from .common import is_yes, color_url
 p = Print()
 
 def version_real(ver:str, latest:str) -> str:
-  """Normalize version string."""
+  """Resolve aliases; anything else (branch, client version) passes through."""
   if ver in ("latest", "last"): return latest
   if ver in ("dev", "develop"): return "develop"
   if ver in ("main", "master"): return "main"
   return ver
+
+def version_is_release(ver:str) -> bool:
+  """True for a pinned release tag, False for a moving branch like develop or main."""
+  try:
+    packaging.version.Version(ver)
+    return True
+  except packaging.version.InvalidVersion:
+    return False
+
+def version_active(framework:str, forge_cfg:dict) -> str:
+  """Framework version in effect: the -f flag when given, otherwise the opencplc.json default."""
+  if framework:
+    return version_real(framework, forge_cfg["available-versions"][0])
+  return forge_cfg["version"]
+
+def version_key(ver:str):
+  """Sort key: proper versions first (newest wins), free-form names after."""
+  try: return (1, packaging.version.Version(ver))
+  except packaging.version.InvalidVersion: return (0, ver)
 
 def version_older_than(a:str, b:str) -> bool:
   return packaging.version.Version(a) < packaging.version.Version(b)
@@ -41,7 +60,8 @@ def git_get_refs(
   option: Literal["--heads", "--tags", "--ref"] = "--ref",
   use_git: bool = True,
 ) -> list[str]:
-  """Get remote refs (tags/branches) from git repository."""
+  """Remote refs of a git repository: tags (newest first), branches, or both.
+  Falls back to the GitHub/GitLab API when use_git is False."""
   if option == "--ref":
     tags = git_get_refs(url, "--tags", use_git)
     heads = git_get_refs(url, "--heads", use_git)
@@ -52,7 +72,7 @@ def git_get_refs(
     rx = r"refs/tags/([^\^{}]+)$" if option == "--tags" else r"refs/heads/(.+)$"
     refs = [re.search(rx, ln).group(1) for ln in lines if re.search(rx, ln)]
     if option == "--tags":
-      return sorted(refs, key=packaging.version.parse, reverse=True)
+      return sorted(refs, key=version_key, reverse=True)
     return refs
   # API fallback
   host = "github" if "github.com" in url else "gitlab" if "gitlab.com" in url else None
@@ -65,21 +85,25 @@ def git_get_refs(
     api = f"https://api.github.com/repos/{repo}"
     endpoint = "/tags" if option == "--tags" else "/branches"
   data = subprocess.run(["curl", "-s", api + endpoint], capture_output=True, text=True).stdout
-  out = json.loads(data)
-  names = [x["name"] for x in out]
+  names = [x["name"] for x in json.loads(data)]
   if option == "--tags":
-    return sorted(names, key=packaging.version.parse, reverse=True)
+    return sorted(names, key=version_key, reverse=True)
   return names
 
 def git_clone_missing(url:str, path:str, ref:str, yes:bool=False, required:bool=True) -> bool:
   """Clone repository if not present."""
   full_path = PATH.resolve(path, read=False)
   if PATH.exists(full_path): return True
-  p.wrn(f"Framework {c.MAGNTA}opencplc{c.END} not installed for version {c.BLUE}{ref}{c.END}")
+  p.wrn(f"Framework {c.ORANGE}opencplc{c.END} not installed for version {c.VIOLET}{ref}{c.END}")
   if not yes and not is_yes():
     if not required: return False
     p.err(f"You can download it manually from {color_url(url)}")
     sys.exit(0)
   git_clone(url, full_path, ref)
-  p.ok(f"Cloned {c.TEAL}{url}{c.END} to {c.GREY}{PATH.local(full_path)}{c.END}")
+  loc = PATH.local(full_path)
+  if loc.endswith(ref):
+    loc = f"{c.GREY}{loc[:len(loc)-len(ref)]}{c.END}{c.VIOLET}{ref}{c.END}"
+  else:
+    loc = f"{c.GREY}{loc}{c.END}"
+  p.ok(f"Cloned {c.TEAL}{url}{c.END} to {loc}")
   return True

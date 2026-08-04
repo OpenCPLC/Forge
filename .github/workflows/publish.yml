@@ -16,6 +16,6 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install build
-      - run: pip install -e .
       - run: python -m build
+      - run: pip install -e .
       - uses: pypa/gh-action-pypi-publish@release/v1

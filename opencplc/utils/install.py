@@ -2,7 +2,7 @@
 
 import os, sys, subprocess, re
 from xaeian import Print, Color as c, FILE, PATH
-from .common import is_yes
+from .common import is_yes, color_url
 from .network import download, unzip
 from .version import version_older_than
 
@@ -17,6 +17,17 @@ p = Print()
 FTP_PATH = "http://sqrt.pl"
 INSTALL_PATH = "C:"
 RESET_CONSOLE = False
+ENV_SYSTEM_KEY = r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
+
+def is_admin() -> bool:
+  """Check for administrator (Windows) or root (Unix) privileges."""
+  if os.name == "nt":
+    try:
+      import ctypes
+      return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception: return False
+  try: return os.geteuid() == 0
+  except AttributeError: return False
 
 def _broadcast_env_change():
   """Notify Windows that environment variables changed."""
@@ -38,26 +49,55 @@ class ENV:
     return path.lower() in (e.lower() for e in os.environ.get("PATH", "").split(";"))
 
   @staticmethod
-  def var_exists(var:str) -> bool:
-    return var in os.environ
+  def _open_key(system:bool, access:int):
+    if system:
+      return winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, ENV_SYSTEM_KEY, 0, access)
+    return winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Environment", 0, access)
+
+  @staticmethod
+  def _user_path_remove(path:str):
+    """Drop path from user PATH (HKCU) - cleanup after switching to system-wide."""
+    try:
+      key = ENV._open_key(False, winreg.KEY_SET_VALUE | winreg.KEY_READ)
+      try:
+        current, kind = winreg.QueryValueEx(key, "Path")
+      except FileNotFoundError:
+        winreg.CloseKey(key)
+        return
+      entries = [e.strip() for e in current.split(";") if e.strip()]
+      cleaned = [e for e in entries if e.lower() != path.lower()]
+      if len(cleaned) != len(entries):
+        winreg.SetValueEx(key, "Path", 0, kind, ";".join(cleaned))
+      winreg.CloseKey(key)
+    except Exception:
+      pass
+
+  @staticmethod
+  def _user_variable_remove(name:str):
+    """Drop variable from user environment (HKCU) - user vars override system vars."""
+    try:
+      key = ENV._open_key(False, winreg.KEY_SET_VALUE)
+      winreg.DeleteValue(key, name)
+      winreg.CloseKey(key)
+    except Exception:
+      pass
 
   @staticmethod
   def add_path(path:str) -> bool:
+    """Add path to system PATH (HKLM, all users) - requires administrator rights."""
     if not WINREG_AVAILABLE: return False
     try:
-      key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Environment", 0,
-        winreg.KEY_SET_VALUE | winreg.KEY_READ)
+      key = ENV._open_key(True, winreg.KEY_SET_VALUE | winreg.KEY_READ)
       try:
         current, _ = winreg.QueryValueEx(key, "Path")
       except FileNotFoundError:
         current = ""
       entries = [e.strip() for e in current.split(";") if e.strip()]
-      if path.lower() in (e.lower() for e in entries):
-        winreg.CloseKey(key)
-        return True
-      entries.append(path)
-      winreg.SetValueEx(key, "Path", 0, winreg.REG_EXPAND_SZ, ";".join(entries))
+      if path.lower() not in (e.lower() for e in entries):
+        entries.append(path)
+        winreg.SetValueEx(key, "Path", 0, winreg.REG_EXPAND_SZ, ";".join(entries))
       winreg.CloseKey(key)
+      ENV._user_path_remove(path)
       _broadcast_env_change()
       os.environ["PATH"] = path + ";" + os.environ.get("PATH", "")
       return True
@@ -66,12 +106,13 @@ class ENV:
 
   @staticmethod
   def add_variable(name:str, value:str) -> bool:
+    """Set system environment variable (HKLM, all users) - requires administrator rights."""
     if not WINREG_AVAILABLE: return False
     try:
-      key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Environment", 0,
-        winreg.KEY_SET_VALUE | winreg.KEY_READ)
+      key = ENV._open_key(True, winreg.KEY_SET_VALUE | winreg.KEY_READ)
       winreg.SetValueEx(key, name, 0, winreg.REG_EXPAND_SZ, value)
       winreg.CloseKey(key)
+      ENV._user_variable_remove(name)
       _broadcast_env_change()
       os.environ[name] = value
       return True
@@ -88,8 +129,8 @@ def program_version(cmd:str) -> str|None:
     return None
 
 def install(name:str, url:str, path:str, yes:bool=False, unpack:bool=True):
-  if not yes and not is_yes(f"Install {name}"):
-    p.err(f"See instructions at {c.GREY}https://{c.END}github.com/OpenCPLC/Forge")
+  if not yes and not is_yes(f"Install {c.YELLOW}{name}{c.END}"):
+    p.err(f"See instructions at {color_url('https://github.com/OpenCPLC/Forge')}")
     sys.exit(1)
   try:
     full_url = f"{url}/{name}.zip" if unpack else f"{url}/{name}"
@@ -102,7 +143,7 @@ def install(name:str, url:str, path:str, yes:bool=False, unpack:bool=True):
       FILE.save(dst, data)
     p.ok("Installation complete")
   except Exception as e:
-    p.err(f"Installation error {c.BLUE}{name}{c.END}: {e}")
+    p.err(f"Installation error {c.YELLOW}{name}{c.END}: {e}")
     sys.exit(1)
 
 def install_missing_add_path(
@@ -115,21 +156,25 @@ def install_missing_add_path(
   global RESET_CONSOLE
   ver = program_version(cmd)
   if not ver:
-    p.wrn(f"Program {c.BLUE}{name}{c.END} is not installed")
+    p.wrn(f"Program {c.YELLOW}{name}{c.END} is not installed")
+    if os.name == "nt" and not is_admin():
+      p.err(f"Administrator rights required to install {c.YELLOW}{name}{c.END} and set system environment variables")
+      p.run("Restart the console as administrator and try again")
+      sys.exit(1)
     install(name, FTP_PATH, INSTALL_PATH, yes)
     path = f"{INSTALL_PATH}\\{name}\\bin"
     if var:
       ENV.add_variable(var, path)
     if not ENV.path_exists(path):
-      if (var and ENV.add_path(f"%{var}%")) or ENV.add_path(path):
+      if ENV.add_path(path):
         p.ok(f"Path for {c.YELLOW}{cmd}{c.END} added to system environment variables")
       else:
         p.err(f"Failed to add path for {c.YELLOW}{cmd}{c.END} to system environment variables")
         sys.exit(1)
       RESET_CONSOLE = True
   elif min_ver and version_older_than(ver, min_ver):
-    p.wrn(f"Program {c.YELLOW}{cmd}{c.END} is installed in version {c.ORANGE}{ver}{c.END}")
-    p.inf(f"Minimum required version is {c.BLUE}{min_ver}{c.END}")
+    p.wrn(f"Program {c.YELLOW}{cmd}{c.END} is installed in version {c.VIOLET}{ver}{c.END}")
+    p.inf(f"Minimum required version is {c.GREY}{min_ver}{c.END}")
   return ver
 
 def install_toolchains(is_embedded:bool, yes:bool):
