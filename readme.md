@@ -38,6 +38,7 @@ Loading a project regenerates these files: they transform everything _(project a
 
 Changing `PRO_x` values in **`main.h`** or the **project structure** _(adding, moving, deleting or renaming files)_ needs a reload.
 `make` does it by itself: when `main.h` or the source tree is newer than the `makefile`, it runs Forge first and then builds.
+Editing the body of a function needs no reload, `make` handles that on its own.
 You can also reload by hand, without the project name when it's active or when you're inside its directory:
 
 ```bash
@@ -47,6 +48,45 @@ opencplc -r
 
 Flags such as `-b`, `-c`, `-m` and `-o` configure a project only when it's created.
 Later the configuration lives in `main.h`: edit it and reload.
+
+### 📄 Your files
+
+`main.c` is yours and Forge never overwrites it.
+The skeleton of a PLC board project looks like this:
+
+```c
+#include "opencplc.h"
+
+void loop(void)
+{
+  while(1) {
+    LED_Set(RGB_Green);
+    delay(1000);
+    LED_Rst();
+    delay(1000);
+  }
+}
+
+stack(stack_plc, 256);
+stack(stack_dbg, 256);
+stack(stack_loop, 1024);
+
+int main(void)
+{
+  thread(PLC_Main, stack_plc); // PLC thread
+  thread(DBG_Loop, stack_dbg); // logs and console
+  thread(loop, stack_loop);    // your application
+  vrts_init();                 // start thread switching
+  while(1);
+}
+```
+
+Your application runs as a VRTS thread next to the PLC thread and the debugger thread _(logs and console)_.
+Add your own modules as more files in the project directory and its subfolders.
+
+`main.h` holds the configuration Forge reads on every load.
+The `PRO_*` definitions describe the board, chip, framework version and memory sizes, while `LOG_LEVEL` and `SYS_CLOCK_FREQ` are yours to change.
+Extra framework drivers go there too: `#define PRO_DRIVERS "shtc3, hd44780"`.
 
 Here _(roughly)_ ends **Forge** job, and further work goes like typical **embedded systems** project using [**✨Make**](#-make).
 
@@ -88,7 +128,7 @@ On first project ⚒️Forge creates config file **`opencplc.json`**.
 It contains:
 
 - **`version`**: Default OpenCPLC framework version for new projects. Value `latest` means newest stable version.
-- `stlink`: Programmer bound to a project, so `make flash` hits the right board when several ST-Links are connected. Set with `opencplc myapp -s <serial>`, clear with `opencplc myapp -s`.
+- `stlink`: Programmer bound to a project, so `make flash` hits the right board when several ST-Links are connected. Set with `opencplc myapp -s <serial>`, clear with `opencplc myapp -s`. Read the serial from the OpenOCD log of `make flash` with one programmer connected.
 - `available-versions`: List of all available framework versions. Set automatically, used offline.
 
 The workspace layout is fixed: `projects/` with your projects, `opencplc/` with framework versions and `build/` with built files.
@@ -247,6 +287,13 @@ Essential for working with OpenCPLC.
 
 System console is available in many apps like **Command Prompt**, **PowerShell**, [**GIT Bash**](https://git-scm.com/downloads), even terminal in [**VSCode**](https://code.visualstudio.com/).
 Forge finds the workspace from any directory inside it, so a project directory is a fine place to open the console too.
+
+When something goes wrong:
+
+- Forge lands in the wrong workspace: a stray `opencplc.json` sits somewhere between the project and the real root, remove it.
+- Compiler not found right after the tools were installed: the console still has the old `PATH`, close it and open a new one.
+- `make` stops at `opencplc -r` with an error about the version or the board: `main.h` points at something this framework doesn't have, fix the entry and run `make` again.
+- A project is missing from `-l`: its directory has no `main.h`.
 
 ## 📋 Usage examples
 

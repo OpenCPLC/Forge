@@ -37,6 +37,7 @@ Załadowanie projektu generuje te pliki na nowo: to one przekształcają całoś
 
 Zmiana wartości konfiguracyjnych `PRO_x` w pliku **`main.h`** albo **struktury projektu** _(dodawanie, przenoszenie, usuwanie lub zmiana nazw plików)_ wymaga przeładowania projektu.
 `make` robi to sam: gdy `main.h` albo drzewo źródeł jest nowsze od pliku `makefile`, najpierw uruchamia Forge, a potem buduje.
+Zwykła edycja treści funkcji nie wymaga przeładowania, tym zajmuje się już sam `make`.
 Można też przeładować ręcznie, bez podawania nazwy, gdy projekt jest aktywny albo gdy stoimy w jego katalogu:
 
 ```sh
@@ -46,6 +47,45 @@ opencplc -r
 
 Flagi takie jak `-b`, `-c`, `-m` i `-o` konfigurują projekt tylko przy jego tworzeniu.
 Później konfiguracja mieszka w `main.h`: edytujesz i przeładowujesz.
+
+### 📄 Twoje pliki
+
+`main.c` należy do Ciebie i Forge nigdy go nie nadpisuje.
+Szkielet projektu dla sterownika PLC wygląda tak:
+
+```c
+#include "opencplc.h"
+
+void loop(void)
+{
+  while(1) {
+    LED_Set(RGB_Green);
+    delay(1000);
+    LED_Rst();
+    delay(1000);
+  }
+}
+
+stack(stack_plc, 256);
+stack(stack_dbg, 256);
+stack(stack_loop, 1024);
+
+int main(void)
+{
+  thread(PLC_Main, stack_plc); // wątek sterownika
+  thread(DBG_Loop, stack_dbg); // logi i konsola
+  thread(loop, stack_loop);    // Twoja aplikacja
+  vrts_init();                 // start przełączania wątków
+  while(1);
+}
+```
+
+Aplikacja działa jako wątek systemu VRTS obok wątku sterownika i wątku debuggera _(logi i konsola)_.
+Własne moduły dokładasz jako kolejne pliki w katalogu projektu i jego podkatalogach.
+
+`main.h` przechowuje konfigurację, którą Forge odczytuje przy każdym załadowaniu projektu.
+Definicje `PRO_*` opisują płytkę, chip, wersję framework'a i rozmiary pamięci, a `LOG_LEVEL` i `SYS_CLOCK_FREQ` zmieniasz wedle potrzeb.
+Tam też wpisujesz dodatkowe drivery framework'a: `#define PRO_DRIVERS "shtc3, hd44780"`.
 
 Tutaj _(upraszczając)_ kończy się zadanie programu **Forge**, a dalsza praca przebiega tak samo jak w typowym projekcie **embedded systems**, czyli przy użyciu [**✨Make**](#-make).
 
@@ -87,7 +127,7 @@ Przy pierwszym projekcie ⚒️Forge tworzy plik konfiguracyjny **`opencplc.json
 Zawiera on:
 
 - **`version`**: Domyślna wersja framework'a OpenCPLC dla nowych projektów. Wartość `latest` oznacza najnowszą stabilną wersję.
-- `stlink`: Programator przypisany do projektu, dzięki czemu `make flash` trafia we właściwą płytkę, gdy podłączonych jest kilka ST-Linków. Ustawiasz przez `opencplc myapp -s <serial>`, czyścisz przez `opencplc myapp -s`.
+- `stlink`: Programator przypisany do projektu, dzięki czemu `make flash` trafia we właściwą płytkę, gdy podłączonych jest kilka ST-Linków. Ustawiasz przez `opencplc myapp -s <serial>`, czyścisz przez `opencplc myapp -s`. Numer seryjny odczytasz z logu OpenOCD przy `make flash`, mając podłączony jeden programator.
 - `available-versions`: Lista wszystkich dostępnych wersji framework'a. Ustawiana automatycznie, używana offline.
 
 Układ workspace jest stały: `projects/` z Twoimi projektami, `opencplc/` z wersjami framework'a i `build/` z plikami zbudowanymi.
@@ -243,6 +283,13 @@ Stanowią niezbędnik do pracy z OpenCPLC.
 
 Konsola systemowa jest dostępna w wielu aplikacjach, takich jak **Command Prompt**, **PowerShell**, [**GIT Bash**](https://git-scm.com/downloads), a nawet terminal w [**VSCode**](https://code.visualstudio.com/).
 Forge znajduje workspace z dowolnego katalogu w jego wnętrzu, więc konsolę można otworzyć także w katalogu projektu.
+
+Gdy coś nie działa:
+
+- Forge trafia w zły workspace: gdzieś między projektem a właściwym katalogiem leży resztkowy `opencplc.json`, usuń go.
+- Brak kompilatora zaraz po instalacji narzędzi: konsola ma jeszcze stary `PATH`, zamknij ją i otwórz nową.
+- `make` zatrzymuje się na `opencplc -r` z błędem o wersji albo płytce: `main.h` wskazuje na coś, czego ten framework nie ma, popraw wpis i uruchom `make` ponownie.
+- Projektu nie ma na liście `-l`: w jego katalogu brakuje `main.h`.
 
 ## 📋 Przykłady użycia
 
