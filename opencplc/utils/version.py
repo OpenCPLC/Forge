@@ -51,7 +51,7 @@ def git_clone(url:str, path:str, ref:str|None=None, drop_on_err:bool=False):
   cmd += [url, path]
   result = subprocess.run(cmd, capture_output=True, text=True)
   if result.returncode:
-    if drop_on_err and PATH.exists(path): DIR.remove(path, force=True)
+    if drop_on_err and DIR.exists(path): DIR.remove(path, force=True)
     p.err(f"Clone failed: {c.TEAL}{url}{c.END}")
     sys.exit(1)
 
@@ -67,7 +67,10 @@ def git_get_refs(
     heads = git_get_refs(url, "--heads", use_git)
     return tags + heads
   if use_git:
-    result = subprocess.run(["git", "ls-remote", option, url], capture_output=True, text=True)
+    try:
+      result = subprocess.run(["git", "ls-remote", option, url], capture_output=True, text=True)
+    except FileNotFoundError:
+      return []  # git not installed yet - caller decides what to do
     lines = result.stdout.strip().splitlines()
     rx = r"refs/tags/([^\^{}]+)$" if option == "--tags" else r"refs/heads/(.+)$"
     refs = [re.search(rx, ln).group(1) for ln in lines if re.search(rx, ln)]
@@ -93,7 +96,7 @@ def git_get_refs(
 def git_clone_missing(url:str, path:str, ref:str, yes:bool=False, required:bool=True) -> bool:
   """Clone repository if not present."""
   full_path = PATH.resolve(path, read=False)
-  if PATH.exists(full_path): return True
+  if DIR.exists(full_path): return True
   p.wrn(f"Framework {c.ORANGE}opencplc{c.END} not installed for version {c.VIOLET}{ref}{c.END}")
   if not yes and not is_yes():
     if not required: return False

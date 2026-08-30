@@ -72,7 +72,7 @@ def _parse_extras(node) -> dict[str, list[str]]:
 
 def _scan_extras_from_file(path:str) -> dict[str, list[str]]:
   """Parse `__extras__` from a Python file."""
-  if not PATH.is_file(path): return {}
+  if not FILE.exists(path): return {}
   try:
     tree = ast.parse(FILE.load(path))
   except Exception:
@@ -94,11 +94,11 @@ def scan_package(pkg_dir:str) -> tuple[set[str], set[str]]:
   """Return (modules, subpackages) present in package."""
   modules = set()
   subpackages = set()
-  for name in DIR.file_list(pkg_dir, exts=[".py"], local=True):
+  for name in DIR.file_list(pkg_dir, exts=[".py"], shape="rel"):
     if "/" in name or name.startswith("__"): continue
     modules.add(name.removesuffix(".py"))
-  for name in DIR.folder_list(pkg_dir, basename=True):
-    if PATH.is_file(PATH.join(pkg_dir, name, "__init__.py")):
+  for name in DIR.folder_list(pkg_dir, shape="name"):
+    if FILE.exists(PATH.join(pkg_dir, name, "__init__.py")):
       subpackages.add(name)
   return modules, subpackages
 
@@ -145,7 +145,7 @@ def scan_package_data(pkg_dir:str) -> list[str]:
     List of glob patterns like `"files/**"`, `"*.cfg"`.
   """
   skip_exts = {".py", ".pyc", ".pyo", ".md"}
-  all_files = DIR.file_list(pkg_dir, local=True, blacklist=["__pycache__"])
+  all_files = DIR.file_list(pkg_dir, shape="rel", blacklist=["__pycache__"])
   top_dirs: set[str] = set()
   root_exts: set[str] = set()
   for f in all_files:
@@ -194,7 +194,7 @@ def get_meta(pkg_dir:str) -> dict:
     "dependencies": [], "scripts": {},
   }
   init = PATH.join(pkg_dir, "__init__.py")
-  if not PATH.is_file(init): return meta
+  if not FILE.exists(init): return meta
   STR_FIELDS = {
     "__version__": "version", "__repo__": "repo",
     "__python__": "python", "__description__": "description",
@@ -301,12 +301,12 @@ def _log_summary(
     p.inf(f"Dependencies: {c.GREY}{', '.join(meta['dependencies'])}{c.END}")
   if extras:
     for name, deps in sorted(extras.items(), key=lambda x: (x[0] == "all", x[0])):
-      p.item(f"[{c.CREAM}{name}{c.END}]: {c.GREY}{', '.join(deps)}{c.END}")
+      p.dot(f"[{c.CREAM}{name}{c.END}]: {c.GREY}{', '.join(deps)}{c.END}")
   if package_data:
     p.inf(f"Package data: {c.GREY}{', '.join(package_data)}{c.END}")
   if meta.get("scripts"):
     for cmd, entry in meta["scripts"].items():
-      p.item(f"Script: {c.TURQUS}{cmd}{c.END} → {c.GREY}{entry}{c.END}")
+      p.dot(f"Script: {c.TURQUS}{cmd}{c.END} → {c.GREY}{entry}{c.END}")
 
 #--------------------------------------------------------------------------------------- Public
 
@@ -319,7 +319,7 @@ def generate(package:str, output:str|None=None, auto_deps:bool=False):
     auto_deps: Scan imports for third-party dependencies.
   """
   pkg_dir = PATH.resolve(package)
-  if not PATH.is_dir(pkg_dir):
+  if not DIR.exists(pkg_dir):
     p.err(f"{c.ORANGE}{pkg_dir}{c.END} is not a directory")
     sys.exit(1)
   pkg_name = PATH.basename(pkg_dir)
@@ -354,8 +354,8 @@ examples:
 """
 
 if __name__ == "__main__":
-  from xaeian.cli._args import _make_parser, _add_help
-  parser = _make_parser(
+  from xaeian.cli.args import make_parser, add_help
+  parser = make_parser(
     f"Generate {c.ORANGE}pyproject.toml{c.END} from package source", EXAMPLES,
   )
   parser.add_argument("package", metavar="PACKAGE", help="Package directory to scan")
@@ -363,6 +363,6 @@ if __name__ == "__main__":
     help="Output file (default: parent/pyproject.toml)")
   parser.add_argument("-a", "--auto-deps", action="store_true",
     help="Auto-detect third-party dependencies from imports")
-  _add_help(parser)
+  add_help(parser)
   args = parser.parse_args()
   generate(args.package, args.output, args.auto_deps)

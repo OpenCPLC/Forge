@@ -14,7 +14,7 @@ except ImportError:
 
 p = Print()
 
-FTP_PATH = "http://sqrt.pl"
+FTP_PATH = "https://sqrt.pl"
 INSTALL_PATH = "C:"
 RESET_CONSOLE = False
 ENV_SYSTEM_KEY = r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
@@ -174,12 +174,16 @@ def install_missing_add_path(
       RESET_CONSOLE = True
   elif min_ver and version_older_than(ver, min_ver):
     p.wrn(f"Program {c.YELLOW}{cmd}{c.END} is installed in version {c.VIOLET}{ver}{c.END}")
-    p.inf(f"Minimum required version is {c.GREY}{min_ver}{c.END}")
+    p.gap(f"Minimum required version is {c.GREY}{min_ver}{c.END}")
   return ver
+
+def install_git(yes:bool):
+  """Git alone - needed to clone the framework before the platform is known."""
+  install_missing_add_path("Git", "git", None, yes, "2.20.0")
 
 def install_toolchains(is_embedded:bool, yes:bool):
   """Install required toolchains based on platform."""
-  install_missing_add_path("Git", "git", None, yes, "2.20.0")
+  install_git(yes)
   install_missing_add_path("Make", "make", None, yes, "4.3.0")
   if is_embedded:
     install_missing_add_path("ArmGCC", "arm-none-eabi-gcc", "ARMGCC", yes, "14.2.1")

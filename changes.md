@@ -1,5 +1,10 @@
 # Changes `opencplc`
 
+## `0.2.1` HTTPS & startup order
+
+- Downloads over HTTPS, remote names validated
+- Toolchain follows the project platform, not the flag
+
 ## `0.2.0` ST-Link & versions
 
 - Bind a programmer to a project, so `make flash` hits the right board
@@ -9,7 +14,7 @@
 ## `0.1.3` Windows fixes
 
 - Installed toolchains work right away, without reopening the console
-- `pwsh` is detected automatically
+- Windows command environment is detected automatically
 
 ## `0.1.2` Fix
 

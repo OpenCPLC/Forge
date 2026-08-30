@@ -4,6 +4,7 @@ import sys, re
 import urllib.request
 from xaeian import Print, Color as c, FILE, DIR, PATH
 from .version import git_clone
+from .common import validate_project_name
 
 p = Print()
 
@@ -15,11 +16,11 @@ def download(url:str, save_path:str="", timeout:float=10) -> bytes:
     if save_path:
       FILE.save(save_path, data)
     return data
+  except urllib.error.HTTPError as e:  # subclass of URLError, so it goes first
+    p.err(f"HTTP {c.GOLD}{e.code}{c.END} for {c.TEAL}{url}{c.END}")
+    sys.exit(1)
   except urllib.error.URLError:
     p.err(f"Failed to connect to {c.TEAL}{url}{c.END}")
-    sys.exit(1)
-  except urllib.error.HTTPError as e:
-    p.err(f"HTTP {c.GOLD}{e.code}{c.END} for {c.TEAL}{url}{c.END}")
     sys.exit(1)
 
 def unzip(data:bytes, path:str, drop_on_err:bool=True):
@@ -58,8 +59,13 @@ def project_remote(url:str, path:str, ref:str|None=None, name:str="") -> str:
       p.inf(f"Provide project name as a positional argument")
       sys.exit(1)
     name = parts[-1]
+  # Name comes from the remote main.h, so it is validated before it becomes a path
+  valid, reason = validate_project_name(name)
+  if not valid:
+    p.err(f"Invalid project name {c.MAGNTA}{name}{c.END}: {reason}")
+    sys.exit(1)
   dst = PATH.resolve(f"{path}/{name}", read=False)
-  if PATH.exists(dst):
+  if DIR.exists(dst):
     p.err(f"Project {c.BLUE}{name}{c.END} already exists")
     sys.exit(1)
   DIR.move(tmp, dst)

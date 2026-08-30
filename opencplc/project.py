@@ -15,7 +15,7 @@ def scan_tree(cfg:dict, paths:dict, ext:str) -> dict[str, list[str]]:
   found = {}
   for sub in get_hal_dirs(cfg["hal"]):
     sub_path = f"{paths['hal']}/{sub}"
-    if PATH.exists(sub_path):
+    if DIR.exists(sub_path):
       found.update(utils.files_list(sub_path, ext))
   found.update(utils.files_list(paths["lib"], ext))
   if cfg.get("board"):
@@ -112,6 +112,7 @@ def generate_project(cfg:dict, paths:dict, forge_cfg:dict, is_example:bool=False
     "${PLATFORM_DEFINE}": cfg["define"],
     "${INTELLISENSE_MODE}": "windows-gcc-x64" if is_windows else "linux-gcc-x64",
     "${EXE_EXT}": ".exe" if is_windows else "",
+    "${HOST_OS}": "Windows" if is_windows else "Linux",
   }
   # main.c (only if not exists)
   if not FILE.exists(f"{paths['pro']}/main.c"):

@@ -33,7 +33,7 @@ int main(void)
   DBG_Enter();
   LOG_Info("OpenCPLC framework version: " ANSI_VIOLET "%s" ANSI_END, PRO_VERSION);
   LOG_Info("Build: %s %s", __DATE__, __TIME__);
-  LOG_Info("Host platform: " ANSI_PINK "${PLATFORM}" ANSI_END);
+  LOG_Info("Platform: " ANSI_PINK "${PLATFORM}" ANSI_GREY " (${HOST_OS})" ANSI_END);
   thread(DBG_Loop, stack_dbg); // Add debugger thread (logs + bash)
   thread(loop, stack_loop); // Add loop function as thread
   vrts_init(); // Start VRTS thread switching system

@@ -143,13 +143,13 @@ def ensure_toolchains(is_embedded:bool, yes:bool):
 def ensure_framework(fw_ver:str, PATHS:dict, forge_cfg:dict, yes:bool):
   """Clone the framework when missing and sanity-check its layout."""
   # Already cloned versions work offline, even when gone from remote
-  if not PATH.exists(PATHS["fw"]):
+  if not DIR.exists(PATHS["fw"]):
     utils.version_check(fw_ver, forge_cfg["available-versions"],
       f"{Ico.RUN} Check version list: {flag.F}")
     utils.git_clone_missing(URL_CORE, PATHS["fw"], fw_ver, yes)
   fw_hal = PATH.resolve(f"{PATHS['fw']}/hal", read=False)
   fw_lib = PATH.resolve(f"{PATHS['fw']}/lib", read=False)
-  if not PATH.exists(fw_hal) or not PATH.exists(fw_lib):
+  if not DIR.exists(fw_hal) or not DIR.exists(fw_lib):
     p.err(f"Framework {c.VIOLET}{fw_ver}{c.END} is incomplete or corrupted")
     p.inf(f"Try removing {c.ORANGE}{PATHS['fw']}{c.END} and run again")
     sys.exit(1)
@@ -288,7 +288,7 @@ def config_load(args, PRO:dict, PATHS:dict, fw_ver:str, forge_cfg:dict, noun:str
     "log_level": info.get("LOG_LEVEL", "LOG_LEVEL_INF"),
     "freq_Hz": int(info.get("SYS_CLOCK_FREQ", chip_cfg.get("freq_Hz", 64000000))),
   }
-  if not PATH.exists(PATH.resolve(f"{PATHS['framework']}/{pro_ver}", read=False)):
+  if not DIR.exists(PATH.resolve(f"{PATHS['framework']}/{pro_ver}", read=False)):
     utils.version_check(pro_ver, forge_cfg["available-versions"],
       f"{Ico.ERR} Invalid {c.SKY}PRO_VERSION{c.END} in {c.BLUE}main.h{c.END}")
   # Version priority: -f flag > PRO_VERSION pin > workspace default
@@ -352,9 +352,10 @@ def info_show(cfg:dict, PATHS:dict, args):
   sys.exit(0)
 
 def main():
-  templates = load_templates()
-  forge_cfg = forge_config(templates)
   args = load_args()
+  templates = load_templates()
+  utils.install_git(args.yes)  # the version list is read with git, so it comes first
+  forge_cfg = forge_config(templates)
   if info_actions(args, forge_cfg): sys.exit(0)
   # Mutually exclusive modes; mode flags may also carry the project name
   check_flags(args, ("example", flag.e), ("reload", flag.r), ("info", flag.i))
@@ -367,8 +368,6 @@ def main():
   make_info = makefile_info()
   if not args.name and (args.reload or args.info):
     reload_from_makefile(args, PATHS, make_info)
-  is_embedded = not (args.chip and args.chip.lower() == "host")
-  ensure_toolchains(is_embedded, args.yes)
   ensure_framework(fw_ver, PATHS, forge_cfg, args.yes)
   # Remote project - name read from its main.h when not given
   if args.get:
@@ -401,6 +400,7 @@ def main():
   opt_normalize(CFG, args.yes)
   if args.info:
     info_show(CFG, PATHS, args)
+  ensure_toolchains(CFG["platform"] == "STM32", args.yes)
   generate_project(CFG, PATHS, forge_cfg, is_example=args.example)
 
 if __name__ == "__main__":

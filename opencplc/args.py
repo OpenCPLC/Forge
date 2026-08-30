@@ -36,7 +36,7 @@ class Args:
   chip: str = ""
   memory: list[int] = None
   framework: str = ""
-  opt_level: str = "Og"
+  opt_level: str = ""
   project_list: bool = False
   info: bool = False
   framework_versions: bool = False
@@ -98,7 +98,7 @@ def load_args() -> Args:
   parser.add_argument("-f", "--framework", type=str, metavar="VER",
     help="Framework version (tag/branch): latest, develop, 1.0.0", default="")
   parser.add_argument("-o", "--opt-level", type=str, metavar="LEVEL",
-    help="Compiler optimization: O0 (debug), Og (default), O1", default="Og")
+    help="Compiler optimization: O0 (debug), Og (default), O1", default="")
   # Information
   parser.add_argument("-l", "--list", action="store_true",
     help="List all projects in current workspace")

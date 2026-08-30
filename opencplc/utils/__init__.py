@@ -16,7 +16,7 @@ from .version import (
 from .network import download, unzip, project_remote
 from .install import (
   ENV, is_admin, program_version, install, install_missing_add_path,
-  install_toolchains, verify_compiler,
+  install_git, install_toolchains, verify_compiler,
   RESET_CONSOLE, FTP_PATH, INSTALL_PATH
 )
 from .hash import hash_string, c_code_enum
@@ -34,7 +34,7 @@ __all__ = [
   "git_get_refs", "git_clone", "git_clone_missing",
   "download", "unzip", "project_remote",
   "ENV", "is_admin", "program_version", "install", "install_missing_add_path",
-  "install_toolchains", "verify_compiler",
+  "install_git", "install_toolchains", "verify_compiler",
   "RESET_CONSOLE", "FTP_PATH", "INSTALL_PATH",
   "hash_string", "c_code_enum",
   "is_yes", "color_url", "assign_name", "detect_os", "validate_project_name",

@@ -34,21 +34,25 @@ def assign_name(name:Any, flag:Any, msg:str) -> tuple[str, Any]:
   return name, flag
 
 def validate_project_name(name:str) -> tuple[bool, str]:
-  """Validate project name for safety and compatibility."""
+  """Validate project name for safety and compatibility. Checks every path segment."""
   if not name: return False, "Name cannot be empty"
-  if ".." in name: return False, "Name cannot contain '..'"
   if name.startswith("/") or (len(name) > 1 and name[1] == ":"):
     return False, "Name cannot be absolute path"
+  if len(name) > 100: return False, "Name too long (max 100 chars)"
   invalid_chars = '<>:"|?*\\'
-  for ch in invalid_chars:
-    if ch in name: return False, f"Name cannot contain '{ch}'"
   reserved = (
     ["CON", "PRN", "AUX", "NUL"]
     + [f"COM{i}" for i in range(1, 10)]
     + [f"LPT{i}" for i in range(1, 10)]
   )
-  base = name.split("/")[0].upper()
-  if base in reserved: return False, f"'{base}' is reserved on Windows"
-  if name != name.strip(): return False, "Name cannot start/end with spaces"
-  if len(name) > 100: return False, "Name too long (max 100 chars)"
+  # The name is a path, so each segment has to stand on its own as a folder
+  for seg in name.split("/"):
+    if not seg: return False, "Name cannot contain an empty folder"
+    if seg in (".", ".."): return False, f"Name cannot contain folder '{seg}'"
+    for ch in invalid_chars:
+      if ch in seg: return False, f"Name cannot contain '{ch}'"
+    if seg != seg.strip(): return False, "Folder cannot start/end with spaces"
+    if seg.endswith("."): return False, "Folder cannot end with a dot"
+    if seg.split(".")[0].upper() in reserved:
+      return False, f"'{seg}' is reserved on Windows"
   return True, ""

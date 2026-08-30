@@ -4,4 +4,6 @@
 *.spec
 .venv/
 .build/
+*.egg-info/
 .dist/
+.notes/

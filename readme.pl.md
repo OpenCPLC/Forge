@@ -79,12 +79,12 @@ Podczas pierwszego uruchomienia ⚒️Forge'a tworzony jest plik konfiguracyjny 
   - `framework`: Katalog zawierający wszystkie wersje frameworka OpenCPLC. W jego wnętrzu tworzone są podkatalogi odpowiadające wersjom w formacie `major.minor.patch`, `develop` lub `main`. Każdy z nich zawiera pliki odpowiedniej wersji frameworka. Pobierane będą jedynie niezbędne wersje.
   - `build`: Katalog z zbudowanymi aplikacjami
 - `default`: Lista domyślnych wartości _(`chip`, `flash`, `ram`, `optLevel`)_ dla nieprzekazanych parametrów podczas tworzenia nowego projektu
-- **`pwsh`**: Wykrywany automatycznie. Wartość `true` wymusza przygotowanie pliku `makefile` w wersji dla powłoki **PowerShell**. Dla wartości `false` zostanie przygotowana wersja dla powłoki **Bash**.
+- **`windows`**: Wykrywany automatycznie. Wartość `true` wybiera polecenia **Windows/CMD** w pliku `makefile`, a `false` polecenia powłoki **POSIX**.
 - `available-versions`: Lista wszystkich dostępnych wersji framework'a. Jej zawartość jest ustawiana automatycznie.
 
 ## 🤔 How works?
 
-W pierwszej kolejności **Forge** zainstaluje **GNU Arm Embedded Toolchain**, **OpenOCD**, **Make**, klienta **Git** oraz ustawi odpowiednio zmienne systemowe, jeżeli aplikacje nie są widoczne w systemie z poziomu konsoli. Dla platformy HOST zamiast toolchain'a ARM instalowany jest **MinGW** (GCC dla Windows). Jeżeli nie chcemy, aby ktoś grzebał w naszym systemie, możemy przygotować sobie [konfiguracje ręcznie](self-install.md). Gdy ⚒️**Forge** zainstaluje brakujące aplikacje, doda je do systemowego PATH i będzie kontynuować pracę. Po zakończeniu zrestartuj konsolę, aby korzystać z nich bezpośrednio.
+W pierwszej kolejności **Forge** zainstaluje klienta **Git**, a gdy pozna platformę projektu, również **Make**, **GNU Arm Embedded Toolchain** i **OpenOCD** oraz ustawi odpowiednio zmienne systemowe, jeżeli aplikacje nie są widoczne w systemie z poziomu konsoli. Dla platformy HOST zamiast toolchain'a ARM instalowany jest **MinGW** (GCC dla Windows). Jeżeli nie chcemy, aby ktoś grzebał w naszym systemie, możemy przygotować sobie [konfiguracje ręcznie](self-install.md). Gdy ⚒️**Forge** zainstaluje brakujące aplikacje, doda je do systemowego PATH i będzie kontynuować pracę. Po zakończeniu zrestartuj konsolę, aby korzystać z nich bezpośrednio.
 
 Następnie, w razie konieczności, skopiuje framework OpenCPLC z [repozytorium](https://github.com/OpenCPLC/Core) do folderu `${framework}` podanego w pliku konfiguracyjnym `opencplc.json`. Zostanie sklonowana wersja z pliku konfiguracyjnego lub wskazana za pomocą `-f --framework`:
 

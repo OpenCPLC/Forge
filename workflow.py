@@ -16,7 +16,7 @@ CLI:
 """
 
 import sys
-from xaeian import FILE, PATH, Print, Color as c
+from xaeian import FILE, DIR, PATH, Print, Color as c
 from toml import get_meta
 
 p = Print()
@@ -26,7 +26,7 @@ p = Print()
 def has_svglib(root:str) -> bool:
   """Check if `svglib` is in `pyproject.toml` dependencies."""
   toml = PATH.join(root, "pyproject.toml")
-  if not PATH.is_file(toml): return False
+  if not FILE.exists(toml): return False
   try: return "svglib" in FILE.load(toml)
   except Exception: return False
 
@@ -72,7 +72,7 @@ def generate(package:str, output:str|None=None):
     output: Output file path (default: .github/workflows/publish.yml).
   """
   pkg_dir = PATH.resolve(package)
-  if not PATH.is_dir(pkg_dir):
+  if not DIR.exists(pkg_dir):
     p.err(f"{c.ORANGE}{pkg_dir}{c.END} is not a directory")
     sys.exit(1)
   meta = get_meta(pkg_dir)
@@ -98,11 +98,11 @@ examples:
 """
 
 if __name__ == "__main__":
-  from xaeian.cli._args import _make_parser, _add_help
-  parser = _make_parser("Generate GitHub Actions workflow for PyPI publishing", EXAMPLES)
+  from xaeian.cli.args import make_parser, add_help
+  parser = make_parser("Generate GitHub Actions workflow for PyPI publishing", EXAMPLES)
   parser.add_argument("package", metavar="PACKAGE", help="Package directory to scan")
   parser.add_argument("-o", "--output", default=None, metavar="PATH",
     help="Output file (default: .github/workflows/publish.yml)")
-  _add_help(parser)
+  add_help(parser)
   args = parser.parse_args()
   generate(args.package, args.output)
