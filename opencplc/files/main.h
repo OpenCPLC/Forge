@@ -15,6 +15,7 @@
 #define PRO_FLASH_kB ${FLASH}
 #define PRO_RAM_kB ${RAM}
 #define PRO_OPT_LEVEL "${OPT_LEVEL}"
+// #define PRO_DRIVERS "shtc3, hd44780"
 
 #endif
 

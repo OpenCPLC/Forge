@@ -1,7 +1,9 @@
 # opencplc/utils/text.py
 
+"""Line-level parsing of makefiles and main.h: comments, continuations, variables."""
+
 import re
-from xaeian import Print, Color as c, replace_start
+from xaeian import Print, Color as c
 
 p = Print()
 
@@ -10,7 +12,7 @@ def last_line_len(text:str) -> int:
   return len(text.split('\n')[-1].strip())
 
 def line_remove(text:str, phrase:str, limit:int=1) -> str:
-  """Remove lines containing phrase."""
+  """Drop up to limit lines containing phrase."""
   lines = text.splitlines()
   out, count = [], 0
   for ln in lines:
@@ -37,28 +39,6 @@ def lines_clear(lines:list[str], comment:str="#") -> list[str]:
     result.append(current.replace("\\\\", "\\"))
   return result
 
-def swap_comment_lines(text:str, comment:str="#", next_line:bool=False) -> str:
-  """Swap commented/uncommented state of paired lines.
-  The active partner sits above the comment, or below when next_line is True."""
-  lines = text.splitlines()
-  i = 0
-  while i < len(lines):
-    find, repl = None, ""
-    if lines[i].startswith(f"{comment} "):
-      find = f"{comment} "
-    elif lines[i].startswith(f"{comment}\t"):
-      find, repl = f"{comment}\t", "\t"
-    if find is not None:
-      lines[i] = replace_start(lines[i], find, repl)
-      if next_line:
-        if i + 1 < len(lines):
-          lines[i + 1] = find + lines[i + 1].lstrip()
-          i += 1
-      elif i:
-        lines[i - 1] = find + lines[i - 1].lstrip()
-    i += 1
-  return "\n".join(lines)
-
 def get_vars(
   lines: list[str],
   prefixes: list[str],
@@ -66,7 +46,12 @@ def get_vars(
   trim_start: str = "",
   required: bool = True,
 ) -> dict[str, str]:
-  """Extract variables from lines matching prefixes."""
+  """
+  key → value for lines starting with one of prefixes, split on sep.
+
+  trim_start strips a leading keyword such as #define, quotes around values are removed.
+  With required every prefix must match, otherwise the result is empty.
+  """
   if trim_start:
     lines = [re.sub(f"^{re.escape(trim_start)}+", "", ln).lstrip() for ln in lines]
   filtered = [ln for ln in lines if any(ln.startswith(pf) for pf in prefixes)]
@@ -86,7 +71,7 @@ def get_vars(
   return result
 
 def find_missing_keys(template:dict, subject:dict, prefix:str="") -> list[str]:
-  """Find keys present in template but missing in subject (recursive)."""
+  """Dotted paths of keys present in template but missing in subject, nested dicts included."""
   missing = []
   for key in template:
     path = f"{prefix}.{key}" if prefix else key

@@ -1,11 +1,13 @@
 # opencplc/utils/__init__.py
 
+"""Helpers shared by the CLI modules: files, text, versions, network, install."""
+
 from .files import (
-  files_list, files_mdate, files_mdate_max, last_modification,
+  load_lines, files_list, files_mdate, files_mdate_max, last_modification,
   create_file, get_project_list, check_write_permission
 )
 from .text import (
-  line_remove, lines_clear, swap_comment_lines,
+  line_remove, lines_clear,
   get_vars, find_missing_keys, last_line_len
 )
 from .version import (
@@ -25,9 +27,9 @@ from .common import (
 )
 
 __all__ = [
-  "files_list", "files_mdate", "files_mdate_max", "last_modification",
+  "load_lines", "files_list", "files_mdate", "files_mdate_max", "last_modification",
   "create_file", "get_project_list", "check_write_permission",
-  "line_remove", "lines_clear", "swap_comment_lines",
+  "line_remove", "lines_clear",
   "get_vars", "find_missing_keys", "last_line_len",
   "version_real", "version_older_than", "version_check",
   "version_is_release", "version_active",

@@ -1,12 +1,20 @@
 # opencplc/utils/files.py
 
+"""File and directory helpers: listing, mtimes, rendering, project discovery."""
+
 import os
 from datetime import datetime
 from xaeian import Print, Color as c, FILE, PATH
 
 p = Print()
 
+def load_lines(path:str) -> list[str]:
+  """File as lines without endings; an unreadable file reads as empty."""
+  try: return [ln.rstrip("\n\r") for ln in FILE.load_lines(path)]
+  except Exception: return []
+
 def files_list(path:str="", ext:str="") -> dict[str, list[str]]:
+  """folder → files under path, absolute and normalized; only ext when given."""
   result = {}
   path = PATH.resolve(path) if path else PATH.resolve(".")
   if not os.path.isdir(path): return result
@@ -54,9 +62,9 @@ def create_file(
   path: str = "",
   replacements: dict = None,
   remove_line: str = "",
-  rewrite: bool = False,
   color: str = "",
 ) -> str:
+  """Render and write a file; an unchanged file keeps its bytes and its mtime."""
   from .text import line_remove
   replacements = replacements or {}
   fp = (
@@ -68,11 +76,14 @@ def create_file(
     content = line_remove(content, remove_line)
   for pattern, value in replacements.items():
     content = content.replace(pattern, str(value))
+  exists = FILE.exists(fp)
+  if exists and FILE.load(fp) == content:
+    return fp
   FILE.save(fp, content)
   if not color: color = c.ORANGE
-  path_display = PATH.normalize(path) if path and path not in (".", "./") else ""
+  path_display = PATH.local(path) if path and path not in (".", "./") else ""
   suffix = f" in {c.GREY}{path_display}{c.END}" if path_display else ""
-  action = "Overwritten" if rewrite else "Created"
+  action = "Overwritten" if exists else "Created"
   p.ok(f"{action} {color}{name}{c.END}{suffix}")
   return fp
 
@@ -90,7 +101,7 @@ def get_project_list(path:str) -> dict[str, str]:
   return result
 
 def check_write_permission(path:str) -> bool:
-  """Check if we can write to directory."""
+  """True when a probe file can be created in path; the directory is created when missing."""
   try:
     os.makedirs(path, exist_ok=True)
     test_file = os.path.join(path, ".forge_test")

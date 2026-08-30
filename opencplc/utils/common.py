@@ -1,5 +1,7 @@
 # opencplc/utils/common.py
 
+"""Small CLI helpers: OS detection, prompts, name validation."""
+
 import sys, platform
 from typing import Any
 from xaeian import Print, Color as c, Ico
@@ -7,6 +9,7 @@ from xaeian import Print, Color as c, Ico
 p = Print()
 
 def detect_os() -> str:
+  """Host OS as windows, linux, macos or unknown."""
   system = platform.system().lower()
   if system == "windows": return "windows"
   elif system == "linux": return "linux"
@@ -14,6 +17,7 @@ def detect_os() -> str:
   return "unknown"
 
 def is_yes(msg:str="Proceed automatically") -> bool:
+  """Ask msg and read a yes/no answer; y, yes, t, tak and true count as yes."""
   yn = f"[{c.GREEN}YES{c.END}/{c.RED}NO{c.END}]"
   print(f"{Ico.INF} {msg}? {yn}:", end=" ")
   ans = input().lower()
@@ -24,6 +28,7 @@ def color_url(url:str) -> str:
   return url.replace("https://", f"{c.GREY}https://{c.END}{c.TEAL}") + c.END
 
 def assign_name(name:Any, flag:Any, msg:str) -> tuple[str, Any]:
+  """Take the project name from a flag that carries one; a second, different name exits."""
   if isinstance(flag, str):
     if not name:
       name = flag
@@ -51,6 +56,7 @@ def validate_project_name(name:str) -> tuple[bool, str]:
     if seg in (".", ".."): return False, f"Name cannot contain folder '{seg}'"
     for ch in invalid_chars:
       if ch in seg: return False, f"Name cannot contain '{ch}'"
+    if not seg.isprintable(): return False, "Name contains a non-printable character"
     if seg != seg.strip(): return False, "Folder cannot start/end with spaces"
     if seg.endswith("."): return False, "Folder cannot end with a dot"
     if seg.split(".")[0].upper() in reserved:

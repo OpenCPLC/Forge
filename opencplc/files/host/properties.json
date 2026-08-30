@@ -1,0 +1,20 @@
+{
+  "configurations": [
+    {
+      "name": "${NAME}",
+      "includePath": [
+        "${workspaceFolder}/${LIB_PATH}/hal/host/**",
+        "${workspaceFolder}/${LIB_PATH}/lib/**",
+        "${workspaceFolder}/${PRO_PATH}/**"
+      ],
+      "defines": [
+        "HOST",
+        "${DEFINE}",
+        "_DEBUG"
+      ],
+      "cStandard": "gnu17",
+      "compilerPath": "gcc"
+    }
+  ],
+  "version": 4
+}

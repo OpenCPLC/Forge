@@ -1,4 +1,4 @@
-#include "${INCLUDE}" // ${INCLUDE_COMMENT}
+#include "opencplc.h" // Import driver functions
 
 // Application thread
 void loop(void)

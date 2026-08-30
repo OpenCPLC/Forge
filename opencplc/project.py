@@ -1,205 +1,201 @@
 # opencplc/project.py
 
-import platform
+"""
+Project generators.
+
+`prepare_project()` creates the skeleton files a project keeps for life
+(main.c, main.h). `generate()` renders everything Forge owns from the
+resolved `Project` model: the project makefile and flash.ld inside the
+project directory, the workspace dispatcher and the VS Code configuration.
+An unchanged file keeps its bytes and its mtime.
+"""
+
+import os, platform, time
 from datetime import datetime
-from xaeian import Print, Color as c, FILE, DIR, PATH, replace_start, replace_end
+from xaeian import Print, Color as c, FILE, DIR, PATH, replace_end
 from .templates import load_templates
-from .platforms import get_hal_dirs
+from .resolver import Project
 from . import utils
-from . import host as host_utils
 
 p = Print()
 
-def scan_tree(cfg:dict, paths:dict, ext:str) -> dict[str, list[str]]:
-  """Project source tree: HAL + lib + PLC drivers (with board) + project files."""
-  found = {}
-  for sub in get_hal_dirs(cfg["hal"]):
-    sub_path = f"{paths['hal']}/{sub}"
-    if DIR.exists(sub_path):
-      found.update(utils.files_list(sub_path, ext))
-  found.update(utils.files_list(paths["lib"], ext))
-  if cfg.get("board"):
-    found.update(utils.files_list(paths["plc"], ext))
-  found.update(utils.files_list(paths["pro"], ext))
-  return found
+def mk_list(items:list[str]) -> str:
+  """Backslash-continued makefile list, one entry per line."""
+  return " \\\n".join(items)
 
-def other_board(cfg:dict, paths:dict, folder:str) -> bool:
-  """Driver folders of boards other than the selected one are excluded."""
-  if not cfg.get("board"): return False
-  brd = f"{paths['plc']}/brd/"
-  return brd in folder and not folder.startswith(f"{brd}{cfg['board'].lower()}")
+def rel_from(items:list[str], base:str) -> list[str]:
+  """Paths stripped of a directory prefix, e.g. core paths relative to the Core dir."""
+  return [item[len(base) + 1:] for item in items if item.startswith(base + "/")]
 
-def makefile_list(items:list[str], paths:dict, prefix:str="") -> str:
-  """Wrapped makefile list with $(PRO)/$(LIB) shorthands."""
-  result = ""
-  for item in items:
-    rel = PATH.local(item)
-    rel = replace_start(rel, paths["pro_rel"], "$(PRO)")
-    rel = replace_start(rel, paths["fw_rel"], "$(LIB)")
-    if utils.last_line_len(result) > 80:
-      result += "\\\n"
-    result += f"{prefix}{rel} "
-  return result.rstrip()
+def config_inputs(pro:Project) -> list[str]:
+  """Reload inputs of the project makefile, anchored in $(PROJECT)."""
+  dirs = ["$(PROJECT)" if d == pro.pro_dir else "$(PROJECT)/" + d[len(pro.pro_dir) + 1:]
+    for d in pro.project_dirs]
+  return ["$(PROJECT)/main.h"] + dirs
 
-def collect_sources(cfg:dict, paths:dict, ext:str) -> str:
-  tree = scan_tree(cfg, paths, ext)
-  files = [f for folder, fs in tree.items() if not other_board(cfg, paths, folder) for f in fs]
-  return makefile_list(files, paths)
+def include_flags(pro:Project) -> list[str]:
+  """-I flags anchored in $(OPENCPLC)/$(PROJECT), resolved by Make at build time."""
+  flags = []
+  for d in pro.include_dirs:
+    if d == pro.pro_dir:
+      flags.append("-I$(PROJECT)")
+    elif d.startswith(pro.pro_dir + "/"):
+      flags.append("-I$(PROJECT)/" + d[len(pro.pro_dir) + 1:])
+    elif d.startswith(pro.core_dir + "/"):
+      flags.append("-I$(OPENCPLC)/" + d[len(pro.core_dir) + 1:])
+    else:
+      flags.append("-I$(WORKSPACE)/" + d)
+  return flags
 
-def collect_includes(cfg:dict, paths:dict) -> str:
-  folders = [f for f in scan_tree(cfg, paths, ".h") if not other_board(cfg, paths, f)]
-  return makefile_list(folders, paths, "-I")
-
-def generate_project(cfg:dict, paths:dict, forge_cfg:dict, is_example:bool=False):
-  templates = load_templates()
-  is_embedded = cfg["platform"] == "STM32"
-  is_windows = platform.system() == "Windows"
-  tpl = templates.get(cfg["hal"], {})
-  # Print info
-  noun = "Example" if is_example else "Project"
+def project_header(cfg:dict, paths:dict):
+  """Print which project and configuration this run works on."""
   rel_path = PATH.local(paths["pro"])
   path_prefix = replace_end(rel_path, cfg["pro_name"], "")
-  p.inf(f"{noun} {c.GREY}{path_prefix}{c.END}{c.TEAL if is_example else c.BLUE}{cfg['pro_name']}{c.END}")
+  p.inf(f"Project {c.GREY}{path_prefix}{c.END}{c.BLUE}{cfg['pro_name']}{c.END}")
+  is_windows = platform.system() == "Windows"
   if cfg.get("board"):
     chip_msg = f"{c.TURQUS}{cfg['board'].capitalize()}{c.END} PLC"
-  elif is_embedded:
+  elif cfg["platform"] == "STM32":
     chip_msg = f"{c.PINK}{cfg['chip']}{c.END}"
   else:
-    chip_msg = f"{c.PINK}{cfg['platform']}{c.END} {c.GREY}({'Windows' if is_windows else 'Linux'}){c.END}"
+    host_os = "Windows" if is_windows else "Linux"
+    chip_msg = f"{c.PINK}{cfg['platform']}{c.END} {c.GREY}({host_os}){c.END}"
   p.gap(f"using framework version {c.VIOLET}{cfg['fw_ver']}{c.END} configured for {chip_msg}")
-  # Create project directory
+
+def prepare_project(cfg:dict, paths:dict):
+  """Create the project skeleton: its directory plus main.c/main.h when missing."""
+  templates = load_templates()
+  is_embedded = cfg["platform"] == "STM32"
+  tpl = templates.get(cfg["hal"], {})
+  project_header(cfg, paths)
   DIR.ensure(paths["pro"])
-  # Store relative paths BEFORE resolving to absolute
-  paths["fw_rel"] = PATH.local(paths["fw"])
-  paths["pro_rel"] = PATH.local(paths["pro"])
-  paths["build_rel"] = PATH.local(paths.get("build", "build"))
-  target = f"{'example-' if is_example else ''}{cfg['pro_name'].replace('/', '-')}"
-  # Common substitution dict
+  if cfg.get("board"):
+    DIR.ensure(f"{paths['fw']}/plc")
+  custom = bool(cfg.get("board")) and cfg["board"].lower() == "custom"
   subs = {
     "${NAME}": cfg["pro_name"],
-    "${LIB_PATH}": paths["fw_rel"],
-    "${PRO_PATH}": paths["pro_rel"],
-    "${BUILD_PATH}": paths["build_rel"],
     "${DATE}": datetime.now().strftime("%Y-%m-%d"),
     "${PRO_VERSION}": cfg["pro_ver"],
     "${OPT_LEVEL}": cfg.get("opt_level", "Og" if is_embedded else "O2"),
     "${LOG_LEVEL}": cfg.get("log_level", "LOG_LEVEL_INF"),
     "${BOARD}": (cfg.get("board") or "NONE").upper(),
-    "${BOARD_LOWER}": (cfg.get("board") or "").lower(),
     "${CHIP}": cfg.get("chip", "").upper(),
     "${FLASH}": cfg["flash_kB"],
     "${RAM}": cfg["ram_kB"],
-    "${RAM_SHARED}": cfg.get("ram_shared_kB", 0),
     "${FREQ}": cfg.get("freq_Hz", 64000000),
-    "${INCLUDE}": "opencplc.h" if cfg.get("board") and cfg["board"].lower() != "custom" else "plc.h",
-    "${INCLUDE_COMMENT}": (
-      "Define PLC_Main, peripheral mapping and your staff"
-      if cfg.get("board") and cfg["board"].lower() == "custom"
-      else "Import driver functions"
-    ),
+    "${PLATFORM}": cfg["platform"],
     "${UART_NBR}": cfg["uart"]["nbr"],
     "${UART_TX}": cfg["uart"]["tx"],
     "${UART_RX}": cfg["uart"]["rx"],
     "${UART_DMA}": cfg["uart"]["dma"],
-    "${HAL}": cfg["hal"],
-    "${PLATFORM}": cfg["platform"],
-    "${FAMILY}": f"{cfg['platform']}{cfg['family']}",
-    "${DEFINE}": cfg["define"],
-    "${CPU}": cfg["cpu"],
-    "${DEVICE}": cfg["device"],
-    "${SVD}": cfg.get("svd", ""),
-    "${TARGET}": target,
-    "${PLATFORM_DEFINE}": cfg["define"],
-    "${INTELLISENSE_MODE}": "windows-gcc-x64" if is_windows else "linux-gcc-x64",
-    "${EXE_EXT}": ".exe" if is_windows else "",
-    "${HOST_OS}": "Windows" if is_windows else "Linux",
   }
-  # main.c (only if not exists)
   if not FILE.exists(f"{paths['pro']}/main.c"):
     if is_embedded:
-      main_c = templates["main.c"] if cfg.get("board") else templates["main-none.c"]
+      # A ready board ships PLC_Main; Custom and bare metal start from the plain skeleton
+      main_c = templates["main.c"] if cfg.get("board") and not custom else templates["main-none.c"]
     else:
       main_c = tpl.get("main.c", templates["main-none.c"])
     utils.create_file("main.c", main_c, paths["pro"], subs, color=c.BLUE)
-  # main.h (only if not exists)
   if not FILE.exists(f"{paths['pro']}/main.h"):
     main_h = tpl.get("main.h", templates["main.h"])
     utils.create_file("main.h", main_h, paths["pro"], subs, color=c.BLUE)
-  # Resolve absolute paths AFTER creating main files
-  paths["hal"] = PATH.resolve(f"{paths['fw']}/hal")
-  paths["lib"] = PATH.resolve(f"{paths['fw']}/lib")
-  paths["plc"] = PATH.resolve(f"{paths['fw']}/plc")
-  paths["fw"] = PATH.resolve(paths["fw"])
-  paths["pro"] = PATH.resolve(paths["pro"])
-  # Ensure dirs exist
-  DIR.ensure(paths["hal"])
-  DIR.ensure(paths["lib"])
-  if cfg.get("board"):
-    DIR.ensure(paths["plc"])
-  # flash.ld
-  if cfg.get("ld"):
-    drop = FILE.remove("flash.ld")
-    ld_template = templates["flash"].get(cfg["ld"], templates["flash"]["stm32g0.ld"])
-    paths["ld"] = utils.create_file("flash.ld", ld_template, "", subs, rewrite=drop)
-    paths["ld_rel"] = PATH.local(paths["ld"])
-  # Collect sources
-  C_SOURCES = collect_sources(cfg, paths, ".c")
-  ASM_SOURCES = collect_sources(cfg, paths, ".s") if is_embedded else ""
-  C_INCLUDES = collect_includes(cfg, paths)
-  # CPU/MCU flags
-  cpu_flags = f"-mcpu={cfg['cpu']}" if is_embedded else ""
-  if cfg.get("fpu"):
-    mcu_flags = f"{cpu_flags} -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard"
-  elif is_embedded:
-    mcu_flags = f"{cpu_flags} -mthumb -mfloat-abi=soft"
-  else:
-    mcu_flags = ""
-  # Defines
-  C_DEFS = " ".join(f"-D{d}" for d in cfg["defines"])
-  if cfg.get("board"):
-    C_DEFS += " -DOpenCPLC"
-  # Update subs
-  subs.update({
-    "${CPU_FLAGS}": cpu_flags,
-    "${MCU_FLAGS}": mcu_flags,
-    "${C_DEFS}": C_DEFS,
-    "${C_SOURCES}": C_SOURCES,
-    "${ASM_SOURCES}": ASM_SOURCES,
-    "${C_INCLUDES}": C_INCLUDES,
-    "${LD_FILE}": paths.get("ld_rel", ""),
-    "${GCC_PATH}": "",
-    "${OPENOCD_PATH}": "",
-    "${OPENOCD_TARGET}": cfg.get("openocd", ""),
-    "${STLINK}": (forge_cfg.get("stlink") or {}).get(cfg["pro_name"], ""),
+
+def mark_current(pro:Project, force:bool=False):
+  """
+  Touch the project makefile as the last step, so Make sees it newer than its inputs.
+
+  Always after -r (Make restarts on that mtime), otherwise only when a config input
+  is newer while the rendered content stayed identical.
+  """
+  makefile = PATH.resolve(f"{pro.pro_dir}/makefile")
+  inputs = [PATH.resolve(i) for i in (f"{pro.pro_dir}/main.h", *pro.project_dirs)]
+  newest = max((os.path.getmtime(i) for i in inputs if os.path.exists(i)), default=0)
+  if not force and newest <= os.path.getmtime(makefile): return
+  # Never older than an input, even one stamped in the future - Make would reload forever
+  stamp = max(time.time(), newest)
+  os.utime(makefile, (stamp, stamp))
+
+def generate(pro:Project, activate:bool=True):
+  """
+  Render the project makefile and linker from the model.
+
+  With `activate` the workspace follows too: the dispatcher points at this project
+  and VS Code gets its configuration. A reload from inside a project directory
+  leaves both alone, so parallel builds never fight over the active project.
+  """
+  templates = load_templates()
+  tpl = templates.get(pro.hal, {})
+  is_windows = platform.system() == "Windows"
+  up_path = "/".join([".."] * (pro.pro_dir.count("/") + 1))
+  subs = {
+    "${NAME}": pro.name,
+    "${TARGET}": pro.target,
+    "${STLINK}": pro.stlink,
+    "${UP_PATH}": up_path,
+    "${CORE_DIR}": pro.core_dir,
+    "${BUILD_DIR}": pro.build_dir,
+    "${LIB_PATH}": pro.core_dir,
+    "${PRO_PATH}": pro.pro_dir,
+    "${BUILD_PATH}": pro.build_dir,
+    "${CORE_C}": mk_list(rel_from(pro.core_c_sources, pro.core_dir)),
+    "${CORE_S}": mk_list(rel_from(pro.core_asm_sources, pro.core_dir)),
+    "${PRO_C}": mk_list(rel_from(pro.project_c_sources, pro.pro_dir)),
+    "${PRO_S}": mk_list(rel_from(pro.project_asm_sources, pro.pro_dir)),
+    "${C_INCLUDES}": mk_list(include_flags(pro)),
+    "${CONFIG_INPUTS}": " ".join(config_inputs(pro)),
+    "${C_DEFS}": " ".join(f"-D{d}" for d in pro.defines),
+    "${MCU_FLAGS}": pro.mcu_flags,
+    "${OPT_LEVEL}": pro.opt_level,
+    "${LOG_LEVEL}": pro.log_level,
+    "${BOARD}": (pro.board or "NONE").upper(),
+    "${BOARD_LOWER}": (pro.board or "").lower(),
+    "${CHIP}": pro.chip,
+    "${FLASH}": pro.flash_kB,
+    "${RAM}": pro.ram_kB,
+    "${RAM_SHARED}": pro.ram_shared_kB,
+    "${FREQ}": pro.freq_Hz,
+    "${HAL}": pro.hal,
+    "${PLATFORM}": pro.platform,
+    "${FAMILY}": pro.family,
+    "${DEFINE}": pro.define,
+    "${CPU}": pro.cpu,
+    "${DEVICE}": pro.device,
+    "${SVD}": pro.svd,
+    "${OPENOCD_TARGET}": pro.openocd_target,
+    "${ERASE_CMD}": pro.erase_command,
+    "${EXE_EXT}": ".exe" if is_windows else "",
+    "${PROJECT_COLORED}": f"{c.GREY}./{pro.pro_dir[:-len(pro.name)]}{c.END}{c.BLUE}{pro.name}{c.END}",
+    "${BUILD_COLORED}": f"{c.GREY}./{pro.build_dir[:-len(pro.name)]}{c.END}{c.BLUE}{pro.name}{c.END}",
+    "${GOLD}": c.GOLD, "${GREEN}": c.GREEN, "${PINK}": c.PINK, "${END}": c.END,
+  }
+  # Linker script and makefile live inside the project - parallel builds stay disjoint
+  if pro.linker:
+    ld_template = templates["flash"].get(pro.linker, templates["flash"]["stm32g0.ld"])
+    utils.create_file("flash.ld", ld_template, pro.pro_dir, subs)
+  makefile = tpl.get("project.mk", templates["project.mk"])
+  utils.create_file("makefile", makefile, pro.pro_dir, subs)
+  if not activate: return
+  # Workspace dispatcher - `make` at the root builds the active project
+  prefix = pro.pro_dir[:-len(pro.name)]
+  utils.create_file("makefile", templates["workspace.mk"], "", {
+    "${ACTIVE}": pro.pro_dir,
+    "${ACTIVE_COLORED}": f"{c.GREY}./{prefix}{c.END}{c.BLUE}{pro.name}{c.END}",
+    "${GOLD}": c.GOLD, "${CMD}": c.CYAN, "${GREY}": c.GREY, "${END}": c.END,
+    "${ERR}": f"{c.RED}ERR{c.END}",
   })
-  # Makefile - always regenerate
-  FILE.remove("makefile")
-  makefile = tpl.get("makefile.mk", templates["makefile.mk"])
-  if forge_cfg.get("windows") and is_embedded:
-    makefile = utils.swap_comment_lines(makefile)
-  utils.create_file("makefile", makefile, "", subs, rewrite=True)
-  # VSCode - always regenerate (platform switch)
   DIR.ensure(".vscode")
-  if is_embedded:
-    props = tpl.get("properties.json", templates["properties.json"])
-    if not cfg.get("board"):
-      props = "\n".join(ln for ln in props.splitlines() if "/plc/" not in ln and '"OpenCPLC"' not in ln)
-    elif cfg.get("board").lower() == "custom":
-      props = "\n".join(ln for ln in props.splitlines() if "/plc/brd/" not in ln)
-    utils.create_file("c_cpp_properties.json", props, ".vscode", subs, rewrite=True)
-    launch = tpl.get("launch.json", templates["launch.json"])
-    stlink_drop = "" if subs["${STLINK}"] else "openOCDPreConfigLaunchCommands"
-    utils.create_file("launch.json", launch, ".vscode", subs, remove_line=stlink_drop, rewrite=True)
-    utils.create_file("tasks.json", tpl.get("tasks.json", templates["tasks.json"]), ".vscode", subs, rewrite=True)
-  else:
-    # HOST platform
-    host_utils.save_json(".vscode/c_cpp_properties.json",
-      host_utils.generate_properties(cfg["pro_name"], C_INCLUDES, cfg["define"], paths["fw_rel"], paths["pro_rel"], is_windows))
-    host_utils.save_json(".vscode/launch.json",
-      host_utils.generate_launch(subs["${TARGET}"], paths["build_rel"], is_windows))
-    host_utils.save_json(".vscode/tasks.json",
-      host_utils.generate_tasks(C_SOURCES, C_INCLUDES, subs["${TARGET}"], paths["fw_rel"], paths["pro_rel"], is_windows))
-  # Shared files - create only if not exists
+  props = tpl.get("properties.json", templates["properties.json"])
+  if not pro.board:
+    props = "\n".join(ln for ln in props.splitlines()
+      if "/plc/" not in ln and '"OpenCPLC"' not in ln)
+  elif pro.board.lower() == "custom":
+    props = "\n".join(ln for ln in props.splitlines() if "/plc/brd/" not in ln)
+  utils.create_file("c_cpp_properties.json", props, ".vscode", subs)
+  launch = tpl.get("launch.json", templates["launch.json"])
+  stlink_drop = "" if pro.stlink else "openOCDPreConfigLaunchCommands"
+  utils.create_file("launch.json", launch, ".vscode", subs, remove_line=stlink_drop)
+  utils.create_file("tasks.json", templates["tasks.json"], ".vscode", subs)
+  # Shared files - created once, kept afterwards
   if not FILE.exists(".vscode/settings.json"):
     utils.create_file("settings.json", templates["settings.json"], ".vscode", subs)
   if not FILE.exists(".vscode/extensions.json"):

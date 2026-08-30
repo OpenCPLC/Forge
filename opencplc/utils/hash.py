@@ -1,17 +1,19 @@
 # opencplc/utils/hash.py
 
+"""DJB2 hashes and the C code generated from them (-hl)."""
+
 import re
 from xaeian import Color as c
 
 def hash_string(s:str) -> int:
-  """DJB2 hash algorithm."""
+  """32-bit DJB2 hash of s."""
   h = 5381
   for ch in s:
     h = ((h << 5) + h) + ord(ch)
   return h & 0xFFFFFFFF
 
 def c_code_enum(hash_list:list[str], title:str="", define:bool=False) -> str:
-  """Generate C enum or #define for hash values."""
+  """C enum (or #define lines) mapping names to DJB2 hashes of their lowercase form, colored."""
   prefix = (
     "".join(ch for ch in title.upper() if ch.isalpha()) + ("_HASH_" if define else "_Hash_")
     if title else "HASH_"

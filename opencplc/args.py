@@ -1,5 +1,7 @@
 # opencplc/args.py
 
+"""Command line: flags, their colored names for messages and the parsed Args."""
+
 import argparse, sys
 from dataclasses import dataclass
 from xaeian import Color, Print
@@ -9,7 +11,6 @@ p = Print()
 class Flag:
   """Colored flag display strings."""
   n = f"{Color.GREY}-n --new{Color.END}"
-  e = f"{Color.GREY}-e --example{Color.END}"
   r = f"{Color.GREY}-r --reload{Color.END}"
   d = f"{Color.GREY}-d --delete{Color.END}"
   g = f"{Color.GREY}-g --get{Color.END}"
@@ -21,14 +22,16 @@ class Flag:
   o = f"{Color.GREY}-o --opt-level{Color.END}"
   l = f"{Color.GREY}-l --list{Color.END}"
   i = f"{Color.GREY}-i --info{Color.END}"
+  s = f"{Color.GREY}-s --stlink{Color.END}"
 
 flag = Flag()
 
 @dataclass
 class Args:
+  """Parsed command line; every flag has a neutral default."""
   name: str = ""
   new: str|bool = False
-  example: str|bool = False
+  example: bool = False
   reload: bool = False
   delete: str|bool = False
   get: list[str] = None
@@ -41,6 +44,8 @@ class Args:
   info: bool = False
   framework_versions: bool = False
   version: bool = False
+  stlink: str|None = None
+  size: list[str] = None
   assets: str|None = None
   update: str|None = None
   yes: bool = False
@@ -49,25 +54,29 @@ class Args:
   hash_define: bool = False
 
 def fmt(prog):
+  """Help formatter with wider columns."""
   return argparse.RawDescriptionHelpFormatter(prog, max_help_position=34, width=100)
 
 EXAMPLE_USED = """
 example used:
-  opencplc -n myapp -b uno           Create new project for OpenCPLC Uno
-  opencplc -n myapp -c STM32G081     Create bare-metal project for STM32G081
-  opencplc -r                        Reload current project from makefile
-  opencplc -l                        List all available projects
-  opencplc myapp                     Load project 'myapp'
-  opencplc 3                         Load project #3 from list
+  opencplc -n myapp -b uno        Create new project for OpenCPLC Uno
+  opencplc -n myapp -c STM32G081  Create bare-metal project for STM32G081
+  opencplc -r                     Reload the active project
+  opencplc -l                     List all available projects
+  opencplc myapp                  Load project 'myapp'
+  opencplc 3                      Load project #3 from list
 """
 
 class MyParser(argparse.ArgumentParser):
+  """argparse parser with a blank line around the help text."""
   def format_help(self):
     return "\n" + super().format_help().rstrip() + "\n\n"
 
 def load_args() -> Args:
+  """Parse sys.argv into Args."""
   parser = MyParser(
-    description=f"{Color.TEAL}OpenCPLC Forge{Color.GREY}:{Color.END} Project configuration and build tool",
+    description=f"{Color.TEAL}OpenCPLC Forge{Color.GREY}:{Color.END} "
+      "Project configuration and build tool",
     formatter_class=fmt,
     add_help=False,
     usage=argparse.SUPPRESS,
@@ -79,36 +88,40 @@ def load_args() -> Args:
   # Project actions
   parser.add_argument("-n", "--new", type=str, nargs="?", const=True, metavar="NAME",
     help="Create new project (optionally with NAME)")
-  parser.add_argument("-e", "--example", type=str, nargs="?", const=True, metavar="NAME",
-    help="Create/load example project from Demo repository")
+  parser.add_argument("-e", "--example", action="store_true",
+    help="Download Demo examples into projects/examples")
   parser.add_argument("-r", "--reload", action="store_true",
-    help="Reload project configuration from existing makefile")
+    help="Reload the active project, or the one in the current directory")
   parser.add_argument("-d", "--delete", type=str, nargs="?", const=True, metavar="NAME",
     help="Delete project and its files")
   parser.add_argument("-g", "--get", nargs='+', metavar=("URL", "REF"),
     help="Clone project from GIT repository or download ZIP", default=[])
   # Hardware configuration
   parser.add_argument("-b", "--board", type=str, metavar="BOARD",
-    help="Target board: Uno, Dio, Aio, Eco, Custom, None", default="")
+    help="Board from the Core (uno), custom, or none for bare metal", default="")
   parser.add_argument("-c", "--chip", type=str, metavar="CHIP",
     help="Target MCU: STM32G0C1, STM32G081, STM32WB55, HOST", default="")
   parser.add_argument("-m", "--memory", type=int, nargs="*", metavar=("FLASH", "RAM"),
     help="Override memory size in kB: FLASH RAM [RESERVED]", default=[])
   # Build configuration  
   parser.add_argument("-f", "--framework", type=str, metavar="VER",
-    help="Framework version (tag/branch): latest, develop, 1.0.0", default="")
+    help="Core version (tag/branch) for a new project, or a one-run override", default="")
   parser.add_argument("-o", "--opt-level", type=str, metavar="LEVEL",
-    help="Compiler optimization: O0 (debug), Og (default), O1", default="")
+    help="Optimization level: O0, Og (default), O1, O2, O3", default="")
+  parser.add_argument("-s", "--stlink", type=str, nargs="?", const="", metavar="SERIAL",
+    help="Bind an ST-Link serial to the project; -s alone clears the binding")
   # Information
   parser.add_argument("-l", "--list", action="store_true",
     help="List all projects in current workspace")
   parser.add_argument("-i", "--info", action="store_true",
     help="Show detailed project configuration")
   parser.add_argument("-F", "--framework-versions", action="store_true",
-    help="List available framework versions from GitHub")
+    help="List Core versions")
   parser.add_argument("-v", "--version", action="store_true",
     help="Show OpenCPLC Forge version and exit")
   # Utilities
+  parser.add_argument("-z", "--size", nargs=3, metavar=("ELF", "FLASH_kB", "RAM_kB"),
+    help="Report FLASH and RAM usage of an .elf against the chip memory")
   parser.add_argument("-a", "--assets", type=str, nargs="?", const="assets", metavar="DIR",
     help="Download datasheets and reference manuals to DIR")
   parser.add_argument("-u", "--update", type=str, nargs="?", const="latest", metavar="VER",
@@ -125,6 +138,9 @@ def load_args() -> Args:
   parser.add_argument("-h", "--help", action="help",
     help="Show this help message and exit")
   
+  if len(sys.argv) == 1:
+    parser.print_help()
+    sys.exit(0)
   ns = parser.parse_args()
   return Args(
     name=ns.name,
@@ -142,6 +158,8 @@ def load_args() -> Args:
     info=ns.info,
     framework_versions=ns.framework_versions,
     version=ns.version,
+    stlink=ns.stlink,
+    size=ns.size,
     assets=ns.assets,
     update=ns.update,
     yes=ns.yes,

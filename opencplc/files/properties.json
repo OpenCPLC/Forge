@@ -11,6 +11,7 @@
         "${workspaceFolder}/${LIB_PATH}/plc/brd/${BOARD_LOWER}/**",
         "${workspaceFolder}/${LIB_PATH}/plc/com/**",
         "${workspaceFolder}/${LIB_PATH}/plc/per/**",
+        "${workspaceFolder}/${LIB_PATH}/plc/dvr/**",
         "${workspaceFolder}/${PRO_PATH}/**"
       ],
       "defines": [
@@ -26,8 +27,7 @@
       "compilerArgs": [
         "-mcpu=${CPU}",
         "-mthumb"
-      ],
-      "configurationProvider": "ms-vscode.makefile-tools"
+      ]
     }
   ],
   "version": 4

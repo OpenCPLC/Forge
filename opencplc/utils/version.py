@@ -1,6 +1,8 @@
 # opencplc/utils/version.py
 
-import sys, subprocess, re, json, urllib.parse
+"""Framework versions: aliases, ordering, refs and clones from git."""
+
+import sys, subprocess, re
 from typing import Literal
 import packaging.version
 from xaeian import Print, Color as c, DIR, PATH
@@ -9,11 +11,8 @@ from .common import is_yes, color_url
 p = Print()
 
 def version_real(ver:str, latest:str) -> str:
-  """Resolve aliases; anything else (branch, client version) passes through."""
-  if ver in ("latest", "last"): return latest
-  if ver in ("dev", "develop"): return "develop"
-  if ver in ("main", "master"): return "main"
-  return ver
+  """`latest` becomes the newest release; a tag or branch name passes through."""
+  return latest if ver == "latest" else ver
 
 def version_is_release(ver:str) -> bool:
   """True for a pinned release tag, False for a moving branch like develop or main."""
@@ -25,9 +24,7 @@ def version_is_release(ver:str) -> bool:
 
 def version_active(framework:str, forge_cfg:dict) -> str:
   """Framework version in effect: the -f flag when given, otherwise the opencplc.json default."""
-  if framework:
-    return version_real(framework, forge_cfg["available-versions"][0])
-  return forge_cfg["version"]
+  return version_real(framework or forge_cfg["version"], forge_cfg["available-versions"][0])
 
 def version_key(ver:str):
   """Sort key: proper versions first (newest wins), free-form names after."""
@@ -35,17 +32,18 @@ def version_key(ver:str):
   except packaging.version.InvalidVersion: return (0, ver)
 
 def version_older_than(a:str, b:str) -> bool:
+  """True when a < b as semantic versions."""
   return packaging.version.Version(a) < packaging.version.Version(b)
 
 def version_check(ver:str, available:list[str], err_msg:str):
-  """Exit if version not in available list."""
+  """Exit with err_msg when ver is not among the available refs."""
   if ver not in available:
     p.err(f"Framework version {c.MAGNTA}{ver}{c.END} does not exist")
     print(err_msg)
     sys.exit(1)
 
 def git_clone(url:str, path:str, ref:str|None=None, drop_on_err:bool=False):
-  """Clone git repository."""
+  """git clone url into path at ref; a failure exits, dropping the partial directory when asked."""
   cmd = ["git", "clone"]
   if ref: cmd += ["--branch", ref]
   cmd += [url, path]
@@ -55,49 +53,26 @@ def git_clone(url:str, path:str, ref:str|None=None, drop_on_err:bool=False):
     p.err(f"Clone failed: {c.TEAL}{url}{c.END}")
     sys.exit(1)
 
-def git_get_refs(
-  url: str,
-  option: Literal["--heads", "--tags", "--ref"] = "--ref",
-  use_git: bool = True,
-) -> list[str]:
-  """Remote refs of a git repository: tags (newest first), branches, or both.
-  Falls back to the GitHub/GitLab API when use_git is False."""
+def git_get_refs(url:str, option:Literal["--heads", "--tags", "--ref"]="--ref") -> list[str]:
+  """Remote refs of a git repository: tags (newest first), branches, or both."""
   if option == "--ref":
-    tags = git_get_refs(url, "--tags", use_git)
-    heads = git_get_refs(url, "--heads", use_git)
-    return tags + heads
-  if use_git:
-    try:
-      result = subprocess.run(["git", "ls-remote", option, url], capture_output=True, text=True)
-    except FileNotFoundError:
-      return []  # git not installed yet - caller decides what to do
-    lines = result.stdout.strip().splitlines()
-    rx = r"refs/tags/([^\^{}]+)$" if option == "--tags" else r"refs/heads/(.+)$"
-    refs = [re.search(rx, ln).group(1) for ln in lines if re.search(rx, ln)]
-    if option == "--tags":
-      return sorted(refs, key=version_key, reverse=True)
-    return refs
-  # API fallback
-  host = "github" if "github.com" in url else "gitlab" if "gitlab.com" in url else None
-  if not host: raise ValueError("Only GitHub/GitLab supported")
-  repo = url.replace(f"https://{host}.com/", "").rstrip("/")
-  if host == "gitlab":
-    api = f"https://{host}.com/api/v4/projects/{urllib.parse.quote_plus(repo)}"
-    endpoint = "/repository/tags" if option == "--tags" else "/repository/branches"
-  else:
-    api = f"https://api.github.com/repos/{repo}"
-    endpoint = "/tags" if option == "--tags" else "/branches"
-  data = subprocess.run(["curl", "-s", api + endpoint], capture_output=True, text=True).stdout
-  names = [x["name"] for x in json.loads(data)]
+    return git_get_refs(url, "--tags") + git_get_refs(url, "--heads")
+  try:
+    result = subprocess.run(["git", "ls-remote", option, url], capture_output=True, text=True)
+  except FileNotFoundError:
+    return [] # git not installed yet - caller decides what to do
+  rx = r"refs/tags/([^\^{}]+)$" if option == "--tags" else r"refs/heads/(.+)$"
+  refs = [m.group(1) for m in map(lambda ln: re.search(rx, ln), result.stdout.splitlines()) if m]
   if option == "--tags":
-    return sorted(names, key=version_key, reverse=True)
-  return names
+    return sorted(refs, key=version_key, reverse=True)
+  return refs
 
 def git_clone_missing(url:str, path:str, ref:str, yes:bool=False, required:bool=True) -> bool:
-  """Clone repository if not present."""
+  """Clone when path is missing, after confirmation; False when declined and not required."""
   full_path = PATH.resolve(path, read=False)
   if DIR.exists(full_path): return True
-  p.wrn(f"Framework {c.ORANGE}opencplc{c.END} not installed for version {c.VIOLET}{ref}{c.END}")
+  p.wrn(f"Missing {c.ORANGE}{PATH.local(full_path)}{c.END}, "
+    f"clone from {c.TEAL}{url}{c.END} {c.GREY}({ref}){c.END}")
   if not yes and not is_yes():
     if not required: return False
     p.err(f"You can download it manually from {color_url(url)}")

@@ -1,5 +1,7 @@
 # opencplc/utils/network.py
 
+"""Downloads, ZIP extraction and fetching a remote project."""
+
 import sys, re
 import urllib.request
 from xaeian import Print, Color as c, FILE, DIR, PATH
@@ -9,7 +11,7 @@ from .common import validate_project_name
 p = Print()
 
 def download(url:str, save_path:str="", timeout:float=10) -> bytes:
-  """Download file from URL."""
+  """Fetch url, saving to save_path when given; a network or HTTP error exits."""
   try:
     resp = urllib.request.urlopen(url, timeout=timeout)
     data = resp.read()
@@ -24,7 +26,7 @@ def download(url:str, save_path:str="", timeout:float=10) -> bytes:
     sys.exit(1)
 
 def unzip(data:bytes, path:str, drop_on_err:bool=True):
-  """Extract ZIP archive from bytes."""
+  """Unpack ZIP bytes into path; a bad archive exits and drops the partial directory."""
   try:
     DIR.unzip_bytes(data, path)
   except Exception:
@@ -34,7 +36,7 @@ def unzip(data:bytes, path:str, drop_on_err:bool=True):
     sys.exit(1)
 
 def project_remote(url:str, path:str, ref:str|None=None, name:str="") -> str:
-  """Download remote project (ZIP or git)."""
+  """Fetch a project from a ZIP url or git repository; name falls back to @name in its main.h."""
   tmp = ".remote"
   DIR.ensure(tmp)
   if url.endswith(".zip"):

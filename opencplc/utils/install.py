@@ -1,5 +1,7 @@
 # opencplc/utils/install.py
 
+"""Toolchain installation on Windows: downloads, registry PATH, version checks."""
+
 import os, sys, subprocess, re
 from xaeian import Print, Color as c, FILE, PATH
 from .common import is_yes, color_url
@@ -20,7 +22,7 @@ RESET_CONSOLE = False
 ENV_SYSTEM_KEY = r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
 
 def is_admin() -> bool:
-  """Check for administrator (Windows) or root (Unix) privileges."""
+  """True under an administrator (Windows) or root (Unix) account."""
   if os.name == "nt":
     try:
       import ctypes
@@ -44,8 +46,10 @@ def _broadcast_env_change():
     pass
 
 class ENV:
+  """System environment on Windows: PATH and variables in the registry (HKLM)."""
   @staticmethod
   def path_exists(path:str) -> bool:
+    """True when path is already on the current PATH, case-insensitive."""
     return path.lower() in (e.lower() for e in os.environ.get("PATH", "").split(";"))
 
   @staticmethod
@@ -120,6 +124,7 @@ class ENV:
       return False
 
 def program_version(cmd:str) -> str|None:
+  """First x.y.z in `cmd --version`, None when cmd is missing or silent."""
   try:
     result = subprocess.run([cmd, "--version"], capture_output=True, check=True, text=True)
     output = result.stdout + result.stderr
@@ -129,6 +134,7 @@ def program_version(cmd:str) -> str|None:
     return None
 
 def install(name:str, url:str, path:str, yes:bool=False, unpack:bool=True):
+  """Download name from url into path (ZIP unpacked, or a single file); exits on failure."""
   if not yes and not is_yes(f"Install {c.YELLOW}{name}{c.END}"):
     p.err(f"See instructions at {color_url('https://github.com/OpenCPLC/Forge')}")
     sys.exit(1)
@@ -153,12 +159,14 @@ def install_missing_add_path(
   yes: bool = False,
   min_ver: str = "",
 ) -> str|None:
+  """Install a tool when its command is missing and put its bin on the system PATH."""
   global RESET_CONSOLE
   ver = program_version(cmd)
   if not ver:
     p.wrn(f"Program {c.YELLOW}{name}{c.END} is not installed")
     if os.name == "nt" and not is_admin():
-      p.err(f"Administrator rights required to install {c.YELLOW}{name}{c.END} and set system environment variables")
+      p.err(f"Administrator rights required to install {c.YELLOW}{name}{c.END} "
+        "and set system environment variables")
       p.run("Restart the console as administrator and try again")
       sys.exit(1)
     install(name, FTP_PATH, INSTALL_PATH, yes)
@@ -182,7 +190,7 @@ def install_git(yes:bool):
   install_missing_add_path("Git", "git", None, yes, "2.20.0")
 
 def install_toolchains(is_embedded:bool, yes:bool):
-  """Install required toolchains based on platform."""
+  """Git, Make and the compiler for the platform: ARM GCC with OpenOCD, or MinGW for HOST."""
   install_git(yes)
   install_missing_add_path("Make", "make", None, yes, "4.3.0")
   if is_embedded:
