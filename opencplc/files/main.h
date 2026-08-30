@@ -1,13 +1,13 @@
 /**
  * @name  Project: ${NAME}
- * @brief Project configuration. These values are used by Forge when loading project.
- *        They should not be removed, but can be edited. Changing requires running Forge again.
+ * @brief Project configuration, read by Forge on every load and by the framework at build.
+ *        Edit the values, keep the definitions; make reloads the project after a change.
  * @date  ${DATE}
  */
-#include <xdef.h>
+#ifndef OPENCPLC_PROJECT_CONFIG_H_
+#define OPENCPLC_PROJECT_CONFIG_H_
 
-#ifndef PRO_x
-#define PRO_x
+#include <xdef.h>
 
 #define PRO_BOARD_${BOARD}
 #define PRO_CHIP_${CHIP}
@@ -17,11 +17,8 @@
 #define PRO_OPT_LEVEL "${OPT_LEVEL}"
 // #define PRO_DRIVERS "shtc3, hd44780"
 
-#endif
-
-/**
- * @brief Put here config parameters `#define` that should be overridden.
- * @note  Many libraries include this file, so it must exist even if empty.
- */
+// Framework settings overridden by this project; many modules include this file
 #define LOG_LEVEL ${LOG_LEVEL}
 #define SYS_CLOCK_FREQ ${FREQ}
+
+#endif

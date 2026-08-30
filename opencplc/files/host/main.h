@@ -1,10 +1,11 @@
 /**
  * @name  Project: ${NAME}
- * @brief Project configuration for host platform (Windows/Linux)
+ * @brief Project configuration for the host platform (Windows/Linux), read by Forge on every load.
+ *        Edit the values, keep the definitions; make reloads the project after a change.
  * @date  ${DATE}
  */
-#ifndef MAIN_H_
-#define MAIN_H_
+#ifndef OPENCPLC_PROJECT_CONFIG_H_
+#define OPENCPLC_PROJECT_CONFIG_H_
 
 #include <xdef.h>
 
@@ -12,10 +13,7 @@
 #define PRO_VERSION "${PRO_VERSION}"
 #define PRO_OPT_LEVEL "${OPT_LEVEL}"
 
-#endif
-
-/**
- * @brief Put here config parameters `#define` that should be overridden.
- * @note  Many libraries include this file, so it must exist even if empty.
- */
+// Framework settings overridden by this project; many modules include this file
 #define LOG_LEVEL ${LOG_LEVEL}
+
+#endif

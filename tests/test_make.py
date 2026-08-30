@@ -162,6 +162,7 @@ def root_make_reports_idle_and_failure(ws):
   assert first.returncode == 0, first.stdout + first.stderr
   again = subprocess.run(["make"], cwd=ws, capture_output=True, text=True)
   assert "Nothing to be done for" in again.stdout and "Entering directory" in again.stdout
+  age(*(ws / "build").rglob("*.o"), *(ws / "build").glob("app*")) # edit lands in the same second
   write_file(ws / "projects" / "app" / "main.c", "int main(void) { return }" + "\n")
   broken = subprocess.run(["make"], cwd=ws, capture_output=True, text=True)
   assert broken.returncode != 0

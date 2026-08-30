@@ -2,14 +2,11 @@
 
 ## `0.3.0` One workspace, many builds
 
-Breaking: fixed workspace layout (`projects/`, `opencplc/`, `build/`), `opencplc.json` keeps only
-`version` and `stlink`, examples are ordinary projects under `projects/examples`.
+Breaking: fixed layout (`projects/`, `opencplc/`, `build/`), `opencplc.json` keeps `version` and `stlink`.
 
-- Every project owns its `makefile`, `flash.ld` and build directory, so switching projects never links stale objects
-- `make` reloads a project by itself when `main.h` or the source tree changes
-- Boards come from the Core: a directory in `plc/brd` with an `.ini` manifest
-- Flags create a project; an existing one is edited in `main.h`
-- `make dist TAG=1.2.0` drops a single `<name>-1.2.0.hex` into the project
+- Each project owns its `makefile`, `flash.ld` and build directory
+- `make` reloads the project itself after a change in `main.h` or the source tree
+- Boards come from the Core, a directory in `plc/brd` with an `.ini` manifest
 
 ## `0.2.1` HTTPS & startup order
 
