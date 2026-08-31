@@ -2,7 +2,8 @@
 
 ## `0.3.0` One workspace, many builds
 
-Breaking: fixed layout (`projects/`, `opencplc/`, `build/`), `opencplc.json` keeps `version` and `stlink`.
+Breaking: fixed layout _(`projects/`, `opencplc/`, `build/`)_,
+`opencplc.json` keeps `version` and `stlink`.
 
 - Each project owns its `makefile`, `flash.ld` and build directory
 - `make` reloads the project itself after a change in `main.h` or the source tree
