@@ -41,11 +41,12 @@ def project_from_path(path:str, pro_root:str) -> str|None:
 def enter_workspace() -> str:
   """Move to the nearest workspace root; returns the original working directory."""
   cwd = os.getcwd()
-  root = find_workspace()
-  if root and not os.path.samefile(root, cwd):
+  root = find_workspace() or cwd
+  if not os.path.samefile(root, cwd):
     os.chdir(root) # subprocesses (git, make) follow the process cwd
-    set_context(root_path=root) # the xaeian file API follows its own root
     p.inf(f"Workspace: {c.ORANGE}{PATH.normalize(root)}{c.END}")
+  # The xaeian file API follows its own root: the import-time cwd, or the exe dir when frozen
+  set_context(root_path=root)
   return cwd
 
 #------------------------------------------------------------------------------------ Configuration

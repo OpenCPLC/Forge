@@ -45,3 +45,14 @@ def projects_root_itself_is_not_a_project(tmp_path):
   root.mkdir()
   (root / "main.h").write_text("")
   assert project_from_path(str(root), str(root)) is None
+
+def entering_pins_the_file_root_even_when_cwd_is_the_root(tmp_path, monkeypatch):
+  # frozen builds resolve relative paths from the exe directory unless the root is set
+  from xaeian import file_context, get_context
+  from opencplc.workspace import enter_workspace
+  (tmp_path / "opencplc.json").write_text("{}")
+  monkeypatch.chdir(tmp_path)
+  with file_context(root_path="C:/somewhere/else"):
+    enter_workspace()
+    root = get_context().root_path.replace(chr(92), "/").lower()
+    assert root == str(tmp_path).replace(chr(92), "/").lower()
