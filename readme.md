@@ -136,6 +136,19 @@ Copy a project folder manually and it's detected on next run.
 
 ## 🤔 How works?
 
+Who does what: Forge prepares the environment, Make builds and flashes, you write the code.
+
+```mermaid
+flowchart LR
+  CORE[repo Core] -->|clone| FW["opencplc/0.4.3"]
+  FORGE[Forge] --> GEN["projects/myapp/makefile, flash.ld"]
+  FW --> GEN
+  YOU[your code] --> PRO["projects/myapp/main.c"]
+  GEN --> MAKE[make]
+  PRO --> MAKE
+  MAKE --> BIN["build/projects/myapp/myapp.hex"]
+```
+
 First **Forge** installs the **Git** client, then _(once it knows the project platform)_ **Make**, **GNU Arm Embedded Toolchain** and **OpenOCD**, and sets system variables if these apps aren't visible from console.
 For HOST platform, **MinGW** (GCC for Windows) is installed instead of ARM toolchain.
 If you don't want anyone messing with your system, install these tools yourself and put them on **PATH**.

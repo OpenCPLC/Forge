@@ -135,6 +135,19 @@ Projekt skopiowany ręcznie do `projects/` zostaje wykryty przy następnym uruch
 
 ## 🤔 How works?
 
+Kto co robi: Forge przygotowuje środowisko, Make buduje i wgrywa, Ty piszesz kod.
+
+```mermaid
+flowchart LR
+  CORE[repo Core] -->|clone| FW["opencplc/0.4.3"]
+  FORGE[Forge] --> GEN["projects/myapp/makefile, flash.ld"]
+  FW --> GEN
+  YOU[Twój kod] --> PRO["projects/myapp/main.c"]
+  GEN --> MAKE[make]
+  PRO --> MAKE
+  MAKE --> BIN["build/projects/myapp/myapp.hex"]
+```
+
 W pierwszej kolejności **Forge** zainstaluje klienta **Git**, a gdy pozna platformę projektu, również **Make**, **GNU Arm Embedded Toolchain** i **OpenOCD** oraz ustawi odpowiednio zmienne systemowe, jeżeli aplikacje nie są widoczne w systemie z poziomu konsoli.
 Dla platformy HOST zamiast toolchain'a ARM instalowany jest **MinGW** (GCC dla Windows).
 Jeżeli nie chcemy, aby ktoś grzebał w naszym systemie, instalujemy te narzędzia sami i dodajemy je do **PATH**.
