@@ -4,7 +4,7 @@
 #include <log.h>
 #include "main.h"
 
-//----------------------------------------------------------------------------------------- dbg
+//--------------------------------------------------------------------------------------------- dbg
 
 UART_t dbg_uart = {
   .reg = USART${UART_NBR},
@@ -15,13 +15,13 @@ UART_t dbg_uart = {
   .UART_115200
 };
 
-//---------------------------------------------------------------------------------=------- app
+//--------------------------------------------------------------------------------------------- app
 
-GPIO_t led = { // Nucleo LED
-  .port = GPIOA,
-  .pin = 5,
+GPIO_t led = { // ${LED_NAME}
+  .port = ${LED_PORT},
+  .pin = ${LED_PIN},
   .mode = GPIO_Mode_Output
-}; 
+};
 
 void loop(void)
 {
@@ -33,14 +33,14 @@ void loop(void)
   }
 }
 
-//---------------------------------------------------------------------------------------- main
+//-------------------------------------------------------------------------------------------- main
 
 stack(stack_dbg, 256); // Memory stack for debugger thread (logs + bash)
 stack(stack_loop, 256); // Memory stack for loop function
 
 int main(void)
 {
-  sys_init(); // Configure system clock, systick and heap 
+  sys_init(); // Configure system clock, systick and heap
   RTC_Init(); // Enable real-time clock (RTC)
   DBG_Init(&dbg_uart); // Initialize debugger (logs + bash)
   DBG_Enter();

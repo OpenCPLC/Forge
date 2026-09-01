@@ -73,3 +73,25 @@ def dispatcher_roundtrip():
   assert parse_dispatcher(text) == "projects/myapp"
   empty = render(load_template("workspace.mk"), {"${ACTIVE}": ""})
   assert parse_dispatcher(empty) == ""
+
+def generated_c_follows_the_c_style():
+  """Separators exactly 99 chars, lines within 95, no trailing whitespace."""
+  for name in ("main.c", "main-none.c", "host/main.c", "main.h", "host/main.h"):
+    for i, line in enumerate(load_template(name).replace("\r\n", "\n").split("\n"), 1):
+      where = f"{name}:{i}"
+      if line.startswith("//-"):
+        assert len(line) == 99, where
+      else:
+        assert len(line) <= 95, where
+      assert line == line.rstrip(), where
+
+def bare_metal_led_comes_from_the_chip_table():
+  from opencplc.platforms import CHIPS
+  subs = {"${LED_PORT}": "GPIOB", "${LED_PIN}": 0, "${LED_NAME}": "Nucleo-WB55RG green `LD2`"}
+  out = render(load_template("main-none.c"), subs)
+  assert ".port = GPIOB," in out and ".pin = 0," in out
+  assert "// Nucleo-WB55RG green `LD2`" in out
+  for name, cfg in CHIPS.items():
+    assert "led" in cfg, name
+  assert CHIPS["STM32WB55"]["led"]["port"] == "GPIOB" # LD2 is PB0, not PA5
+  assert CHIPS["STM32G0C1"]["led"]["port"] == "GPIOA"

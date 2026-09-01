@@ -88,6 +88,9 @@ def prepare_project(cfg:dict, paths:dict):
     "${UART_TX}": cfg["uart"]["tx"],
     "${UART_RX}": cfg["uart"]["rx"],
     "${UART_DMA}": cfg["uart"]["dma"],
+    "${LED_PORT}": cfg["led"]["port"],
+    "${LED_PIN}": cfg["led"]["pin"],
+    "${LED_NAME}": cfg["led"]["name"],
   }
   if not FILE.exists(f"{paths['pro']}/main.c"):
     if is_embedded:

@@ -1,6 +1,6 @@
 /**
  * @name  Project: ${NAME}
- * @brief Project configuration for the host platform (Windows/Linux), read by Forge on every load.
+ * @brief Project configuration for the host platform, read by Forge on every load.
  *        Edit the values, keep the definitions; make reloads the project after a change.
  * @date  ${DATE}
  */

@@ -9,14 +9,14 @@
   #define HOST_OS_NAME "Linux"
 #endif
 
-//------------------------------------------------------------------------------------------------- dbg
+//--------------------------------------------------------------------------------------------- dbg
 
 UART_t dbg_uart = {
   .UART_115200,
   .timeout = 50
 };
 
-//------------------------------------------------------------------------------------------------- app
+//--------------------------------------------------------------------------------------------- app
 
 void loop(void)
 {
@@ -26,14 +26,14 @@ void loop(void)
   }
 }
 
-//------------------------------------------------------------------------------------------------- main
+//-------------------------------------------------------------------------------------------- main
 
 stack(stack_dbg, 256); // Memory stack for debugger thread (logs + bash)
 stack(stack_loop, 256); // Memory stack for loop function
 
 int main(void)
 {
-  sys_init(); // Configure heap and disable CTRL+C 
+  sys_init(); // Configure heap and disable CTRL+C
   RTC_Init(); // Enable real-time clock (RTC)
   DBG_Init(&dbg_uart); // Initialize debugger (logs + bash)
   DBG_Enter();
