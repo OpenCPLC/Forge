@@ -20,11 +20,13 @@ SHELL := cmd.exe
 MKDIR = if not exist "$(subst /,\,$1)" mkdir "$(subst /,\,$1)"
 RMDIR = if exist "$(subst /,\,$1)" rmdir /s /q "$(subst /,\,$1)"
 COPY = copy /y "$(subst /,\,$1)" "$(subst /,\,$2)" >nul
+TOUCH = type nul > "$(subst /,\,$1)"
 else
 SHELL := /bin/sh
 MKDIR = mkdir -p $1
 RMDIR = rm -rf $1
 COPY = cp $1 $2
+TOUCH = touch $1
 endif
 
 # Core sources, relative to $(OPENCPLC)
@@ -69,12 +71,18 @@ OBJECTS += $(patsubst %.s,$(BUILD)/project/%.o,$(PRO_S))
 
 CONFIG_DEPS = $(PROJECT)/main.h $(MAKEFILE_PATH)
 
-# Configuration changed: Forge rewrites this file and Make restarts once with fresh sources
+# Configuration changed: Forge rewrites this file and Make restarts once with fresh sources.
+# The stamp carries the reload time, so a rewrite with identical content rebuilds nothing.
 FORGE = opencplc
 CONFIG_INPUTS = $(wildcard ${CONFIG_INPUTS})
+FORGE_STAMP := $(BUILD)/.forge
 
-$(THIS_MAKEFILE): $(CONFIG_INPUTS)
+$(THIS_MAKEFILE): $(FORGE_STAMP) ;
+
+$(FORGE_STAMP): $(CONFIG_INPUTS)
+	@$(call MKDIR,$(BUILD))
 	@cd $(WORKSPACE) && $(FORGE) -r $(NAME)
+	@$(call TOUCH,$@)
 
 .DEFAULT_GOAL := build
 
@@ -113,14 +121,12 @@ endif
 OPENOCD = openocd -f interface/stlink.cfg $(OPENOCD_SERIAL) -f target/${OPENOCD_TARGET}.cfg -c
 
 flash:
-	$(OPENOCD) "program $(BUILD)/$(TARGET).elf verify reset exit"
-	@echo Flashed ${GOLD}$(TARGET).elf${END}
+	@$(OPENOCD) "program $(BUILD)/$(TARGET).elf verify reset exit" && echo Flashed ${VIOLET}$(TARGET).elf${END}|| (echo Flashing ${RED}failed${END}&& exit 1)
 
 run: build flash
 
 erase:
-	$(OPENOCD) "init; halt; ${ERASE_CMD}; reset halt; exit"
-	@echo Erased ${PINK}${CHIP}${END}
+	@$(OPENOCD) "init; halt; ${ERASE_CMD}; reset halt; exit" && echo Erased ${PINK}${CHIP}${END}|| (echo Erasing ${RED}failed${END}&& exit 1)
 
 # make dist TAG=1.2.0 names the copy <target>-1.2.0.hex
 DIST := $(TARGET)$(if $(TAG),-$(TAG))

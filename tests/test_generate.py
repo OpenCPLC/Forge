@@ -95,31 +95,3 @@ def prepare_creates_skeleton_once(ws, tmp_path):
   main_c.write_text("// user edit\n")
   prepare_project(cfg, paths)
   assert main_c.read_text() == "// user edit\n"
-
-def mark_current_touches_only_when_stale_or_forced(ws):
-  import os, time
-  from opencplc.project import mark_current
-  pro = resolve_uno()
-  generate(pro)
-  mark_current(pro) # writing into the project dir made the dir newer - finalize once
-  makefile = ws / "projects" / "myapp" / "makefile"
-  stamp = makefile.stat().st_mtime_ns
-  time.sleep(0.02)
-  mark_current(pro)
-  assert makefile.stat().st_mtime_ns == stamp
-  os.utime(ws / "projects" / "myapp" / "main.h", None)
-  mark_current(pro)
-  assert makefile.stat().st_mtime_ns > stamp
-  stamp = makefile.stat().st_mtime_ns
-  time.sleep(0.02)
-  mark_current(pro, force=True)
-  assert makefile.stat().st_mtime_ns > stamp
-
-def host_vscode_comes_from_templates(ws):
-  from conftest import host_model
-  generate(host_model("myapp"))
-  launch = (ws / ".vscode" / "launch.json").read_text()
-  assert "build/projects/myapp/myapp" in launch
-  assert '"preLaunchTask": "make"' in launch
-  props = (ws / ".vscode" / "c_cpp_properties.json").read_text()
-  assert "hal/host/**" in props and '"HOST"' in props

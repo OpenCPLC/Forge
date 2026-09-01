@@ -1,5 +1,10 @@
 # Changes `opencplc`
 
+## `0.3.1` Rebuild only what changed
+
+- A save no longer rebuilds the whole project, only what changed
+- Overwrites in `main.h` apply on every include
+
 ## `0.3.0` One workspace, many builds
 
 Breaking: fixed layout _(`projects/`, `opencplc/`, `build/`)_,

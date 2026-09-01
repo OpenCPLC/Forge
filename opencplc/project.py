@@ -10,7 +10,7 @@ project directory, the workspace dispatcher and the VS Code configuration.
 An unchanged file keeps its bytes and its mtime.
 """
 
-import os, platform, time
+import platform
 from datetime import datetime
 from xaeian import Print, Color as c, FILE, DIR, PATH, replace_end
 from .templates import load_templates
@@ -100,21 +100,6 @@ def prepare_project(cfg:dict, paths:dict):
     main_h = tpl.get("main.h", templates["main.h"])
     utils.create_file("main.h", main_h, paths["pro"], subs, color=c.BLUE)
 
-def mark_current(pro:Project, force:bool=False):
-  """
-  Touch the project makefile as the last step, so Make sees it newer than its inputs.
-
-  Always after -r (Make restarts on that mtime), otherwise only when a config input
-  is newer while the rendered content stayed identical.
-  """
-  makefile = PATH.resolve(f"{pro.pro_dir}/makefile")
-  inputs = [PATH.resolve(i) for i in (f"{pro.pro_dir}/main.h", *pro.project_dirs)]
-  newest = max((os.path.getmtime(i) for i in inputs if os.path.exists(i)), default=0)
-  if not force and newest <= os.path.getmtime(makefile): return
-  # Never older than an input, even one stamped in the future - Make would reload forever
-  stamp = max(time.time(), newest)
-  os.utime(makefile, (stamp, stamp))
-
 def generate(pro:Project, activate:bool=True):
   """
   Render the project makefile and linker from the model.
@@ -166,7 +151,8 @@ def generate(pro:Project, activate:bool=True):
     "${EXE_EXT}": ".exe" if is_windows else "",
     "${PROJECT_COLORED}": f"{c.GREY}./{pro.pro_dir[:-len(pro.name)]}{c.END}{c.BLUE}{pro.name}{c.END}",
     "${BUILD_COLORED}": f"{c.GREY}./{pro.build_dir[:-len(pro.name)]}{c.END}{c.BLUE}{pro.name}{c.END}",
-    "${GOLD}": c.GOLD, "${GREEN}": c.GREEN, "${PINK}": c.PINK, "${END}": c.END,
+    "${GOLD}": c.GOLD, "${GREEN}": c.GREEN, "${PINK}": c.PINK, "${VIOLET}": c.VIOLET,
+    "${RED}": c.RED, "${END}": c.END,
   }
   # Linker script and makefile live inside the project - parallel builds stay disjoint
   if pro.linker:

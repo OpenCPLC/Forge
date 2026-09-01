@@ -13,7 +13,7 @@ from xaeian import Print, Color as c, PATH
 from .config import URL_DEMO, DIR_EXAMPLES
 from .args import flag, load_args, check_flags
 from .templates import load_templates
-from .project import prepare_project, generate, mark_current
+from .project import prepare_project, generate
 from .resolver import resolve_project
 from .actions import info_actions, info_show
 from .configure import config_new, config_load, opt_normalize
@@ -112,7 +112,6 @@ def main():
   prepare_project(CFG, PATHS)
   model = resolve_project(CFG, PATHS, forge_cfg)
   generate(model, activate=not scoped)
-  mark_current(model, force=bool(args.reload))
 
 if __name__ == "__main__":
   main()

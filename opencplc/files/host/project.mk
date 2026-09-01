@@ -18,6 +18,7 @@ SHELL := cmd.exe
 MKDIR = if not exist "$(subst /,\,$1)" mkdir "$(subst /,\,$1)"
 RMDIR = if exist "$(subst /,\,$1)" rmdir /s /q "$(subst /,\,$1)"
 COPY = copy /y "$(subst /,\,$1)" "$(subst /,\,$2)" >nul
+TOUCH = type nul > "$(subst /,\,$1)"
 C_DEFS = -DHOST -D_WIN64
 LIBS = -lm -lbcrypt
 EXE = $(BUILD)/$(TARGET).exe
@@ -26,6 +27,7 @@ SHELL := /bin/sh
 MKDIR = mkdir -p $1
 RMDIR = rm -rf $1
 COPY = cp $1 $2
+TOUCH = touch $1
 C_DEFS = -DHOST -D_GNU_SOURCE
 LIBS = -lm -lpthread
 EXE = $(BUILD)/$(TARGET)
@@ -52,12 +54,18 @@ OBJECTS += $(patsubst %.c,$(BUILD)/project/%.o,$(PRO_C))
 
 CONFIG_DEPS = $(PROJECT)/main.h $(MAKEFILE_PATH)
 
-# Configuration changed: Forge rewrites this file and Make restarts once with fresh sources
+# Configuration changed: Forge rewrites this file and Make restarts once with fresh sources.
+# The stamp carries the reload time, so a rewrite with identical content rebuilds nothing.
 FORGE = opencplc
 CONFIG_INPUTS = $(wildcard ${CONFIG_INPUTS})
+FORGE_STAMP := $(BUILD)/.forge
 
-$(THIS_MAKEFILE): $(CONFIG_INPUTS)
+$(THIS_MAKEFILE): $(FORGE_STAMP) ;
+
+$(FORGE_STAMP): $(CONFIG_INPUTS)
+	@$(call MKDIR,$(BUILD))
 	@cd $(WORKSPACE) && $(FORGE) -r $(NAME)
+	@$(call TOUCH,$@)
 
 .DEFAULT_GOAL := build
 
@@ -75,7 +83,8 @@ $(EXE): $(OBJECTS)
 build: $(EXE)
 
 run: build
-	$(EXE)
+	@echo Running ${GREEN}$(notdir $(EXE))${END}
+	@$(EXE)
 
 # make dist TAG=1.2.0 names the copy <target>-1.2.0
 DIST := $(TARGET)$(if $(TAG),-$(TAG))$(suffix $(EXE))

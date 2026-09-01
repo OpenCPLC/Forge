@@ -68,6 +68,22 @@ CORE_FILES = [
   "plc/dvr/max31865.c", "plc/dvr/max31865.h",
   "plc/dvr/shtc3.c", "plc/dvr/shtc3.h",
 ]
+MAIN_H_UNO = """#define PRO_BOARD_UNO
+#define PRO_CHIP_STM32G0C1
+#define PRO_VERSION "1.0.0"
+#define PRO_FLASH_kB 492
+#define PRO_RAM_kB 144
+#define PRO_OPT_LEVEL "Og"
+#define LOG_LEVEL LOG_LEVEL_INF
+#define SYS_CLOCK_FREQ 59904000
+"""
+
+MAIN_H_HOST = """#define PRO_CHIP_HOST
+#define PRO_VERSION "1.0.0"
+#define PRO_OPT_LEVEL "O0"
+#define LOG_LEVEL LOG_LEVEL_INF
+"""
+
 UNO_INI = "chip = STM32G0C1\nflash_kB = 492\nram_kB = 144\nclock_Hz = 59904000\n" \
   "drivers = max31865\n"
 
@@ -81,7 +97,7 @@ def build_workspace(ws, core:str="1.0.0", project:str="myapp"):
   pro = ws / "projects" / project
   (pro / "util").mkdir(parents=True)
   (pro / "main.c").write_text("// main\n")
-  (pro / "main.h").write_text("// conf\n")
+  (pro / "main.h").write_text(MAIN_H_UNO)
   (pro / "util" / "extra.c").write_text("// extra\n")
   (ws / "opencplc.json").write_text("{}")
   return ws
@@ -143,11 +159,18 @@ def host_model(name:str="app"):
   from opencplc.resolver import resolve_project
   return resolve_project(host_cfg(name), ws_paths(name=name), {})
 
-def make_run(ws, project:str, *goals:str):
-  """GNU Make on a project directory; returns the CompletedProcess."""
+def make_run(ws, *goals:str, project:str="app"):
+  """GNU Make on a project directory, with the reload rule pointed at this interpreter."""
   import subprocess
-  return subprocess.run(["make", "-C", str(ws / "projects" / project), *goals],
-    capture_output=True, text=True)
+  env, forge = forge_env()
+  return subprocess.run(["make", "-C", str(ws / "projects" / project), *goals, forge],
+    capture_output=True, text=True, env=env)
+
+def make_root(ws, *goals:str):
+  """GNU Make in the workspace root, on the active project."""
+  import subprocess
+  env, forge = forge_env()
+  return subprocess.run(["make", *goals, forge], cwd=ws, capture_output=True, text=True, env=env)
 
 def write_file(path, text:str):
   path.parent.mkdir(parents=True, exist_ok=True)

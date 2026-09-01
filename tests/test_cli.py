@@ -34,8 +34,10 @@ def load_existing_project_by_name(ws, monkeypatch):
   assert "ACTIVE := projects/app" in (ws / "makefile").read_text()
 
 def project_without_pro_chip_is_rejected(ws, monkeypatch):
-  # the synthetic myapp carries a main.h with no PRO_CHIP definition
-  assert run_cli(monkeypatch, "myapp") == 1
+  broken = ws / "projects" / "broken"
+  broken.mkdir()
+  (broken / "main.h").write_text("// no PRO_CHIP here")
+  assert run_cli(monkeypatch, "broken") == 1
 
 def switching_projects_moves_the_dispatcher(ws, monkeypatch):
   run_cli(monkeypatch, "-n", "a", "-b", "Uno", "-y")
@@ -46,15 +48,12 @@ def switching_projects_moves_the_dispatcher(ws, monkeypatch):
   assert (ws / "projects" / "b" / "makefile").exists()  # other project keeps its files
 
 def reload_from_inside_project_dir_targets_that_project(ws, monkeypatch):
-  import time
   run_cli(monkeypatch, "-n", "deep/app", "-b", "Uno", "-y")
   run_cli(monkeypatch, "-n", "other", "-b", "Uno", "-y")
-  makefile = ws / "projects" / "deep" / "app" / "makefile"
-  stamp = makefile.stat().st_mtime_ns
-  time.sleep(0.02)
+  (ws / "projects" / "deep" / "app" / "makefile").unlink()
   monkeypatch.chdir(ws / "projects" / "deep" / "app")
   assert run_cli(monkeypatch, "-r") == 0
-  assert makefile.stat().st_mtime_ns > stamp          # reloaded and marked current
+  assert (ws / "projects" / "deep" / "app" / "makefile").exists()     # this project regenerated
   assert "ACTIVE := projects/other" in (ws / "makefile").read_text()  # workspace untouched
 
 def info_prints_resolved_config(ws, monkeypatch, capsys):
