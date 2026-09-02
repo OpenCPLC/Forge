@@ -3,9 +3,9 @@
     {
       "name": "${NAME}",
       "includePath": [
-        "${workspaceFolder}/${LIB_PATH}/hal/host/**",
-        "${workspaceFolder}/${LIB_PATH}/lib/**",
-        "${workspaceFolder}/${PRO_PATH}/**"
+        "${workspaceFolder}/${CORE_DIR}/hal/host/**",
+        "${workspaceFolder}/${CORE_DIR}/lib/**",
+        "${workspaceFolder}/${PRO_DIR}/**"
       ],
       "defines": [
         "HOST",

@@ -3,11 +3,12 @@
 """
 Ready boards discovered in the selected Core.
 
-A board is one directory `plc/brd/<name>/` holding an .ini manifest,
-the public header `opencplc_<name>.h` and its sources. The manifest describes the chip,
-the initial memory and clock of a new project and the drivers the board
-implementation requires. Nothing here is hard-coded in Forge: adding a board
-means adding a directory to Core.
+A board is one directory `brd/<name>/` holding an .ini manifest, the public header
+`opencplc_<name>.h` and its sources. The manifest gives the defaults of a new project:
+the chip, the initial memory and clock and the drivers the board implementation needs.
+Only `plc` is binding - a board that needs the PLC layer does not build without it,
+while a board that does not still accepts it from -P. Nothing here is hard-coded in
+Forge: adding a board means adding a directory to Core.
 """
 
 import os, re, sys, configparser
@@ -18,13 +19,14 @@ from .platforms import CHIPS
 p = Print()
 
 NAME_RX = re.compile(r"^[a-z0-9_]+$")
-REQUIRED = ("chip", "flash_kB", "ram_kB", "clock_Hz")
+REQUIRED = ("chip", "plc", "flash_kB", "ram_kB", "clock_Hz")
 
 @dataclass
 class Board:
-  """One ready board as described by its board.ini."""
+  """One ready board as described by its manifest."""
   name: str  # directory name, e.g. "uno"
   dir: str   # workspace-relative board directory
+  plc: bool  # board needs the PLC layer; a project may add it anyway with -P
   chip: str  # canonical chip key from CHIPS
   flash_kB: int
   ram_kB: int
@@ -50,6 +52,9 @@ def parse_board(ini_path:str, name:str, board_dir:str) -> Board:
   chip = next((k for k in CHIPS if k.upper() == section["chip"].upper()), None)
   if chip is None or CHIPS[chip]["platform"] != "STM32":
     raise ValueError(f"unknown chip '{section['chip']}'")
+  plc = section["plc"].strip().lower()
+  if plc not in ("true", "false"):
+    raise ValueError(f"field 'plc' is '{section['plc']}', use true or false")
   header = f"opencplc_{name}.h"
   if not os.path.isfile(os.path.join(os.path.dirname(ini_path), header)):
     raise ValueError(f"missing public header {header}")
@@ -60,14 +65,14 @@ def parse_board(ini_path:str, name:str, board_dir:str) -> Board:
   except ValueError as e:
     raise ValueError(f"numeric field: {e}") from e
   return Board(
-    name=name, dir=board_dir, chip=chip,
+    name=name, dir=board_dir, plc=plc == "true", chip=chip,
     flash_kB=flash_kB, ram_kB=ram_kB, freq_Hz=freq_Hz,
     drivers=parse_drivers(section.get("drivers", "")),
   )
 
 def load_boards(core_dir:str) -> dict[str, Board]:
-  """Boards of a Core checkout: every plc/brd/<name>/ with a manifest, keyed by name."""
-  brd = PATH.resolve(f"{core_dir}/plc/brd", read=False)
+  """Boards of a Core checkout: every brd/<name>/ with a manifest, keyed by name."""
+  brd = PATH.resolve(f"{core_dir}/brd", read=False)
   boards = {}
   if not os.path.isdir(brd): return boards
   for name in sorted(os.listdir(brd)):
@@ -89,6 +94,6 @@ def board_pick(boards:dict[str, Board], name:str) -> Board:
   if key is None:
     p.err(f"Unknown board: {c.MAGNTA}{name}{c.END}")
     listed = ", ".join(f"{c.TURQUS}{k}{c.END}" for k in boards) or f"{c.GREY}none{c.END}"
-    p.inf(f"Boards in this Core: {listed}, {c.TURQUS}Custom{c.END} for your own hardware")
+    p.inf(f"Boards in this Core: {listed}")
     sys.exit(1)
   return boards[key]

@@ -11,11 +11,12 @@
 
 #define PRO_BOARD_${BOARD}
 #define PRO_CHIP_${CHIP}
+#define PRO_PLC ${PLC}
 #define PRO_VERSION "${PRO_VERSION}"
 #define PRO_FLASH_kB ${FLASH}
 #define PRO_RAM_kB ${RAM}
 #define PRO_OPT_LEVEL "${OPT_LEVEL}"
-// #define PRO_DRIVERS "shtc3, hd44780"
+#define PRO_DRIVERS "${DRIVERS}"
 
 #endif
 

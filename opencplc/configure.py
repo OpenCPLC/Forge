@@ -3,11 +3,11 @@
 """
 Project configuration.
 
-A new project is configured from the -b/-c/-m/-o/-f flags; an existing one is
+A new project is configured from the -b/-c/-m/-o/-f/-D flags; an existing one is
 read back from the #define entries in its main.h. Ready boards come from the
-selected Core (`plc/brd/*/board.ini`), Custom is the PLC layer on your own
-hardware and no board at all is bare metal. Both paths return the same cfg
-dict that `resolve_project()` consumes.
+selected Core (`brd/*/*.ini`) and the board decides whether the PLC layer is in;
+without a board the project is bare metal, or PLC on your own hardware with -P.
+Both paths return the same cfg dict that `resolve_project()` consumes.
 """
 
 import sys
@@ -23,15 +23,22 @@ p = Print()
 
 OPT_DEFAULT = "Og"
 BOOT_FREQ_Hz = 16000000 # bare metal starts on the internal oscillator
-CUSTOM_FREQ_Hz = 64000000
+PLC_FREQ_Hz = 64000000  # the PLC layer sets the clock up before PLC_Main runs
 
-def board_fields(board:Board|None, custom:bool=False) -> dict:
-  """cfg entries that describe the board layer: none, Custom, or a ready board."""
+def board_fields(board:Board|None, memory:bool=True) -> dict:
+  """cfg entries that describe the board: no board at all, or a ready one."""
   if board is None:
-    return {"board": "custom" if custom else None, "board_dir": None, "board_drivers": []}
-  return {"board": board.name, "board_dir": board.dir,
-    "board_drivers": list(board.drivers), "flash_kB": board.flash_kB,
-    "ram_kB": board.ram_kB, "freq_Hz": board.freq_Hz}
+    return {"board": None, "board_dir": None, "board_drivers": []}
+  fields = {"board": board.name, "board_dir": board.dir,
+    "board_drivers": list(board.drivers), "freq_Hz": board.freq_Hz}
+  if memory: # a forced chip brings its own memory sizes, the board keeps its clock
+    fields |= {"flash_kB": board.flash_kB, "ram_kB": board.ram_kB}
+  return fields
+
+def boardless_freq(cfg:dict) -> int:
+  """Clock a project starts with when no board sets one."""
+  if cfg["platform"] != "STM32": return 0
+  return PLC_FREQ_Hz if cfg.get("plc") else BOOT_FREQ_Hz
 
 def config_new(args, PRO:dict, PATHS:dict, fw_ver:str, forge_cfg:dict) -> dict:
   """Config for a fresh project from -c/-b flags."""
@@ -57,29 +64,24 @@ def config_new(args, PRO:dict, PATHS:dict, fw_ver:str, forge_cfg:dict) -> dict:
     sys.exit(1)
   boards = load_boards(PATHS["fw"])
   board_name = (args.board or "").lower()
-  if board_name == "none": board_name = ""
   if not board_name and not args.chip:
     p.err(f"Specify board with flag {flag.b} or chip with flag {flag.c}")
     listed = ", ".join(f"{c.TURQUS}{k}{c.END}" for k in boards) or f"{c.GREY}none{c.END}"
-    p.inf(f"Boards in this Core: {listed}, {c.TURQUS}Custom{c.END} for your own hardware")
+    p.inf(f"Boards in this Core: {listed}")
+    p.inf(f"Own hardware: {flag.c} alone is bare metal, with {flag.P} adds the PLC layer")
     sys.exit(1)
-  if board_name == "custom":
-    if not args.chip:
-      p.err(f"{c.TURQUS}Custom{c.END} board requires chip {flag.c}")
-      sys.exit(1)
-    cfg = parse_chip(args.chip) | {"freq_Hz": CUSTOM_FREQ_Hz} | board_fields(None, custom=True)
-  elif board_name:
+  if board_name:
     board = board_pick(boards, board_name)
-    if args.chip and args.chip.upper() != board.chip:
-      p.err(f"Board {c.TURQUS}{board.name}{c.END} uses {c.PINK}{board.chip}{c.END}, "
-        f"not {c.MAGNTA}{args.chip}{c.END}")
-      p.inf(f"Leave out flag {flag.c} for a ready board")
-      sys.exit(1)
-    cfg = parse_chip(board.chip) | board_fields(board)
+    # The manifest only gives defaults: -c swaps the chip, -P adds the layer a board skips
+    forced = bool(args.chip) and args.chip.upper() != board.chip.upper()
+    cfg = (parse_chip(args.chip or board.chip) | board_fields(board, memory=not forced)
+      | {"plc": board.plc or args.plc})
   else:
-    cfg = parse_chip(args.chip)
-    cfg["freq_Hz"] = BOOT_FREQ_Hz if cfg["platform"] == "STM32" else 0
-    cfg |= board_fields(None)
+    cfg = parse_chip(args.chip) | board_fields(None) | {"plc": args.plc}
+    if cfg["plc"] and cfg["platform"] != "STM32":
+      p.err(f"Flag {flag.P} needs an STM32 chip {flag.c}")
+      sys.exit(1)
+    cfg["freq_Hz"] = boardless_freq(cfg)
   # Memory override: -m FLASH RAM [RESERVED]
   if args.memory and len(args.memory) >= 2:
     user_kB = args.memory[2] if len(args.memory) > 2 else 0
@@ -91,7 +93,7 @@ def config_new(args, PRO:dict, PATHS:dict, fw_ver:str, forge_cfg:dict) -> dict:
     "fw_ver": fw_ver,
     "opt_level": args.opt_level or OPT_DEFAULT,
     "log_level": "LOG_LEVEL_INF",
-    "project_drivers": [],
+    "project_drivers": parse_drivers(args.dvr),
   }
 
 def flags_reject(args):
@@ -106,6 +108,8 @@ def flags_reject(args):
   if args.chip: used.append((flag.c, "PRO_CHIP_<CHIP>"))
   if args.memory: used.append((flag.m, "PRO_FLASH_kB / PRO_RAM_kB"))
   if args.opt_level: used.append((flag.o, "PRO_OPT_LEVEL"))
+  if args.plc: used.append((flag.P, "PRO_PLC"))
+  if args.dvr: used.append((flag.D, "PRO_DRIVERS"))
   if not used: return
   used_flag, define = used[0]
   p.err(f"Flag {used_flag} only configures a new project")
@@ -133,8 +137,8 @@ def config_load(args, PRO:dict, PATHS:dict, fw_ver:str, forge_cfg:dict) -> dict:
   lines = utils.lines_clear(lines, "//")
   info = utils.get_vars(lines, ["PRO_BOARD", "PRO_CHIP"], "_", "#define", required=False)
   info |= utils.get_vars(lines, ["PRO_VERSION", "PRO_FLASH_kB", "PRO_RAM_kB",
-    "PRO_OPT_LEVEL", "PRO_DRIVERS", "LOG_LEVEL", "SYS_CLOCK_FREQ"], " ", "#define",
-    required=False)
+    "PRO_OPT_LEVEL", "PRO_PLC", "PRO_DRIVERS", "LOG_LEVEL", "SYS_CLOCK_FREQ"], " ",
+    "#define", required=False)
   if not info.get("PRO_CHIP"):
     p.err(f"File {c.BLUE}main.h{c.END} missing {c.SKY}PRO_CHIP{c.END} definition")
     p.inf(f"Check {c.GREY}{PATHS['pro']}/{c.END}{c.BLUE}main.h{c.END}")
@@ -142,6 +146,12 @@ def config_load(args, PRO:dict, PATHS:dict, fw_ver:str, forge_cfg:dict) -> dict:
   pro_ver = info.get("PRO_VERSION", fw_ver)
   stored_board = info.get("PRO_BOARD", "").lower()
   if stored_board == "none": stored_board = ""
+  if stored_board == "custom":
+    p.err(f"{c.MAGNTA}Custom{c.END} is not a board, the PLC layer is a project setting")
+    p.run(f"In {c.BLUE}main.h{c.END} set {c.SKY}PRO_BOARD_None{c.END} "
+      f"with {c.SKY}PRO_PLC true{c.END}")
+    sys.exit(1)
+  stored_plc = info.get("PRO_PLC", "").strip().lower()
   cfg = parse_chip(info["PRO_CHIP"]) | {
     "pro_name": args.name,
     "pro_ver": pro_ver,
@@ -180,21 +190,20 @@ def config_load(args, PRO:dict, PATHS:dict, fw_ver:str, forge_cfg:dict) -> dict:
   cfg["fw_ver"] = use_ver
   PATHS["fw"] = PATH.resolve(f"{PATHS['framework']}/{use_ver}", read=False)
   # Board layer comes from the Core that actually builds this project
-  if stored_board == "custom":
-    cfg |= board_fields(None, custom=True)
-    cfg["freq_Hz"] = CUSTOM_FREQ_Hz
-  elif stored_board:
+  if stored_board:
     board = board_pick(load_boards(PATHS["fw"]), stored_board)
-    if board.chip != cfg["chip"]:
-      p.err(f"{c.BLUE}main.h{c.END} selects {c.PINK}{cfg['chip']}{c.END}, "
-        f"but board {c.TURQUS}{board.name}{c.END} uses {c.PINK}{board.chip}{c.END}")
-      p.run(f"Fix {c.SKY}PRO_CHIP_{board.chip}{c.END} or {c.SKY}PRO_BOARD_*{c.END} "
-        f"in {c.BLUE}main.h{c.END}")
+    # PRO_CHIP_* wins over the manifest, PRO_FLASH_kB and PRO_RAM_kB win below
+    cfg |= board_fields(board, memory=board.chip == cfg["chip"])
+    # A main.h without PRO_PLC leaves the layer to the board, as at creation
+    cfg["plc"] = stored_plc == "true" if stored_plc else board.plc
+    if board.plc and not cfg["plc"]:
+      p.err(f"Board {c.TURQUS}{board.name}{c.END} runs on the PLC layer")
+      p.run(f"Set {c.SKY}PRO_PLC true{c.END} in {c.BLUE}main.h{c.END}")
       sys.exit(1)
-    cfg |= board_fields(board)
   else:
     cfg |= board_fields(None)
-    cfg["freq_Hz"] = BOOT_FREQ_Hz if cfg["platform"] == "STM32" else 0
+    cfg["plc"] = stored_plc == "true"
+    cfg["freq_Hz"] = boardless_freq(cfg)
   # Persistent values of main.h win over board and chip defaults
   cfg["flash_kB"] = int(info.get("PRO_FLASH_kB", cfg["flash_kB"]))
   cfg["ram_kB"] = int(info.get("PRO_RAM_kB", cfg["ram_kB"]))

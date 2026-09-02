@@ -9,13 +9,15 @@ without touching any project. `info_show()` prints the resolved model for -i.
 
 import sys, subprocess
 from xaeian import Print, Color as c, FILE, DIR, PATH, replace_end
-from .config import URL_FTP, URL_FORGE
+from .config import URL_FTP, URL_FORGE, EXE_NAME
 from .args import flag
 from .resolver import Project
 from .workspace import ensure_refs
 from . import utils, __version__
 
 p = Print()
+
+FROZEN = getattr(sys, "frozen", False) # a PyInstaller build, not a Python package
 
 def memory_usage(elf:str) -> tuple[int, int]:
   """FLASH and RAM bytes taken by an .elf: text+data and data+bss from arm-none-eabi-size."""
@@ -34,8 +36,49 @@ def size_report(elf:str, flash_kB:int, ram_kB:int):
   print(usage_line("FLASH", flash, flash_kB, c.VIOLET))
   print(usage_line("RAM", ram, ram_kB, c.GREEN))
 
+def update_forge(args):
+  """
+  -u: swap the running executable for a release from GitHub.
+
+  The new file goes next to the running one, wherever that is, never into the workspace.
+  Windows keeps a lock on a running image, so the old executable is renamed aside and
+  dropped on the next run; the download happens first, so nothing moves without the bytes.
+  """
+  if not FROZEN:
+    p.err("Forge runs here as a Python package")
+    p.run(f"Update it with {c.CYAN}pip install -U opencplc{c.END}")
+    sys.exit(1)
+  latest = args.update in ("last", "latest")
+  utils.install_git(args.yes)
+  versions = utils.git_get_refs(URL_FORGE, "--tags")
+  if not versions:
+    p.err(f"No access to {c.TEAL}GitHub{c.END}")
+    sys.exit(1)
+  target = utils.version_real(args.update, versions[0])
+  if target == __version__:
+    kind = "latest" if latest else "target"
+    p.ok(f"Forge is at {kind} version {c.VIOLET}{__version__}{c.END}")
+    return
+  p.inf(f"Installed: {c.GREY}{__version__}{c.END}")
+  p.inf(f"{'Latest' if latest else 'Target'}: {c.VIOLET}{target}{c.END}")
+  if not args.yes and not utils.is_yes(f"{'Update' if latest else 'Replace'} Forge"):
+    sys.exit(1)
+  exe = PATH.resolve(f"{PATH.script_dir()}/{EXE_NAME}", read=False)
+  old = f"{exe}.old"
+  try:
+    data = utils.download(f"{URL_FORGE}/releases/download/{target}/{EXE_NAME}")
+    DIR.move(exe, old)
+    FILE.save(exe, data)
+  except Exception as e:
+    if not FILE.exists(exe) and FILE.exists(old): DIR.move(old, exe)
+    p.err(f"Update failed: {e}")
+    sys.exit(1)
+  p.ok(f"Forge updated to {c.VIOLET}{target}{c.END}")
+
 def info_actions(args, forge_cfg:dict) -> bool:
   """One-shot actions: -v, -F, -hl, -u, -a, -z. True when any of them ran."""
+  if FROZEN:
+    FILE.remove(f"{PATH.script_dir()}/{EXE_NAME}.old") # what an earlier -u replaced
   ran = False
   if args.size:
     size_report(args.size[0], int(args.size[1]), int(args.size[2]))
@@ -60,22 +103,7 @@ def info_actions(args, forge_cfg:dict) -> bool:
     print(utils.c_code_enum(args.hash_list, args.hash_title, args.hash_define))
     ran = True
   if args.update:
-    new_ver = args.update in ("last", "latest")
-    utils.install_git(args.yes)
-    versions = utils.git_get_refs(URL_FORGE, "--tags")
-    if not versions:
-      p.err(f"No access to {c.TEAL}GitHub{c.END}")
-      sys.exit(1)
-    target = utils.version_real(args.update, versions[0])
-    if target != __version__:
-      p.inf(f"Installed: {c.GREY}{__version__}{c.END}")
-      p.inf(f"{'Latest' if new_ver else 'Target'}: {c.VIOLET}{target}{c.END}")
-      p.run(f"{'Update' if new_ver else 'Replace'} required")
-      utils.install("opencplc.exe", f"{URL_FORGE}/releases/download/{target}", ".",
-        args.yes, False)
-    else:
-      kind = "latest" if new_ver else "target"
-      p.ok(f"Forge is at {kind} version {c.VIOLET}{__version__}{c.END}")
+    update_forge(args)
     ran = True
   if args.assets:
     DIR.ensure(args.assets)
@@ -97,6 +125,7 @@ def info_show(pro:Project):
   p.inf(f"Project: {c.GREY}{path_prefix}{c.END}{c.BLUE}{pro.name}{c.END}")
   p.gap(f"Platform: {c.PINK}{pro.platform}{c.END}")
   p.gap(f"Board {flag.b}: {c.TURQUS}{str(pro.board or 'None').capitalize()}{c.END}")
+  p.gap(f"PLC layer {flag.P}: {c.TURQUS}{'yes' if pro.plc else 'no'}{c.END}")
   p.gap(f"Chip {flag.c}: {c.PINK}{pro.chip}{c.END}")
   p.gap(f"Project version: {c.VIOLET}{pro.pro_ver}{c.END}")
   p.gap(f"Framework version: {c.VIOLET}{pro.core_ref}{c.END}")
@@ -108,7 +137,7 @@ def info_show(pro:Project):
   p.gap(f"Log level: {c.SKY}{pro.log_level.replace('LOG_LEVEL_', '')}{c.END}")
   if pro.board:
     p.gap(f"Board drivers: {c.TURQUS}{', '.join(pro.board_drivers) or 'none'}{c.END}")
-    p.gap(f"Project drivers: {c.BLUE}{', '.join(pro.project_drivers) or 'none'}{c.END}")
+  p.gap(f"Project drivers {flag.D}: {c.BLUE}{', '.join(pro.project_drivers) or 'none'}{c.END}")
   if pro.stlink:
     p.gap(f"ST-Link: {c.GOLD}{pro.stlink}{c.END}")
   p.gap(f"Last modification: {utils.last_modification(pro.pro_dir, ext=['.c','.h'])}")

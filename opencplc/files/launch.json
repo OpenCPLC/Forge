@@ -15,7 +15,7 @@
     {
       "name": "Debug",
       "cwd": "${workspaceRoot}",
-      "executable": "${BUILD_PATH}/${TARGET}.elf",
+      "executable": "${BUILD_DIR}/${TARGET}.elf",
       "request": "launch",
       "type": "cortex-debug",
       "servertype": "openocd",
@@ -25,7 +25,7 @@
         "target/${OPENOCD_TARGET}.cfg"
       ],
       "openOCDPreConfigLaunchCommands": ["adapter serial ${STLINK}"],
-      "svdFile": "${LIB_PATH}/hal/svd/${SVD}",
+      "svdFile": "${CORE_DIR}/hal/svd/${SVD}",
       "preLaunchTask": "make"
     }
   ]

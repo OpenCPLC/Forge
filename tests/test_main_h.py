@@ -9,6 +9,8 @@ UNO_SUBS = {
   "${NAME}": "myapp",
   "${DATE}": "2026-01-01",
   "${BOARD}": "UNO",
+  "${PLC}": "true",
+  "${DRIVERS}": "max31865",
   "${CHIP}": "STM32G0C1",
   "${PRO_VERSION}": "1.0.2",
   "${FLASH}": 492,
@@ -22,6 +24,8 @@ def embedded_main_h_roundtrip():
   info = parse_main_h(render(load_template("main.h"), UNO_SUBS))
   assert info["PRO_BOARD"] == "UNO"
   assert info["PRO_CHIP"] == "STM32G0C1"
+  assert info["PRO_PLC"] == "true"
+  assert info["PRO_DRIVERS"] == "max31865"
   assert info["PRO_VERSION"] == "1.0.2"
   assert info["PRO_FLASH_kB"] == "492"
   assert info["PRO_RAM_kB"] == "144"
@@ -30,9 +34,11 @@ def embedded_main_h_roundtrip():
   assert info["SYS_CLOCK_FREQ"] == "59904000"
 
 def bare_metal_board_reads_as_none():
-  subs = UNO_SUBS | {"${BOARD}": "NONE", "${CHIP}": "STM32G081", "${FREQ}": 16000000}
+  subs = UNO_SUBS | {"${BOARD}": "None", "${PLC}": "false",
+    "${CHIP}": "STM32G081", "${FREQ}": 16000000}
   info = parse_main_h(render(load_template("main.h"), subs))
-  assert info["PRO_BOARD"] == "NONE"
+  assert info["PRO_BOARD"] == "None"
+  assert info["PRO_PLC"] == "false"
   assert info["PRO_CHIP"] == "STM32G081"
 
 def host_main_h_roundtrip():

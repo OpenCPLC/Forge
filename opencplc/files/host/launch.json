@@ -5,7 +5,7 @@
       "name": "Debug",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${workspaceRoot}/${BUILD_PATH}/${TARGET}${EXE_EXT}",
+      "program": "${workspaceRoot}/${BUILD_DIR}/${TARGET}${EXE_EXT}",
       "cwd": "${workspaceFolder}",
       "MIMode": "gdb",
       "miDebuggerPath": "gdb",

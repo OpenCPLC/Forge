@@ -23,15 +23,16 @@ def core_and_project_sources_are_separate(ws):
 
 def selected_board_stays_other_boards_drop(ws):
   pro = resolve_uno()
-  assert "opencplc/1.0.0/plc/brd/uno/opencplc_uno.c" in pro.core_c_sources
+  assert "opencplc/1.0.0/brd/uno/opencplc_uno.c" in pro.core_c_sources
   assert not any("brd/eco" in f for f in pro.core_c_sources)
-  assert any(d.endswith("plc/brd/uno") for d in pro.include_dirs)
+  assert any(d.endswith("brd/uno") for d in pro.include_dirs)
   assert not any("brd/eco" in d for d in pro.include_dirs)
 
 def bare_metal_excludes_plc_layer(ws):
-  cfg = uno_cfg() | {"board": None, "board_dir": None, "board_drivers": []}
+  cfg = uno_cfg() | {"board": None, "board_dir": None, "board_drivers": [], "plc": False}
   pro = resolve_project(cfg, ws_paths(), {})
   assert not any("/plc/" in f for f in pro.core_c_sources)
+  assert not any("/brd/" in f for f in pro.core_c_sources)
   assert "OpenCPLC" not in pro.defines
 
 def sources_are_sorted(ws):
@@ -60,31 +61,58 @@ def project_dirs_cover_root_and_source_folders(ws):
 
 def board_drivers_select_core_driver_sources(ws):
   pro = resolve_uno()
-  assert "opencplc/1.0.0/plc/dvr/max31865.c" in pro.core_c_sources
+  assert "opencplc/1.0.0/dvr/max31865.c" in pro.core_c_sources
   assert not any("shtc3" in f for f in pro.core_c_sources)
   assert pro.board_drivers == ["max31865"]
-  assert any(d.endswith("plc/dvr") for d in pro.include_dirs)
+  assert any(d.endswith("/dvr") for d in pro.include_dirs)
 
 def project_drivers_extend_the_board_set(ws):
   cfg = uno_cfg() | {"project_drivers": ["shtc3", "max31865"]}
   pro = resolve_project(cfg, ws_paths(), {})
-  assert "opencplc/1.0.0/plc/dvr/shtc3.c" in pro.core_c_sources
-  assert "opencplc/1.0.0/plc/dvr/max31865.c" in pro.core_c_sources
+  assert "opencplc/1.0.0/dvr/shtc3.c" in pro.core_c_sources
+  assert "opencplc/1.0.0/dvr/max31865.c" in pro.core_c_sources
 
 def unknown_driver_exits(ws):
   cfg = uno_cfg() | {"project_drivers": ["ghost"]}
   with pytest.raises(SystemExit):
     resolve_project(cfg, ws_paths(), {})
 
-def custom_board_keeps_plc_layer_without_any_board_dir(ws):
-  cfg = uno_cfg() | {"board": "custom", "board_dir": None, "board_drivers": []}
+def plc_layer_without_any_board(ws):
+  """-P on your own hardware: the PLC layer compiles, no board directory does."""
+  cfg = uno_cfg() | {"board": None, "board_dir": None, "board_drivers": []}
   pro = resolve_project(cfg, ws_paths(), {})
   assert "opencplc/1.0.0/plc/plc.c" in pro.core_c_sources
-  assert not any("/plc/brd/" in f for f in pro.core_c_sources)
+  assert not any("/brd/" in f for f in pro.core_c_sources)
+  assert "OpenCPLC" in pro.defines
 
 def drivers_are_not_validated_when_core_has_no_dvr(ws, tmp_path):
   import shutil
-  shutil.rmtree(tmp_path / "opencplc" / "1.0.0" / "plc" / "dvr")
+  shutil.rmtree(tmp_path / "opencplc" / "1.0.0" / "dvr")
   cfg = uno_cfg() | {"project_drivers": ["ghost"]}
   pro = resolve_project(cfg, ws_paths(), {}) # a Core before plc/dvr: names are informational
   assert pro.board_drivers == ["max31865"]
+
+def bare_metal_can_use_drivers(ws):
+  """Drivers live outside plc/, so a project without a board still compiles them."""
+  cfg = uno_cfg() | {"board": None, "board_dir": None, "board_drivers": [],
+    "plc": False, "project_drivers": ["shtc3"]}
+  pro = resolve_project(cfg, ws_paths(), {})
+  assert "opencplc/1.0.0/dvr/shtc3.c" in pro.core_c_sources
+  assert any(d.endswith("/dvr") for d in pro.include_dirs)
+  assert not any("/plc/" in f for f in pro.core_c_sources)
+
+def unselected_drivers_stay_out_of_a_bare_metal_build(ws):
+  cfg = uno_cfg() | {"board": None, "board_dir": None, "board_drivers": [], "project_drivers": []}
+  pro = resolve_project(cfg, ws_paths(), {})
+  assert not any("/dvr/" in f for f in pro.core_c_sources)
+  assert not any(d.endswith("/dvr") for d in pro.include_dirs)
+
+def a_board_prefix_is_not_the_board(ws, tmp_path):
+  """Selecting uno never drags in uno_mini."""
+  from conftest import make_board, INI
+  mini = make_board(tmp_path / "opencplc" / "1.0.0", "uno_mini")
+  (mini / "opencplc_uno_mini.c").write_text("// mini\n")
+  pro = resolve_uno()
+  assert "opencplc/1.0.0/brd/uno/opencplc_uno.c" in pro.core_c_sources
+  assert not any("uno_mini" in f for f in pro.core_c_sources)
+  assert not any("uno_mini" in d for d in pro.include_dirs)

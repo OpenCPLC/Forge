@@ -23,6 +23,10 @@ def mk_list(items:list[str]) -> str:
   """Backslash-continued makefile list, one entry per line."""
   return " \\\n".join(items)
 
+def colored_path(path:str, name:str) -> str:
+  """Workspace-relative path with the project name picked out of it."""
+  return f"{c.GREY}./{path[:-len(name)]}{c.END}{c.BLUE}{name}{c.END}"
+
 def rel_from(items:list[str], base:str) -> list[str]:
   """Paths stripped of a directory prefix, e.g. core paths relative to the Core dir."""
   return [item[len(base) + 1:] for item in items if item.startswith(base + "/")]
@@ -53,10 +57,11 @@ def project_header(cfg:dict, paths:dict):
   path_prefix = replace_end(rel_path, cfg["pro_name"], "")
   p.inf(f"Project {c.GREY}{path_prefix}{c.END}{c.BLUE}{cfg['pro_name']}{c.END}")
   is_windows = platform.system() == "Windows"
+  plc_msg = f" {c.TURQUS}PLC{c.END}" if cfg.get("plc") else ""
   if cfg.get("board"):
-    chip_msg = f"{c.TURQUS}{cfg['board'].capitalize()}{c.END} PLC"
+    chip_msg = f"{c.TURQUS}{cfg['board'].capitalize()}{c.END}{plc_msg}"
   elif cfg["platform"] == "STM32":
-    chip_msg = f"{c.PINK}{cfg['chip']}{c.END}"
+    chip_msg = f"{c.PINK}{cfg['chip']}{c.END}{plc_msg}"
   else:
     host_os = "Windows" if is_windows else "Linux"
     chip_msg = f"{c.PINK}{cfg['platform']}{c.END} {c.GREY}({host_os}){c.END}"
@@ -69,16 +74,17 @@ def prepare_project(cfg:dict, paths:dict):
   tpl = templates.get(cfg["hal"], {})
   project_header(cfg, paths)
   DIR.ensure(paths["pro"])
-  if cfg.get("board"):
+  if cfg.get("plc"):
     DIR.ensure(f"{paths['fw']}/plc")
-  custom = bool(cfg.get("board")) and cfg["board"].lower() == "custom"
   subs = {
     "${NAME}": cfg["pro_name"],
     "${DATE}": datetime.now().strftime("%Y-%m-%d"),
     "${PRO_VERSION}": cfg["pro_ver"],
     "${OPT_LEVEL}": cfg.get("opt_level", "Og" if is_embedded else "O2"),
     "${LOG_LEVEL}": cfg.get("log_level", "LOG_LEVEL_INF"),
-    "${BOARD}": (cfg.get("board") or "NONE").upper(),
+    "${BOARD}": cfg["board"].upper() if cfg.get("board") else "None",
+    "${PLC}": "true" if cfg.get("plc") else "false",
+    "${DRIVERS}": ", ".join(cfg.get("project_drivers", [])),
     "${CHIP}": cfg.get("chip", "").upper(),
     "${FLASH}": cfg["flash_kB"],
     "${RAM}": cfg["ram_kB"],
@@ -94,14 +100,16 @@ def prepare_project(cfg:dict, paths:dict):
   }
   if not FILE.exists(f"{paths['pro']}/main.c"):
     if is_embedded:
-      # A ready board ships PLC_Main; Custom and bare metal start from the plain skeleton
-      main_c = templates["main.c"] if cfg.get("board") and not custom else templates["main-none.c"]
+      # A board on the PLC layer ships PLC_Main; the rest starts from the plain skeleton
+      on_plc = cfg.get("board") and cfg.get("plc")
+      main_c = templates["main.c"] if on_plc else templates["main-none.c"]
     else:
       main_c = tpl.get("main.c", templates["main-none.c"])
     utils.create_file("main.c", main_c, paths["pro"], subs, color=c.BLUE)
   if not FILE.exists(f"{paths['pro']}/main.h"):
     main_h = tpl.get("main.h", templates["main.h"])
-    utils.create_file("main.h", main_h, paths["pro"], subs, color=c.BLUE)
+    drivers_drop = "" if cfg.get("project_drivers") else "PRO_DRIVERS"
+    utils.create_file("main.h", main_h, paths["pro"], subs, remove_line=drivers_drop, color=c.BLUE)
 
 def generate(pro:Project, activate:bool=True):
   """
@@ -121,10 +129,8 @@ def generate(pro:Project, activate:bool=True):
     "${STLINK}": pro.stlink,
     "${UP_PATH}": up_path,
     "${CORE_DIR}": pro.core_dir,
+    "${PRO_DIR}": pro.pro_dir,
     "${BUILD_DIR}": pro.build_dir,
-    "${LIB_PATH}": pro.core_dir,
-    "${PRO_PATH}": pro.pro_dir,
-    "${BUILD_PATH}": pro.build_dir,
     "${CORE_C}": mk_list(rel_from(pro.core_c_sources, pro.core_dir)),
     "${CORE_S}": mk_list(rel_from(pro.core_asm_sources, pro.core_dir)),
     "${PRO_C}": mk_list(rel_from(pro.project_c_sources, pro.pro_dir)),
@@ -135,7 +141,7 @@ def generate(pro:Project, activate:bool=True):
     "${MCU_FLAGS}": pro.mcu_flags,
     "${OPT_LEVEL}": pro.opt_level,
     "${LOG_LEVEL}": pro.log_level,
-    "${BOARD}": (pro.board or "NONE").upper(),
+    "${BOARD}": pro.board.upper() if pro.board else "None",
     "${BOARD_LOWER}": (pro.board or "").lower(),
     "${CHIP}": pro.chip,
     "${FLASH}": pro.flash_kB,
@@ -152,8 +158,8 @@ def generate(pro:Project, activate:bool=True):
     "${OPENOCD_TARGET}": pro.openocd_target,
     "${ERASE_CMD}": pro.erase_command,
     "${EXE_EXT}": ".exe" if is_windows else "",
-    "${PROJECT_COLORED}": f"{c.GREY}./{pro.pro_dir[:-len(pro.name)]}{c.END}{c.BLUE}{pro.name}{c.END}",
-    "${BUILD_COLORED}": f"{c.GREY}./{pro.build_dir[:-len(pro.name)]}{c.END}{c.BLUE}{pro.name}{c.END}",
+    "${PROJECT_COLORED}": colored_path(pro.pro_dir, pro.name),
+    "${BUILD_COLORED}": colored_path(pro.build_dir, pro.name),
     "${GOLD}": c.GOLD, "${GREEN}": c.GREEN, "${PINK}": c.PINK, "${VIOLET}": c.VIOLET,
     "${RED}": c.RED, "${END}": c.END,
   }
@@ -165,20 +171,17 @@ def generate(pro:Project, activate:bool=True):
   utils.create_file("makefile", makefile, pro.pro_dir, subs)
   if not activate: return
   # Workspace dispatcher - `make` at the root builds the active project
-  prefix = pro.pro_dir[:-len(pro.name)]
   utils.create_file("makefile", templates["workspace.mk"], "", {
     "${ACTIVE}": pro.pro_dir,
-    "${ACTIVE_COLORED}": f"{c.GREY}./{prefix}{c.END}{c.BLUE}{pro.name}{c.END}",
+    "${ACTIVE_COLORED}": colored_path(pro.pro_dir, pro.name),
     "${GOLD}": c.GOLD, "${CMD}": c.CYAN, "${GREY}": c.GREY, "${END}": c.END,
     "${ERR}": f"{c.RED}ERR{c.END}",
   })
   DIR.ensure(".vscode")
   props = tpl.get("properties.json", templates["properties.json"])
-  if not pro.board:
-    props = "\n".join(ln for ln in props.splitlines()
-      if "/plc/" not in ln and '"OpenCPLC"' not in ln)
-  elif pro.board.lower() == "custom":
-    props = "\n".join(ln for ln in props.splitlines() if "/plc/brd/" not in ln)
+  drop = ([] if pro.plc else ["/plc/", '"OpenCPLC"']) + ([] if pro.board else ["/brd/"])
+  if drop:
+    props = "\n".join(ln for ln in props.splitlines() if not any(d in ln for d in drop))
   utils.create_file("c_cpp_properties.json", props, ".vscode", subs)
   launch = tpl.get("launch.json", templates["launch.json"])
   stlink_drop = "" if pro.stlink else "openOCDPreConfigLaunchCommands"

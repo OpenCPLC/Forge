@@ -3,16 +3,16 @@
     {
       "name": "${NAME}",
       "includePath": [
-        "${workspaceFolder}/${LIB_PATH}/hal/arm/**",
-        "${workspaceFolder}/${LIB_PATH}/hal/stm32/**",
-        "${workspaceFolder}/${LIB_PATH}/hal/${HAL}/**",
-        "${workspaceFolder}/${LIB_PATH}/lib/**",
-        "${workspaceFolder}/${LIB_PATH}/plc/brd/*",
-        "${workspaceFolder}/${LIB_PATH}/plc/brd/${BOARD_LOWER}/**",
-        "${workspaceFolder}/${LIB_PATH}/plc/com/**",
-        "${workspaceFolder}/${LIB_PATH}/plc/per/**",
-        "${workspaceFolder}/${LIB_PATH}/plc/dvr/**",
-        "${workspaceFolder}/${PRO_PATH}/**"
+        "${workspaceFolder}/${CORE_DIR}/hal/arm/**",
+        "${workspaceFolder}/${CORE_DIR}/hal/stm32/**",
+        "${workspaceFolder}/${CORE_DIR}/hal/${HAL}/**",
+        "${workspaceFolder}/${CORE_DIR}/lib/**",
+        "${workspaceFolder}/${CORE_DIR}/dvr/**",
+        "${workspaceFolder}/${CORE_DIR}/brd",
+        "${workspaceFolder}/${CORE_DIR}/brd/${BOARD_LOWER}/**",
+        "${workspaceFolder}/${CORE_DIR}/plc/com/**",
+        "${workspaceFolder}/${CORE_DIR}/plc/per/**",
+        "${workspaceFolder}/${PRO_DIR}/**"
       ],
       "defines": [
         "OpenCPLC",

@@ -46,7 +46,8 @@ def parse_main_h(text:str) -> dict:
   lines = utils.lines_clear(text.splitlines(), "//")
   info = utils.get_vars(lines, ["PRO_BOARD", "PRO_CHIP"], "_", "#define", required=False)
   info |= utils.get_vars(lines, ["PRO_VERSION", "PRO_FLASH_kB", "PRO_RAM_kB",
-    "PRO_OPT_LEVEL", "LOG_LEVEL", "SYS_CLOCK_FREQ"], " ", "#define", required=False)
+    "PRO_OPT_LEVEL", "PRO_PLC", "PRO_DRIVERS", "LOG_LEVEL", "SYS_CLOCK_FREQ"], " ",
+    "#define", required=False)
   return info
 
 def parse_dispatcher(text:str) -> str:
@@ -62,14 +63,15 @@ CORE_FILES = [
   "hal/stm32g0/uart.c", "hal/stm32g0/uart.h",
   "lib/log/log.c", "lib/log/log.h",
   "plc/plc.c", "plc/plc.h",
-  "plc/brd/opencplc.h",
-  "plc/brd/uno/opencplc_uno.c", "plc/brd/uno/opencplc_uno.h",
-  "plc/brd/eco/opencplc_eco.c", "plc/brd/eco/opencplc_eco.h",
-  "plc/dvr/max31865.c", "plc/dvr/max31865.h",
-  "plc/dvr/shtc3.c", "plc/dvr/shtc3.h",
+  "brd/opencplc.h",
+  "brd/uno/opencplc_uno.c", "brd/uno/opencplc_uno.h",
+  "brd/eco/opencplc_eco.c", "brd/eco/opencplc_eco.h",
+  "dvr/max31865.c", "dvr/max31865.h",
+  "dvr/shtc3.c", "dvr/shtc3.h",
 ]
 MAIN_H_UNO = """#define PRO_BOARD_UNO
 #define PRO_CHIP_STM32G0C1
+#define PRO_PLC true
 #define PRO_VERSION "1.0.0"
 #define PRO_FLASH_kB 492
 #define PRO_RAM_kB 144
@@ -84,8 +86,8 @@ MAIN_H_HOST = """#define PRO_CHIP_HOST
 #define LOG_LEVEL LOG_LEVEL_INF
 """
 
-UNO_INI = "chip = STM32G0C1\nflash_kB = 492\nram_kB = 144\nclock_Hz = 59904000\n" \
-  "drivers = max31865\n"
+UNO_INI = "chip = STM32G0C1\nplc = true\nflash_kB = 492\nram_kB = 144\n" \
+  "clock_Hz = 59904000\ndrivers = max31865\n"
 
 def build_workspace(ws, core:str="1.0.0", project:str="myapp"):
   """Synthetic workspace: minimal Core tree plus one project."""
@@ -93,7 +95,7 @@ def build_workspace(ws, core:str="1.0.0", project:str="myapp"):
     fp = ws / "opencplc" / core / rel
     fp.parent.mkdir(parents=True, exist_ok=True)
     fp.write_text(f"// {rel}\n")
-  (ws / "opencplc" / core / "plc" / "brd" / "uno" / "opencplc_uno.ini").write_text(UNO_INI)
+  (ws / "opencplc" / core / "brd" / "uno" / "opencplc_uno.ini").write_text(UNO_INI)
   pro = ws / "projects" / project
   (pro / "util").mkdir(parents=True)
   (pro / "main.c").write_text("// main\n")
@@ -103,11 +105,12 @@ def build_workspace(ws, core:str="1.0.0", project:str="myapp"):
   return ws
 
 def uno_cfg(name:str="myapp", core:str="1.0.0") -> dict:
-  """cfg of an Uno project, as configure.py would build it from board.ini."""
+  """cfg of an Uno project, as configure.py would build it from the manifest."""
   return parse_chip("STM32G0C1") | {
     "pro_name": name, "pro_ver": core, "fw_ver": core,
     "opt_level": "Og", "log_level": "LOG_LEVEL_INF",
-    "board": "uno", "board_dir": f"opencplc/{core}/plc/brd/uno", "board_drivers": ["max31865"],
+    "board": "uno", "board_dir": f"opencplc/{core}/brd/uno", "board_drivers": ["max31865"],
+    "plc": True,
     "project_drivers": [], "flash_kB": 492, "ram_kB": 144, "freq_Hz": 59904000,
   }
 
@@ -150,7 +153,7 @@ def host_cfg(name:str) -> dict:
   return parse_chip("HOST") | {
     "pro_name": name, "pro_ver": "1.0.0", "fw_ver": "1.0.0", "freq_Hz": 0,
     "opt_level": "O0", "log_level": "LOG_LEVEL_INF",
-    "board": None, "board_dir": None, "board_drivers": [],
+    "board": None, "board_dir": None, "board_drivers": [], "plc": False,
     "project_drivers": [],
   }
 
@@ -190,12 +193,27 @@ def age(*paths, seconds:float=10.0):
     stamp = os.path.getmtime(path) - seconds
     os.utime(path, (stamp, stamp))
 
-INI = "chip = STM32G0C1\nflash_kB = 492\nram_kB = 144\nclock_Hz = 59904000\n"
+INI = "chip = STM32G0C1\nplc = true\nflash_kB = 492\nram_kB = 144\nclock_Hz = 59904000\n"
 
 def make_board(core, name:str, ini:str=INI, header:bool=True):
-  d = core / "plc" / "brd" / name
+  d = core / "brd" / name
   d.mkdir(parents=True, exist_ok=True)
   (d / f"opencplc_{name}.ini").write_text(ini)
   if header:
     (d / f"opencplc_{name}.h").write_text("")
   return d
+
+def _raise_disk_full(*args, **kwargs):
+  raise OSError("no space left on device")
+
+def frozen_forge(tmp_path, monkeypatch, version="9.9.9"):
+  """actions as a frozen build in tmp_path, with GitHub and the download stubbed out."""
+  from opencplc import actions
+  exe = tmp_path / "opencplc.exe"
+  exe.write_bytes(b"old")
+  monkeypatch.setattr(actions, "FROZEN", True)
+  monkeypatch.setattr(actions.PATH, "script_dir", staticmethod(lambda: str(tmp_path)))
+  monkeypatch.setattr(actions.utils, "install_git", lambda yes: None)
+  monkeypatch.setattr(actions.utils, "git_get_refs", lambda url, opt="--ref": [version])
+  monkeypatch.setattr(actions.utils, "download", lambda url, *a, **k: b"new")
+  return exe

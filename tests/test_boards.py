@@ -1,6 +1,6 @@
 # tests/test_boards.py
 
-"""Board discovery from plc/brd/<name>/: manifests valid and broken, new directories."""
+"""Board discovery from brd/<name>/: manifests valid and broken, new directories."""
 
 import pytest
 from xaeian import file_context
@@ -15,7 +15,7 @@ def core(tmp_path):
 
 def valid_manifest_parses(core):
   d = make_board(core, "uno", INI + "drivers = max31865, shtc3\n")
-  board = parse_board(str(d / f"opencplc_{d.name}.ini"), "uno", "opencplc/1.0.0/plc/brd/uno")
+  board = parse_board(str(d / f"opencplc_{d.name}.ini"), "uno", "opencplc/1.0.0/brd/uno")
   assert board.chip == "STM32G0C1"
   assert (board.flash_kB, board.ram_kB, board.freq_Hz) == (492, 144, 59904000)
   assert board.drivers == ["max31865", "shtc3"]
@@ -25,7 +25,7 @@ def drivers_are_optional(core):
   assert parse_board(str(d / f"opencplc_{d.name}.ini"), "uno", "x").drivers == []
 
 def missing_field_is_rejected(core):
-  d = make_board(core, "uno", "chip = STM32G0C1\nflash_kB = 492\n")
+  d = make_board(core, "uno", "chip = STM32G0C1\nplc = true\nflash_kB = 492\n")
   with pytest.raises(ValueError, match="ram_kB"):
     parse_board(str(d / f"opencplc_{d.name}.ini"), "uno", "x")
 
@@ -49,8 +49,8 @@ def bad_name_is_rejected(core):
 
 def only_directories_with_a_manifest_are_boards(core):
   make_board(core, "uno")
-  (core / "plc" / "brd" / "eco").mkdir(parents=True)
-  (core / "plc" / "brd" / "eco" / "opencplc_eco.h").write_text("")
+  (core / "brd" / "eco").mkdir(parents=True)
+  (core / "brd" / "eco" / "opencplc_eco.h").write_text("")
   assert list(load_boards("opencplc/1.0.0")) == ["uno"]
 
 def a_new_directory_is_a_new_board(core):
@@ -59,7 +59,7 @@ def a_new_directory_is_a_new_board(core):
   boards = load_boards("opencplc/1.0.0")
   assert sorted(boards) == ["nano", "uno"]
   assert boards["nano"].chip == "STM32G081"
-  assert boards["nano"].dir == "opencplc/1.0.0/plc/brd/nano"
+  assert boards["nano"].dir == "opencplc/1.0.0/brd/nano"
 
 def broken_manifest_exits(core):
   make_board(core, "uno", "chip = STM32G0C1\n")
@@ -78,10 +78,25 @@ def core_without_boards_dir_has_no_boards(core):
 
 def any_ini_serves_as_the_manifest(core):
   make_board(core, "uno")
-  d = core / "plc" / "brd" / "nano"
+  d = core / "brd" / "nano"
   d.mkdir(parents=True)
   (d / "zzz.ini").write_text(INI.replace("STM32G0C1", "STM32G081"))
   (d / "opencplc_nano.h").write_text("")
   boards = load_boards("opencplc/1.0.0")
   assert sorted(boards) == ["nano", "uno"]
   assert boards["nano"].chip == "STM32G081"
+
+def manifest_decides_the_plc_layer(core):
+  make_board(core, "uno")
+  make_board(core, "bare", INI.replace("plc = true", "plc = false"))
+  boards = load_boards("opencplc/1.0.0")
+  assert boards["uno"].plc is True
+  assert boards["bare"].plc is False
+
+def plc_field_is_required_and_boolean(core):
+  d = make_board(core, "uno", INI.replace("plc = true\n", ""))
+  with pytest.raises(ValueError, match="plc"):
+    parse_board(str(d / f"opencplc_{d.name}.ini"), "uno", "x")
+  d = make_board(core, "uno", INI.replace("plc = true", "plc = yes"))
+  with pytest.raises(ValueError, match="plc"):
+    parse_board(str(d / f"opencplc_{d.name}.ini"), "uno", "x")

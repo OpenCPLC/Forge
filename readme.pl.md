@@ -84,7 +84,7 @@ Aplikacja działa jako wątek systemu VRTS obok wątku sterownika i wątku debug
 Własne moduły dokładasz jako kolejne pliki w katalogu projektu i jego podkatalogach.
 
 `main.h` przechowuje konfigurację, którą Forge odczytuje przy każdym załadowaniu projektu.
-Definicje `PRO_*` opisują płytkę, chip, wersję framework'a i rozmiary pamięci, a `LOG_LEVEL` i `SYS_CLOCK_FREQ` zmieniasz wedle potrzeb.
+Definicje `PRO_*` opisują płytkę, chip, warstwę PLC, wersję framework'a i rozmiary pamięci, a `LOG_LEVEL` i `SYS_CLOCK_FREQ` zmieniasz wedle potrzeb.
 Tam też wpisujesz dodatkowe drivery framework'a: `#define PRO_DRIVERS "shtc3, hd44780"`.
 
 Tutaj _(upraszczając)_ kończy się zadanie programu **Forge**, a dalsza praca przebiega tak samo jak w typowym projekcie **embedded systems**, czyli przy użyciu [**✨Make**](#-make).
@@ -172,11 +172,12 @@ Aby sprawdzić inną wersję bez ruszania `main.h`, podaj `-f` przy ładowaniu p
 
 ### 🧩 Płytki
 
-Gotowe płytki pochodzą z framework'a: każdy katalog `plc/brd/<board>/` z manifestem `.ini` jest płytką.
-Manifest podaje chip, początkową pamięć i zegar nowego projektu oraz drivery, których płytka potrzebuje:
+Gotowe płytki pochodzą z framework'a: każdy katalog `brd/<board>/` z manifestem `.ini` jest płytką.
+Manifest podaje wartości domyślne nowego projektu: czy płytka potrzebuje warstwy PLC, chip, początkową pamięć i zegar oraz drivery, których płytka potrzebuje:
 
 ```ini
 chip = STM32G0C1
+plc = true
 flash_kB = 492
 ram_kB = 144
 clock_Hz = 59904000
@@ -184,9 +185,15 @@ drivers = max31865
 ```
 
 Dodanie płytki to dodanie katalogu do framework'a, w Forge nic się nie zmienia.
-`-b custom -c <chip>` daje warstwę PLC bez płytki: mapowanie peryferiów i `PLC_Main` piszesz sam.
-Samo `-c <chip>` to goły mikrokontroler: tylko HAL i biblioteki.
-Dodatkowe drivery framework'a dla projektu wpisujesz w `main.h`: `#define PRO_DRIVERS "shtc3, hd44780"`.
+To wartości domyślne, nie reguły: `-c` podmienia chip _(pamięć idzie wtedy za chipem, zegar zostaje przy płytce)_, a `--plc` dokłada warstwę PLC płytce, która jej nie potrzebuje.
+Wiążące jest tylko `plc = true`, bo taka płytka bez swojej warstwy się nie zbuduje.
+
+Bez płytki w `main.h` stoi `PRO_BOARD_None`, a o resztę dba `PRO_PLC`:
+samo `-c <chip>` to goły mikrokontroler _(tylko HAL i biblioteki)_, a `-c <chip> -P` dokłada warstwę PLC na własnym sprzęcie, gdzie mapowanie peryferiów i `PLC_Main` piszesz sam.
+
+Drivery urządzeń mieszkają w `dvr/`, poza warstwą PLC, więc może z nich korzystać każdy projekt.
+Płytka bierze te, które wymienia jej manifest, a projekt dokłada kolejne flagą `--dvr` przy tworzeniu albo w `main.h`: `#define PRO_DRIVERS "shtc3, hd44780"`.
+Do builda trafiają wyłącznie wymienione drivery.
 
 Główną funkcją **Forge**'a jest przygotowanie plików niezbędnych do pracy z wybranym projektem:
 
@@ -256,8 +263,10 @@ Platforma HOST dostarcza stub'y dla modułów zależnych od sprzętu (GPIO, time
 
 #### Konfiguracja sprzętu
 
-- `-b --board`: Płytka z framework'a (`uno`), `custom` dla własnego sprzętu z warstwą PLC albo `none` dla czystego mikrokontrolera.
+- `-b --board`: Płytka z framework'a (`uno`). Ustawia chip, pamięć, zegar i warstwę PLC nowego projektu; `-c` i `--plc` to nadpisują.
 - `-c --chip`: Mikrokontroler lub platforma: `STM32G081`, `STM32G0C1`, `STM32WB55`, `HOST`. Bez `-b` projekt działa bez warstwy PLC, tylko HAL i biblioteki standardowe. Przydatne dla Nucleo lub własnego hardware.
+- `-P --plc`: Dokłada warstwę PLC do projektu bez płytki, na własnym sprzęcie.
+- `-D --dvr`: Drivery framework'a nowego projektu, po przecinku (`shtc3, hd44780`). Kolejne dopisujesz w `PRO_DRIVERS` w `main.h`.
 - `-m --memory`: Pamięć w kB: `FLASH RAM [RESERVED]`. `RESERVED` zostaje odjęte od FLASH w pliku linkera `flash.ld`. _(tylko STM32)_
 
 #### Konfiguracja kompilacji
@@ -276,7 +285,7 @@ Platforma HOST dostarcza stub'y dla modułów zależnych od sprzętu (GPIO, time
 #### Narzędzia
 
 - `-a --assets`: Pobiera materiały pomocnicze _(dokumentacja, diagramy)_. Opcjonalnie przyjmuje nazwę folderu docelowego.
-- `-u --update`: Sprawdza i instaluje aktualizacje ⚒️Forge. Można podać konkretną wersję lub `latest`.
+- `-u --update`: Podmienia plik wykonywalny Forge na wskazaną wersję (domyślnie `latest`); instalację z `pip` aktualizuje się przez `pip`.
 - `-z --size`: Raportuje zajętość FLASH i RAM pliku `.elf`; `make` używa tego po linkowaniu.
 - `-y --yes`: Automatycznie potwierdza wszystkie pytania _(tryb nieinteraktywny)_.
 
@@ -308,18 +317,19 @@ Gdy coś nie działa:
 
 ```sh
 # Tworzenie nowego projektu
-opencplc -n myapp -b uno                  # projekt dla sterownika OpenCPLC Uno
-opencplc -n myapp -b uno -m 128 36        # projekt dla Uno z pamięcią 128kB/36kB
-opencplc -n myapp -b custom -c STM32G081  # własny hardware z warstwą PLC (bez mapowania peryferiów)
-opencplc -n myapp -c STM32G081            # projekt bare-metal dla STM32G081 (np. Nucleo)
-opencplc -n myapp -c host                 # projekt desktopowy (Windows/Linux)
+opencplc -n myapp -b uno                    # projekt dla sterownika OpenCPLC Uno
+opencplc -n myapp -b uno -m 128 36          # projekt dla Uno z pamięcią 128kB/36kB
+opencplc -n myapp -c STM32G081 --plc        # własny hardware z warstwą PLC (bez mapowania peryferiów)
+opencplc -n myapp -c STM32G081              # projekt bare-metal dla STM32G081 (np. Nucleo)
+opencplc -n myapp -c STM32G081 --dvr shtc3  # bare-metal z driverem shtc3
+opencplc -n myapp -c host                   # projekt desktopowy (Windows/Linux)
 
 # Zarządzanie projektami
-opencplc myapp        # załaduj projekt 'myapp'
-opencplc 3            # załaduj projekt #3 z listy
-opencplc -r           # przeładuj aktywny projekt
-opencplc -l           # lista wszystkich projektów
-opencplc -i           # informacje o aktywnym projekcie
+opencplc myapp  # załaduj projekt 'myapp'
+opencplc 3      # załaduj projekt #3 z listy
+opencplc -r     # przeładuj aktywny projekt
+opencplc -l     # lista wszystkich projektów
+opencplc -i     # informacje o aktywnym projekcie
 opencplc myapp -s 066AFF49  # przypisz ST-Link do 'myapp'
 
 # Przykłady demonstracyjne
@@ -331,6 +341,6 @@ opencplc -g https://github.com/user/repo
 opencplc -g https://github.com/user/repo v1.0.0
 
 # Aktualizacje
-opencplc -u         # aktualizuj Forge do najnowszej wersji
-opencplc -F         # pokaż dostępne wersje Core
+opencplc -u  # aktualizuj Forge do najnowszej wersji
+opencplc -F  # pokaż dostępne wersje Core
 ```

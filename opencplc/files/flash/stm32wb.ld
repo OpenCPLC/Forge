@@ -116,7 +116,7 @@ SECTIONS
    MB_MEM1 (NOLOAD)       : { *(MB_MEM1) } >RAM_SHARED
 
   _siMB_MEM2 = LOADADDR(.MB_MEM2);
-  
+
   .MB_MEM2 : {
     _sMB_MEM2 = . ;
     *(MB_MEM2) ;

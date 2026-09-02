@@ -1,5 +1,15 @@
 # Changes `opencplc`
 
+## `0.4.0` Boards and drivers outside PLC
+
+Breaking: `-b custom` is gone,
+`PRO_BOARD_CUSTOM` becomes `PRO_BOARD_None` with `PRO_PLC true`.
+
+- Boards come from `brd/`, drivers from `dvr/`, both work without the PLC layer
+- `PRO_PLC` holds that layer, `--plc` adds it without a board
+- `--dvr` picks the drivers of a new project
+- `-u` replaces the executable next to itself
+
 ## `0.3.1` Rebuild only what changed
 
 - A save no longer rebuilds the whole project, only what changed

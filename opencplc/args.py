@@ -14,15 +14,15 @@ class Flag:
   r = f"{Color.GREY}-r --reload{Color.END}"
   d = f"{Color.GREY}-d --delete{Color.END}"
   g = f"{Color.GREY}-g --get{Color.END}"
-  f = f"{Color.GREY}-f --framework{Color.END}"
-  F = f"{Color.GREY}-F --framework-versions{Color.END}"
   b = f"{Color.GREY}-b --board{Color.END}"
   c = f"{Color.GREY}-c --chip{Color.END}"
+  P = f"{Color.GREY}-P --plc{Color.END}"
+  D = f"{Color.GREY}-D --dvr{Color.END}"
   m = f"{Color.GREY}-m --memory{Color.END}"
+  f = f"{Color.GREY}-f --framework{Color.END}"
   o = f"{Color.GREY}-o --opt-level{Color.END}"
-  l = f"{Color.GREY}-l --list{Color.END}"
   i = f"{Color.GREY}-i --info{Color.END}"
-  s = f"{Color.GREY}-s --stlink{Color.END}"
+  F = f"{Color.GREY}-F --framework-versions{Color.END}"
 
 flag = Flag()
 
@@ -36,6 +36,8 @@ class Args:
   delete: str|bool = False
   get: list[str] = None
   board: str = ""
+  plc: bool = False
+  dvr: str = ""
   chip: str = ""
   memory: list[int] = None
   framework: str = ""
@@ -95,15 +97,19 @@ def load_args() -> Args:
   parser.add_argument("-d", "--delete", type=str, nargs="?", const=True, metavar="NAME",
     help="Delete project and its files")
   parser.add_argument("-g", "--get", nargs='+', metavar=("URL", "REF"),
-    help="Clone project from GIT repository or download ZIP", default=[])
+    help="Clone project from Git repository or download ZIP", default=[])
   # Hardware configuration
   parser.add_argument("-b", "--board", type=str, metavar="BOARD",
-    help="Board from the Core (uno), custom, or none for bare metal", default="")
+    help="Board from the Core (uno); without it the project has no board", default="")
   parser.add_argument("-c", "--chip", type=str, metavar="CHIP",
     help="Target MCU: STM32G0C1, STM32G081, STM32WB55, HOST", default="")
+  parser.add_argument("-P", "--plc", action="store_true",
+    help="Add the PLC layer to a project without a board")
+  parser.add_argument("-D", "--dvr", type=str, metavar="DRIVERS", default="",
+    help="Core drivers for a new project, comma separated")
   parser.add_argument("-m", "--memory", type=int, nargs="*", metavar=("FLASH", "RAM"),
     help="Override memory size in kB: FLASH RAM [RESERVED]", default=[])
-  # Build configuration  
+  # Build configuration
   parser.add_argument("-f", "--framework", type=str, metavar="VER",
     help="Core version (tag/branch) for a new project, or a one-run override", default="")
   parser.add_argument("-o", "--opt-level", type=str, metavar="LEVEL",
@@ -137,7 +143,7 @@ def load_args() -> Args:
     help="Use #define instead of enum for hash output")
   parser.add_argument("-h", "--help", action="help",
     help="Show this help message and exit")
-  
+
   if len(sys.argv) == 1:
     parser.print_help()
     sys.exit(0)
@@ -150,6 +156,8 @@ def load_args() -> Args:
     delete=ns.delete,
     get=ns.get or [],
     board=ns.board,
+    plc=ns.plc,
+    dvr=ns.dvr,
     chip=ns.chip,
     memory=ns.memory or [],
     framework=ns.framework,

@@ -8,7 +8,7 @@ Console color conventions (xaeian.Color) - one meaning per color, grouped in fam
   yours    BLUE   → project: its name and its own sources (main.c, main.h)
            SKY    → what is set inside them: PRO_VERSION, PRO_CHIP, LOG_LEVEL, config keys, PATH
   hardware PINK   → platform and chip (STM32, STM32G0C1)
-           TURQUS → board from Core (Uno) and Custom
+           TURQUS → board from Core (Uno) and the PLC layer
   build    ORANGE → what Forge generates: makefile, flash.ld, opencplc.json, .vscode, opencplc/
            YELLOW → tools: Git, Make, arm-none-eabi-gcc
            GOLD   → numbers: list index, memory, frequency
@@ -37,5 +37,6 @@ DIR_BUILD = "build"
 URL_GIT = "https://github.com/OpenCPLC"
 URL_FTP = "https://sqrt.pl/opencplc"
 URL_CORE = f"{URL_GIT}/Core"
+EXE_NAME = "opencplc.exe"
 URL_FORGE = f"{URL_GIT}/Forge"
 URL_DEMO = f"{URL_GIT}/Demo"

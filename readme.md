@@ -85,7 +85,7 @@ Your application runs as a VRTS thread next to the PLC thread and the debugger t
 Add your own modules as more files in the project directory and its subfolders.
 
 `main.h` holds the configuration Forge reads on every load.
-The `PRO_*` definitions describe the board, chip, framework version and memory sizes, while `LOG_LEVEL` and `SYS_CLOCK_FREQ` are yours to change.
+The `PRO_*` definitions describe the board, chip, PLC layer, framework version and memory sizes, while `LOG_LEVEL` and `SYS_CLOCK_FREQ` are yours to change.
 Extra framework drivers go there too: `#define PRO_DRIVERS "shtc3, hd44780"`.
 
 Here _(roughly)_ ends **Forge** job, and further work goes like typical **embedded systems** project using [**✨Make**](#-make).
@@ -173,11 +173,12 @@ To try another version without touching `main.h`, pass `-f` when loading the pro
 
 ### 🧩 Boards
 
-Ready boards come from the framework: every directory `plc/brd/<board>/` with an `.ini` manifest is a board.
-The manifest gives the chip, initial memory and clock of a new project, and drivers the board needs:
+Ready boards come from the framework: every directory `brd/<board>/` with an `.ini` manifest is a board.
+The manifest gives the defaults of a new project: whether the board needs the PLC layer, the chip, initial memory and clock, and the drivers the board needs:
 
 ```ini
 chip = STM32G0C1
+plc = true
 flash_kB = 492
 ram_kB = 144
 clock_Hz = 59904000
@@ -185,9 +186,15 @@ drivers = max31865
 ```
 
 Adding a board means adding a directory to the framework, nothing changes in Forge.
-`-b custom -c <chip>` gives the PLC layer without a board: peripheral mapping and `PLC_Main` are yours to write.
-`-c <chip>` alone is bare metal: HAL and libraries only.
-Extra framework drivers for a project go to `main.h`: `#define PRO_DRIVERS "shtc3, hd44780"`.
+Those are defaults, not rules: `-c` swaps the chip _(memory then follows the chip, the clock stays with the board)_ and `--plc` adds the PLC layer to a board that does not need one.
+Only `plc = true` is binding, such a board does not build without its layer.
+
+Without a board `main.h` holds `PRO_BOARD_None`, and `PRO_PLC` decides the rest:
+`-c <chip>` alone is bare metal _(HAL and libraries only)_, `-c <chip> -P` adds the PLC layer on your own hardware, where peripheral mapping and `PLC_Main` are yours to write.
+
+Device drivers live in `dvr/`, outside the PLC layer, so any project can use them.
+A board takes the ones its manifest names; a project adds more with `--dvr` at creation or in `main.h`: `#define PRO_DRIVERS "shtc3, hd44780"`.
+Only the named drivers reach the build.
 
 Main **Forge** function is preparing files needed for project:
 
@@ -260,8 +267,10 @@ Full list:
 
 #### Hardware config
 
-- `-b --board`: Board from the framework (`uno`), `custom` for your own hardware with the PLC layer, or `none` for a bare microcontroller.
+- `-b --board`: Board from the framework (`uno`). It sets the chip, the memory, the clock and the PLC layer of a new project; `-c` and `--plc` override that.
 - `-c --chip`: Microcontroller or platform: `STM32G081`, `STM32G0C1`, `STM32WB55`, `HOST` (compile for PC). Without `-b --board`, the project runs without the PLC layer, only HAL and standard framework libraries. Useful for Nucleo boards or custom hardware.
+- `-P --plc`: Adds the PLC layer to a project without a board, on your own hardware.
+- `-D --dvr`: Framework drivers of a new project, comma separated (`shtc3, hd44780`). Later ones go into `PRO_DRIVERS` in `main.h`.
 - `-m --memory`: Memory in kB: `FLASH RAM [RESERVED]`. `RESERVED` is the memory allocated for config and EEPROM, subtracted from FLASH in the linker file `flash.ld`. _(STM32 only)_
 
 #### Build config
@@ -280,7 +289,7 @@ Full list:
 #### Tools
 
 - `-a --assets`: Downloads helper materials for design _(docs, diagrams)_. Optionally accepts a folder name as destination.
-- `-u --update`: Checks for and installs ⚒️Forge updates. Accepts a specific version or `latest`.
+- `-u --update`: Replace the Forge executable with the given version (default: `latest`); a `pip` install updates through `pip` instead.
 - `-z --size`: Reports FLASH and RAM usage of an `.elf`; `make` uses it after linking.
 - `-y --yes`: Auto-confirms all prompts _(non-interactive mode)_.
 
@@ -312,11 +321,12 @@ When something goes wrong:
 
 ```bash
 # Creating new project
-opencplc -n myapp -b uno                  # project for OpenCPLC Uno board
-opencplc -n myapp -b uno -m 128 36        # project for Uno with 128kB/36kB memory
-opencplc -n myapp -b custom -c STM32G081  # custom hardware with PLC layer (no peripheral mapping)
-opencplc -n myapp -c STM32G081            # bare-metal project for STM32G081 (e.g. Nucleo)
-opencplc -n myapp -c host                 # desktop project (Windows/Linux)
+opencplc -n myapp -b uno                    # project for OpenCPLC Uno board
+opencplc -n myapp -b uno -m 128 36          # project for Uno with 128kB/36kB memory
+opencplc -n myapp -c STM32G081 --plc        # own hardware with PLC layer (no peripheral mapping)
+opencplc -n myapp -c STM32G081              # bare-metal project for STM32G081 (e.g. Nucleo)
+opencplc -n myapp -c STM32G081 --dvr shtc3  # bare metal with the shtc3 driver
+opencplc -n myapp -c host                   # desktop project (Windows/Linux)
 
 # Managing projects
 opencplc myapp        # load project 'myapp'

@@ -32,6 +32,7 @@ class Project:
   platform: str  # "STM32" | "Host"
   chip: str
   board: str|None
+  plc: bool      # PLC layer compiled in
   family: str
   hal: str
   define: str
@@ -70,27 +71,34 @@ def rel_tree(root:str, ext:str) -> dict[str, list[str]]:
   return {PATH.local(folder): [PATH.local(f) for f in files] for folder, files in found.items()}
 
 def core_tree(cfg:dict, core_dir:str, ext:str) -> dict[str, list[str]]:
-  """Core source tree for the selected variant: HAL + lib, PLC layer with a board."""
+  """
+  Core source tree for the selected variant.
+
+  HAL, lib, the boards and the selected drivers are always in; the PLC layer only
+  when the project asks for it. Boards and drivers live outside plc/, so a project
+  without the PLC layer can use them too.
+  """
   found = {}
   for sub in get_hal_dirs(cfg["hal"]):
     hal_path = f"{core_dir}/hal/{sub}"
     if DIR.exists(hal_path):
       found.update(rel_tree(hal_path, ext))
   found.update(rel_tree(f"{core_dir}/lib", ext))
-  if cfg.get("board"):
+  found.update(rel_tree(f"{core_dir}/dvr", ext))
+  found.update(rel_tree(f"{core_dir}/brd", ext))
+  if cfg.get("plc"):
     found.update(rel_tree(f"{core_dir}/plc", ext))
   return found
 
 def other_board(cfg:dict, core_dir:str, folder:str) -> bool:
-  """Board folders other than the selected board directory are excluded."""
-  if not cfg.get("board"): return False
-  brd = f"{core_dir}/plc/brd/"
-  board_dir = cfg.get("board_dir")
-  return folder.startswith(brd) and not (board_dir and folder.startswith(board_dir))
+  """Board directories other than the selected one are excluded."""
+  if not folder.startswith(f"{core_dir}/brd/"): return False
+  board_dir = cfg.get("board_dir") # exact directory, so uno never drags in uno_mini
+  return not (board_dir and (folder == board_dir or folder.startswith(board_dir + "/")))
 
 def driver_folder(core_dir:str, folder:str) -> bool:
-  """True for the plc/dvr directory of core_dir."""
-  return folder == f"{core_dir}/plc/dvr"
+  """True for the dvr directory of core_dir."""
+  return folder == f"{core_dir}/dvr"
 
 def unused_driver(cfg:dict, core_dir:str, folder:str, file:str) -> bool:
   """Core drivers compile only when selected by the board or by PRO_DRIVERS."""
@@ -109,8 +117,8 @@ def core_includes(cfg:dict, core_dir:str) -> list[str]:
     and (not driver_folder(core_dir, f) or cfg["drivers"]))
 
 def available_drivers(core_dir:str) -> list[str]:
-  """Core drivers with both .c and .h in plc/dvr."""
-  dvr = f"{core_dir}/plc/dvr"
+  """Core drivers with both .c and .h in dvr."""
+  dvr = f"{core_dir}/dvr"
   names_c = {PATH.basename(f).rsplit(".", 1)[0].lower()
     for fs in rel_tree(dvr, ".c").values() for f in fs}
   names_h = {PATH.basename(f).rsplit(".", 1)[0].lower()
@@ -119,7 +127,7 @@ def available_drivers(core_dir:str) -> list[str]:
 
 def validate_drivers(cfg:dict, core_dir:str):
   """Fail early when a board or PRO_DRIVERS names a driver this Core does not ship."""
-  if not cfg["drivers"] or not DIR.exists(f"{core_dir}/plc/dvr"): return
+  if not cfg["drivers"] or not DIR.exists(f"{core_dir}/dvr"): return
   available = available_drivers(core_dir)
   unknown = [n for n in cfg["drivers"] if n not in available]
   if not unknown: return
@@ -156,7 +164,7 @@ def resolve_project(cfg:dict, paths:dict, forge_cfg:dict) -> Project:
   else:
     mcu_flags = ""
   defines = list(cfg["defines"])
-  if board:
+  if cfg.get("plc"):
     defines.append("OpenCPLC")
   board_drivers = list(cfg.get("board_drivers", []))
   project_drivers = list(cfg.get("project_drivers", []))
@@ -175,6 +183,7 @@ def resolve_project(cfg:dict, paths:dict, forge_cfg:dict) -> Project:
     platform=cfg["platform"],
     chip=cfg["chip"],
     board=board,
+    plc=bool(cfg.get("plc")),
     family=f"{cfg['platform']}{cfg['family']}" if is_embedded else cfg["platform"],
     hal=cfg["hal"],
     define=cfg["define"],

@@ -6,7 +6,10 @@ import pytest
 from xaeian import file_context
 import opencplc.__main__ as forge
 import opencplc.workspace as ws_mod
-from conftest import build_workspace, write_forge_config, run_cli
+from opencplc import actions
+from opencplc.args import Args
+from conftest import build_workspace, write_forge_config, run_cli, refs_cfg
+from conftest import frozen_forge, _raise_disk_full
 
 @pytest.fixture()
 def ws(tmp_path, monkeypatch):
@@ -155,3 +158,80 @@ def memory_usage_reads_the_size_table(monkeypatch):
   monkeypatch.setattr(subprocess, "run",
     lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout=table, stderr=""))
   assert actions.memory_usage("x.elf") == (68208 + 4144, 4144 + 30960)
+
+def plc_layer_without_a_board(ws, monkeypatch):
+  assert run_cli(monkeypatch, "-n", "app", "-c", "STM32G081", "-P", "-y") == 0
+  main_h = (ws / "projects" / "app" / "main.h").read_text()
+  assert "PRO_BOARD_None" in main_h
+  assert "PRO_PLC true" in main_h
+  make = (ws / "projects" / "app" / "makefile").read_text()
+  assert "plc/plc.c" in make and "brd/uno" not in make
+
+def bare_metal_writes_a_void_board(ws, monkeypatch):
+  assert run_cli(monkeypatch, "-n", "app", "-c", "STM32G081", "-y") == 0
+  main_h = (ws / "projects" / "app" / "main.h").read_text()
+  assert "PRO_BOARD_None" in main_h
+  assert "PRO_PLC false" in main_h
+  assert "PRO_DRIVERS" not in main_h  # nothing to name, no line
+  assert "plc/plc.c" not in (ws / "projects" / "app" / "makefile").read_text()
+
+def drivers_flag_seeds_pro_drivers(ws, monkeypatch):
+  assert run_cli(monkeypatch, "-n", "app", "-c", "STM32G081", "-D", "shtc3", "-y") == 0
+  assert 'PRO_DRIVERS "shtc3"' in (ws / "projects" / "app" / "main.h").read_text()
+  assert "dvr/shtc3.c" in (ws / "projects" / "app" / "makefile").read_text()
+
+def board_brings_its_own_plc_layer(ws, monkeypatch):
+  assert run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-y") == 0
+  main_h = (ws / "projects" / "app" / "main.h").read_text()
+  assert "PRO_BOARD_UNO" in main_h and "PRO_PLC true" in main_h
+
+def board_without_the_plc_layer_gets_the_plain_skeleton(ws, monkeypatch):
+  from conftest import make_board, INI
+  d = make_board(ws / "opencplc" / "1.0.0", "bare", INI.replace("plc = true", "plc = false"))
+  (d / "opencplc_bare.c").write_text("// bare" + chr(10))
+  assert run_cli(monkeypatch, "-n", "app", "-b", "bare", "-y") == 0
+  main_h = (ws / "projects" / "app" / "main.h").read_text()
+  assert "PRO_BOARD_BARE" in main_h and "PRO_PLC false" in main_h
+  assert "PLC_Main" not in (ws / "projects" / "app" / "main.c").read_text()
+  make = (ws / "projects" / "app" / "makefile").read_text()
+  assert "brd/bare/" in make and "plc/plc.c" not in make
+
+def board_without_the_plc_layer_takes_it_from_the_flag(ws, monkeypatch):
+  from conftest import make_board, INI
+  make_board(ws / "opencplc" / "1.0.0", "bare", INI.replace("plc = true", "plc = false"))
+  assert run_cli(monkeypatch, "-n", "app", "-b", "bare", "-P", "-y") == 0
+  assert "PRO_PLC true" in (ws / "projects" / "app" / "main.h").read_text()
+  assert "plc/plc.c" in (ws / "projects" / "app" / "makefile").read_text()
+
+def chip_flag_overrides_the_board_manifest(ws, monkeypatch):
+  assert run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-c", "STM32G081", "-y") == 0
+  main_h = (ws / "projects" / "app" / "main.h").read_text()
+  assert "PRO_BOARD_UNO" in main_h and "PRO_CHIP_STM32G081" in main_h
+  assert "PRO_FLASH_kB 128" in main_h  # chip memory, not the 492kB of the board
+  assert "SYS_CLOCK_FREQ 59904000" in main_h  # the clock still belongs to the board
+  assert run_cli(monkeypatch, "app") == 0  # and it loads back the same way
+
+def update_outside_a_frozen_build_points_at_pip(tmp_path, monkeypatch, capsys):
+  monkeypatch.setattr(actions, "FROZEN", False)
+  with pytest.raises(SystemExit):
+    actions.update_forge(Args(update="latest", yes=True))
+  assert "pip install -U opencplc" in capsys.readouterr().out
+
+def frozen_update_lands_next_to_the_executable(tmp_path, monkeypatch):
+  exe = frozen_forge(tmp_path, monkeypatch)
+  actions.update_forge(Args(update="latest", yes=True))
+  assert exe.read_bytes() == b"new"
+  assert (tmp_path / "opencplc.exe.old").read_bytes() == b"old"
+
+def a_failed_write_puts_the_old_executable_back(tmp_path, monkeypatch):
+  exe = frozen_forge(tmp_path, monkeypatch)
+  monkeypatch.setattr(actions.FILE, "save", _raise_disk_full)
+  with pytest.raises(SystemExit):
+    actions.update_forge(Args(update="latest", yes=True))
+  assert exe.read_bytes() == b"old"
+
+def the_replaced_executable_goes_on_the_next_run(tmp_path, monkeypatch):
+  frozen_forge(tmp_path, monkeypatch)
+  (tmp_path / "opencplc.exe.old").write_bytes(b"old")
+  actions.info_actions(Args(), refs_cfg())
+  assert not (tmp_path / "opencplc.exe.old").exists()

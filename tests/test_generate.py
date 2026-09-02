@@ -23,7 +23,7 @@ def project_makefile_and_linker_land_in_the_project(ws):
   assert "$(WORKSPACE)/opencplc/1.0.0" in make
   assert "$(WORKSPACE)/build/projects/myapp" in make
   assert "hal/arm/core.c" in make        # core-relative source
-  assert "plc/brd/uno/opencplc_uno.c" in make
+  assert "brd/uno/opencplc_uno.c" in make
   assert "brd/eco" not in make
   assert "main.c \\\nutil/extra.c" in make
   assert "stm32g0x mass_erase 0" in make
