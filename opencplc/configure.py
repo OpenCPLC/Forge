@@ -15,7 +15,7 @@ from xaeian import Print, Color as c, Ico, FILE, DIR, PATH
 from .config import URL_CORE
 from .args import flag
 from .platforms import parse_chip
-from .boards import Board, load_boards, board_pick, parse_drivers
+from .boards import Board, load_boards, board_pick, board_list, parse_drivers
 from .workspace import ensure_refs
 from . import utils
 
@@ -28,11 +28,11 @@ PLC_FREQ_Hz = 64000000  # the PLC layer sets the clock up before PLC_Main runs
 def board_fields(board:Board|None, memory:bool=True) -> dict:
   """cfg entries that describe the board: no board at all, or a ready one."""
   if board is None:
-    return {"board": None, "board_dir": None, "board_drivers": []}
-  fields = {"board": board.name, "board_dir": board.dir,
+    return {"board": None, "board_title": "", "board_dir": None, "board_drivers": []}
+  fields = {"board": board.name, "board_title": board.title, "board_dir": board.dir,
     "board_drivers": list(board.drivers), "freq_Hz": board.freq_Hz}
   if memory: # a forced chip brings its own memory sizes, the board keeps its clock
-    fields |= {"flash_kB": board.flash_kB, "ram_kB": board.ram_kB}
+    fields |= {"flash_kB": board.flash_kB - board.reserve_kB, "ram_kB": board.ram_kB}
   return fields
 
 def boardless_freq(cfg:dict) -> int:
@@ -40,8 +40,8 @@ def boardless_freq(cfg:dict) -> int:
   if cfg["platform"] != "STM32": return 0
   return PLC_FREQ_Hz if cfg.get("plc") else BOOT_FREQ_Hz
 
-def config_new(args, PRO:dict, PATHS:dict, fw_ver:str, forge_cfg:dict) -> dict:
-  """Config for a fresh project from -c/-b flags."""
+def reject_existing(args, PRO:dict, PATHS:dict):
+  """A new project needs a free name, a free path and a writable parent."""
   if args.name.lower() in (n.lower() for n in PRO):
     p.err(f"Project {c.MAGNTA}{args.name}{c.END} already exists")
     p.run(f"Use a different name or load it without flag {flag.n}")
@@ -62,26 +62,31 @@ def config_new(args, PRO:dict, PATHS:dict, fw_ver:str, forge_cfg:dict) -> dict:
   if not utils.check_write_permission(parent_dir):
     p.err(f"No write permission in {c.ORANGE}{parent_dir}{c.END}")
     sys.exit(1)
+def hardware_config(args, PATHS:dict) -> dict:
+  """Board and chip of a new project, from -b/-c/-P."""
   boards = load_boards(PATHS["fw"])
   board_name = (args.board or "").lower()
   if not board_name and not args.chip:
     p.err(f"Specify board with flag {flag.b} or chip with flag {flag.c}")
-    listed = ", ".join(f"{c.TURQUS}{k}{c.END}" for k in boards) or f"{c.GREY}none{c.END}"
-    p.inf(f"Boards in this Core: {listed}")
+    p.inf(f"Boards in this Core: {board_list(boards)}")
     p.inf(f"Own hardware: {flag.c} alone is bare metal, with {flag.P} adds the PLC layer")
     sys.exit(1)
   if board_name:
     board = board_pick(boards, board_name)
     # The manifest only gives defaults: -c swaps the chip, -P adds the layer a board skips
     forced = bool(args.chip) and args.chip.upper() != board.chip.upper()
-    cfg = (parse_chip(args.chip or board.chip) | board_fields(board, memory=not forced)
+    return (parse_chip(args.chip or board.chip) | board_fields(board, memory=not forced)
       | {"plc": board.plc or args.plc})
-  else:
-    cfg = parse_chip(args.chip) | board_fields(None) | {"plc": args.plc}
-    if cfg["plc"] and cfg["platform"] != "STM32":
-      p.err(f"Flag {flag.P} needs an STM32 chip {flag.c}")
-      sys.exit(1)
-    cfg["freq_Hz"] = boardless_freq(cfg)
+  cfg = parse_chip(args.chip) | board_fields(None) | {"plc": args.plc}
+  if cfg["plc"] and cfg["platform"] != "STM32":
+    p.err(f"Flag {flag.P} needs an STM32 chip {flag.c}")
+    sys.exit(1)
+  return cfg | {"freq_Hz": boardless_freq(cfg)}
+
+def config_new(args, PRO:dict, PATHS:dict, fw_ver:str, forge_cfg:dict) -> dict:
+  """Config for a fresh project from its flags."""
+  reject_existing(args, PRO, PATHS)
+  cfg = hardware_config(args, PATHS)
   # Memory override: -m FLASH RAM [RESERVED]
   if args.memory and len(args.memory) >= 2:
     user_kB = args.memory[2] if len(args.memory) > 2 else 0
@@ -116,9 +121,8 @@ def flags_reject(args):
   p.run(f"Edit {c.SKY}{define}{c.END} in {c.BLUE}main.h{c.END}, then reload with {flag.r}")
   sys.exit(1)
 
-def config_load(args, PRO:dict, PATHS:dict, fw_ver:str, forge_cfg:dict) -> dict:
-  """Config for an existing project - read back from #define entries in its main.h."""
-  flags_reject(args)
+def read_main_h(args, PRO:dict, PATHS:dict) -> dict:
+  """#define entries of an existing project; exits when the file is missing or unusable."""
   key = next((k for k in PRO if k.lower() == args.name.lower()), None)
   if key is None:
     p.err(f"Project {c.MAGNTA}{args.name}{c.END} does not exist")
@@ -137,20 +141,61 @@ def config_load(args, PRO:dict, PATHS:dict, fw_ver:str, forge_cfg:dict) -> dict:
   lines = utils.lines_clear(lines, "//")
   info = utils.get_vars(lines, ["PRO_BOARD", "PRO_CHIP"], "_", "#define", required=False)
   info |= utils.get_vars(lines, ["PRO_VERSION", "PRO_FLASH_kB", "PRO_RAM_kB",
-    "PRO_OPT_LEVEL", "PRO_PLC", "PRO_DRIVERS", "LOG_LEVEL", "SYS_CLOCK_FREQ"], " ",
-    "#define", required=False)
+    "PRO_OPT_LEVEL", "PRO_PLC", "PRO_DRIVERS", "LOG_LEVEL", "SYS_CLOCK_FREQ"],
+    " ", "#define", required=False)
   if not info.get("PRO_CHIP"):
     p.err(f"File {c.BLUE}main.h{c.END} missing {c.SKY}PRO_CHIP{c.END} definition")
     p.inf(f"Check {c.GREY}{PATHS['pro']}/{c.END}{c.BLUE}main.h{c.END}")
     sys.exit(1)
-  pro_ver = info.get("PRO_VERSION", fw_ver)
-  stored_board = info.get("PRO_BOARD", "").lower()
-  if stored_board == "none": stored_board = ""
-  if stored_board == "custom":
+  if info.get("PRO_BOARD", "").lower() == "custom":
     p.err(f"{c.MAGNTA}Custom{c.END} is not a board, the PLC layer is a project setting")
     p.run(f"In {c.BLUE}main.h{c.END} set {c.SKY}PRO_BOARD_None{c.END} "
       f"with {c.SKY}PRO_PLC true{c.END}")
     sys.exit(1)
+  return info
+
+def resolve_version(args, pro_ver:str, PATHS:dict, fw_ver:str, forge_cfg:dict) -> str:
+  """
+  Core version that builds this project.
+
+  Priority: -f for this run, then the PRO_VERSION pin, then the workspace default when
+  the pinned version cannot be cloned. Every step that is not the plain case says so.
+  """
+  if not DIR.exists(PATH.resolve(f"{PATHS['framework']}/{pro_ver}", read=False)):
+    utils.version_check(pro_ver, ensure_refs(forge_cfg, args.yes),
+      f"{Ico.ERR} Invalid {c.SKY}PRO_VERSION{c.END} in {c.BLUE}main.h{c.END}")
+  if args.framework:
+    if fw_ver != pro_ver:
+      p.wrn(f"Project is pinned to {c.GREY}{pro_ver}{c.END}, building with "
+        f"{c.VIOLET}{fw_ver}{c.END} for this run {flag.f}")
+      p.inf(f"Set {c.SKY}PRO_VERSION{c.END} in {c.BLUE}main.h{c.END} to keep it")
+    return fw_ver
+  if pro_ver != fw_ver:
+    fw_path = PATH.resolve(f"{PATHS['framework']}/{pro_ver}", read=False)
+    utils.install_git(args.yes)
+    if not utils.git_clone_missing(URL_CORE, fw_path, pro_ver, args.yes, required=False):
+      p.wrn(f"Project {c.BLUE}{args.name}{c.END} version {c.GREY}({pro_ver}){c.END} "
+        f"differs from framework {c.VIOLET}({fw_ver}){c.END}")
+      p.wrn("This may prevent compilation or cause incorrect behavior")
+      return fw_ver
+    p.inf(f"Project uses {c.VIOLET}{pro_ver}{c.END}, "
+      f"workspace default is {c.GREY}{fw_ver}{c.END}")
+    return pro_ver
+  # Quiet upgrade hint - only when an active release is older than the latest release
+  latest = forge_cfg["available-versions"][0]
+  if (utils.version_is_release(pro_ver) and utils.version_is_release(latest)
+      and utils.version_older_than(pro_ver, latest)):
+    p.inf(f"Project uses {c.VIOLET}{pro_ver}{c.END}, "
+      f"newer release {c.GREY}{latest}{c.END} is available")
+  return pro_ver
+
+def config_load(args, PRO:dict, PATHS:dict, fw_ver:str, forge_cfg:dict) -> dict:
+  """Config for an existing project - read back from #define entries in its main.h."""
+  flags_reject(args)
+  info = read_main_h(args, PRO, PATHS)
+  pro_ver = info.get("PRO_VERSION", fw_ver)
+  stored_board = info.get("PRO_BOARD", "").lower()
+  if stored_board == "none": stored_board = ""
   stored_plc = info.get("PRO_PLC", "").strip().lower()
   cfg = parse_chip(info["PRO_CHIP"]) | {
     "pro_name": args.name,
@@ -160,33 +205,7 @@ def config_load(args, PRO:dict, PATHS:dict, fw_ver:str, forge_cfg:dict) -> dict:
     "log_level": info.get("LOG_LEVEL", "LOG_LEVEL_INF"),
     "project_drivers": parse_drivers(info.get("PRO_DRIVERS", "")),
   }
-  if not DIR.exists(PATH.resolve(f"{PATHS['framework']}/{pro_ver}", read=False)):
-    utils.version_check(pro_ver, ensure_refs(forge_cfg, args.yes),
-      f"{Ico.ERR} Invalid {c.SKY}PRO_VERSION{c.END} in {c.BLUE}main.h{c.END}")
-  # Version priority: -f for this run > PRO_VERSION pin > workspace default as fallback
-  use_ver = fw_ver if args.framework else pro_ver
-  if args.framework and fw_ver != pro_ver:
-    p.wrn(f"Project is pinned to {c.GREY}{pro_ver}{c.END}, building with "
-      f"{c.VIOLET}{fw_ver}{c.END} for this run {flag.f}")
-    p.inf(f"Set {c.SKY}PRO_VERSION{c.END} in {c.BLUE}main.h{c.END} to keep it")
-  elif use_ver != fw_ver:
-    fw_path = PATH.resolve(f"{PATHS['framework']}/{use_ver}", read=False)
-    utils.install_git(args.yes)
-    if not utils.git_clone_missing(URL_CORE, fw_path, use_ver, args.yes, required=False):
-      p.wrn(f"Project {c.BLUE}{args.name}{c.END} version {c.GREY}({pro_ver}){c.END} "
-        f"differs from framework {c.VIOLET}({fw_ver}){c.END}")
-      p.wrn("This may prevent compilation or cause incorrect behavior")
-      use_ver = fw_ver
-    else:
-      p.inf(f"Project uses {c.VIOLET}{use_ver}{c.END}, "
-        f"workspace default is {c.GREY}{fw_ver}{c.END}")
-  else:
-    # Quiet upgrade hint - only when an active release is older than the latest release
-    latest = forge_cfg["available-versions"][0]
-    if (utils.version_is_release(use_ver) and utils.version_is_release(latest)
-        and utils.version_older_than(use_ver, latest)):
-      p.inf(f"Project uses {c.VIOLET}{use_ver}{c.END}, "
-        f"newer release {c.GREY}{latest}{c.END} is available")
+  use_ver = resolve_version(args, pro_ver, PATHS, fw_ver, forge_cfg)
   cfg["fw_ver"] = use_ver
   PATHS["fw"] = PATH.resolve(f"{PATHS['framework']}/{use_ver}", read=False)
   # Board layer comes from the Core that actually builds this project
@@ -197,7 +216,7 @@ def config_load(args, PRO:dict, PATHS:dict, fw_ver:str, forge_cfg:dict) -> dict:
     # A main.h without PRO_PLC leaves the layer to the board, as at creation
     cfg["plc"] = stored_plc == "true" if stored_plc else board.plc
     if board.plc and not cfg["plc"]:
-      p.err(f"Board {c.TURQUS}{board.name}{c.END} runs on the PLC layer")
+      p.err(f"Board {c.TURQUS}{board.title}{c.END} runs on the PLC layer")
       p.run(f"Set {c.SKY}PRO_PLC true{c.END} in {c.BLUE}main.h{c.END}")
       sys.exit(1)
   else:

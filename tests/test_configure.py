@@ -9,7 +9,7 @@ from opencplc.configure import config_load, flags_reject, opt_normalize
 from conftest import build_workspace, load_template, render, ws_paths, refs_cfg, pro_map
 
 MAIN_H = {
-  "${NAME}": "myapp", "${DATE}": "2026-01-01", "${BOARD}": "UNO", "${PLC}": "true",
+  "${NAME}": "myapp", "${DATE}": "2026-01-01", "${BOARD}": "Uno", "${PLC}": "true",
   "${DRIVERS}": "", "${CHIP}": "STM32G0C1", "${PRO_VERSION}": "1.0.0", "${FLASH}": 480,
   "${RAM}": 140, "${OPT_LEVEL}": "O1", "${LOG_LEVEL}": "LOG_LEVEL_DBG",
   "${FREQ}": 48000000,

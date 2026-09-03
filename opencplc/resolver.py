@@ -31,8 +31,9 @@ class Project:
   # Hardware
   platform: str  # "STM32" | "Host"
   chip: str
-  board: str|None
-  plc: bool      # PLC layer compiled in
+  board: str|None    # board directory name, None without a board
+  board_title: str   # board name for generated code and messages, "" without a board
+  plc: bool          # PLC layer compiled in
   family: str
   hal: str
   define: str
@@ -42,7 +43,6 @@ class Project:
   # Build configuration
   flash_kB: int
   ram_kB: int
-  ram_shared_kB: int
   freq_Hz: int
   opt_level: str
   log_level: str
@@ -59,6 +59,7 @@ class Project:
   linker: str # linker template key, "" for HOST
   openocd_target: str
   erase_command: str
+  stack_script: str # Core script that flashes the radio stack, "" when the chip has none
   stlink: str
   build_dir: str
   # Device drivers selected by the board and by PRO_DRIVERS
@@ -91,8 +92,14 @@ def core_tree(cfg:dict, core_dir:str, ext:str) -> dict[str, list[str]]:
   return found
 
 def other_board(cfg:dict, core_dir:str, folder:str) -> bool:
-  """Board directories other than the selected one are excluded."""
-  if not folder.startswith(f"{core_dir}/brd/"): return False
+  """
+  Board directories other than the selected one are excluded.
+
+  Boards sit in brd/ at the Core root, and under plc/ in the versions that kept them there,
+  so a project on any Core compiles its own board and no other.
+  """
+  roots = (f"{core_dir}/brd/", f"{core_dir}/plc/brd/")
+  if not any(folder.startswith(root) for root in roots): return False
   board_dir = cfg.get("board_dir") # exact directory, so uno never drags in uno_mini
   return not (board_dir and (folder == board_dir or folder.startswith(board_dir + "/")))
 
@@ -183,6 +190,7 @@ def resolve_project(cfg:dict, paths:dict, forge_cfg:dict) -> Project:
     platform=cfg["platform"],
     chip=cfg["chip"],
     board=board,
+    board_title=cfg.get("board_title", ""),
     plc=bool(cfg.get("plc")),
     family=f"{cfg['platform']}{cfg['family']}" if is_embedded else cfg["platform"],
     hal=cfg["hal"],
@@ -192,7 +200,6 @@ def resolve_project(cfg:dict, paths:dict, forge_cfg:dict) -> Project:
     svd=cfg.get("svd", ""),
     flash_kB=cfg["flash_kB"],
     ram_kB=cfg["ram_kB"],
-    ram_shared_kB=cfg.get("ram_shared_kB", 0),
     freq_Hz=cfg.get("freq_Hz", 0),
     opt_level=cfg.get("opt_level", "Og"),
     log_level=cfg.get("log_level", "LOG_LEVEL_INF"),
@@ -207,6 +214,7 @@ def resolve_project(cfg:dict, paths:dict, forge_cfg:dict) -> Project:
     linker=cfg.get("ld", ""),
     openocd_target=cfg.get("openocd", ""),
     erase_command=cfg.get("erase", ""),
+    stack_script=cfg.get("stack", ""),
     stlink=(forge_cfg.get("stlink") or {}).get(f"projects/{name}", ""),
     build_dir=f"{PATH.local(paths['build'])}/projects/{name}",
     board_drivers=board_drivers,

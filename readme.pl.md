@@ -111,6 +111,7 @@ Pełna lista celów:
 - `make clean_all` lub `make clr_all`: Usuwa zbudowane pliki wszystkich projektów
 - `make dist`: Kopiuje `.hex` do folderu projektu; `make dist TAG=1.2.0` nazwie go `<name>-1.2.0.hex`
 - **`make erase`**: Całkowicie czyści pamięć mikrokontrolera _(**erase** full chip)_
+- `make stack`: Wgrywa stos radiowy drugiego rdzenia _(STM32WB)_; `make stack FUS=1` robi też jednorazowy, nieodwracalny provisioning fabrycznej płytki
 
 Zbudowane pliki trafiają do `build/projects/<project_name>/`: `.elf`, `.hex`, `.bin` i `.map` obok katalogu `opencplc/` z obiektami framework'a i `project/` z Twoimi.
 Każdy projekt kompiluje framework na własny użytek, więc przełączanie projektów nigdy nie linkuje obiektów zbudowanych z inną konfiguracją.
@@ -149,7 +150,7 @@ flowchart LR
 ```
 
 W pierwszej kolejności **Forge** zainstaluje klienta **Git**, a gdy pozna platformę projektu, również **Make**, **GNU Arm Embedded Toolchain** i **OpenOCD** oraz ustawi odpowiednio zmienne systemowe, jeżeli aplikacje nie są widoczne w systemie z poziomu konsoli.
-Dla platformy HOST zamiast toolchain'a ARM instalowany jest **MinGW** (GCC dla Windows).
+Dla platformy HOST zamiast toolchain'a ARM instalowany jest **MinGW** _(GCC dla Windows)_.
 Jeżeli nie chcemy, aby ktoś grzebał w naszym systemie, instalujemy te narzędzia sami i dodajemy je do **PATH**.
 Gdy ⚒️**Forge** zainstaluje brakujące aplikacje, doda je do systemowego PATH i będzie kontynuować pracę.
 Po zakończeniu zrestartuj konsolę, aby korzystać z nich bezpośrednio.
@@ -176,13 +177,20 @@ Gotowe płytki pochodzą z framework'a: każdy katalog `brd/<board>/` z manifest
 Manifest podaje wartości domyślne nowego projektu: czy płytka potrzebuje warstwy PLC, chip, początkową pamięć i zegar oraz drivery, których płytka potrzebuje:
 
 ```ini
+name = Uno
 chip = STM32G0C1
 plc = true
 flash_kB = 492
 ram_kB = 144
 clock_Hz = 59904000
+reserve_kB = 20
 drivers = max31865
 ```
+
+`reserve_kB` jest opcjonalne: to flash, który płytka zostawia dla siebie, odejmowany od góry
+dokładnie jak trzecia wartość `-m`, więc projekt startuje z tym, co zostaje.
+
+`name` to nazwa płytki w `main.h` i w komunikatach, `PRO_BOARD_Uno`, a katalog zostaje w ścieżkach; porównują się bez wielkości liter i podkreślników, więc `CardG0` i `card_g0` to ta sama płytka, a `None` jest zarezerwowane dla jej braku.
 
 Dodanie płytki to dodanie katalogu do framework'a, w Forge nic się nie zmienia.
 To wartości domyślne, nie reguły: `-c` podmienia chip _(pamięć idzie wtedy za chipem, zegar zostaje przy płytce)_, a `--plc` dokłada warstwę PLC płytce, która jej nie potrzebuje.
@@ -225,7 +233,7 @@ workspace/
 │  │  ├─ makefile   # generowany przez Forge
 │  │  └─ flash.ld   # generowany przez Forge, tylko STM32
 │  ├─ firm/app/     # projekty mogą być zagnieżdżone
-│  └─ examples/     # przykłady demonstracyjne, `opencplc -e`
+│  └─ demo/         # projekty z repozytorium Demo, `opencplc -e`
 └─ build/         # skompilowane pliki wsadowe
    └─ projects/myapp/
 ```
@@ -234,13 +242,13 @@ Jeśli IntelliSense przestanie działać poprawnie, użyj `F1` → _C/C++: Reset
 
 ## 🖥️ Host
 
-Forge wspiera platformę **Host** do rozwijania i testowania kodu na PC (Windows/Linux) bez sprzętu embedded:
+Forge wspiera platformę **Host** do rozwijania i testowania kodu na PC _(Windows/Linux)_ bez sprzętu embedded:
 
 ```sh
 opencplc -n myapp -c host  # projekt desktopowy
 ```
 
-Tworzy to projekt kompilowany natywnym GCC (MinGW na Windows) zamiast toolchain'a ARM, a `make run` uruchamia program.
+Tworzy to projekt kompilowany natywnym GCC _(MinGW na Windows)_ zamiast toolchain'a ARM, a `make run` uruchamia program.
 Przydatne do:
 
 - Testowania algorytmów i logiki bez sprzętu
@@ -248,25 +256,25 @@ Przydatne do:
 - Testów jednostkowych komponentów framework'a
 - Szybkiego prototypowania przed wdrożeniem na PLC
 
-Platforma HOST dostarcza stub'y dla modułów zależnych od sprzętu (GPIO, timery, itp.), więc struktura kodu pozostaje kompatybilna z targetami STM32.
+Platforma HOST dostarcza stub'y dla modułów zależnych od sprzętu _(GPIO, timery, itp.)_, więc struktura kodu pozostaje kompatybilna z targetami STM32.
 
 ## 🚩 Flags
 
 #### Podstawowe
 
-- **`name`**: Nazwa projektu, domyślny pierwszy argument. Wyznacza ścieżkę `projects/name` i jest powiązana z plikami wsadowymi (`.bin`, `.hex`, `.elf`). Można też podać numer z listy `-l`.
+- **`name`**: Nazwa projektu, domyślny pierwszy argument. Wyznacza ścieżkę `projects/name` i jest powiązana z plikami wsadowymi _(`.bin`, `.hex`, `.elf`)_. Można też podać numer z listy `-l`.
 - `-n --new`: Tworzy nowy projekt o wskazanej nazwie.
-- `-e --example`: Pobiera przykłady z repozytorium [Demo](https://github.com/OpenCPLC/Demo) do `projects/examples`. Ładujesz je jak każdy projekt: `opencplc examples/blinky`.
+- `-e --demo`: Pobiera repozytorium [Demo](https://github.com/OpenCPLC/Demo) do `projects/demo`. Ładujesz je jak każdy projekt: `opencplc demo/blinky`.
 - `-r --reload`: Regeneruje pliki projektu. Bez `name` bierze projekt aktywny albo ten, w którego katalogu stoisz.
 - `-d --delete`: Usuwa projekt o wskazanej nazwie.
-- `-g --get`: Pobiera projekt z GitHub/GitLab lub zdalnego ZIP i dodaje jako nowy. Drugi argument to referencja (`branch`, `tag`). Jeśli `name` nie podano, odczytuje go z `@name` w `main.h`.
+- `-g --get`: Pobiera projekt z GitHub/GitLab lub zdalnego ZIP i dodaje jako nowy. Drugi argument to referencja _(`branch`, `tag`)_. Jeśli `name` nie podano, odczytuje go z `@name` w `main.h`.
 
 #### Konfiguracja sprzętu
 
-- `-b --board`: Płytka z framework'a (`uno`). Ustawia chip, pamięć, zegar i warstwę PLC nowego projektu; `-c` i `--plc` to nadpisują.
+- `-b --board`: Płytka z framework'a _(`uno`)_. Ustawia chip, pamięć, zegar i warstwę PLC nowego projektu; `-c` i `--plc` to nadpisują.
 - `-c --chip`: Mikrokontroler lub platforma: `STM32G081`, `STM32G0C1`, `STM32WB55`, `HOST`. Bez `-b` projekt działa bez warstwy PLC, tylko HAL i biblioteki standardowe. Przydatne dla Nucleo lub własnego hardware.
 - `-P --plc`: Dokłada warstwę PLC do projektu bez płytki, na własnym sprzęcie.
-- `-D --dvr`: Drivery framework'a nowego projektu, po przecinku (`shtc3, hd44780`). Kolejne dopisujesz w `PRO_DRIVERS` w `main.h`.
+- `-D --dvr`: Drivery framework'a nowego projektu, po przecinku _(`shtc3, hd44780`)_. Kolejne dopisujesz w `PRO_DRIVERS` w `main.h`.
 - `-m --memory`: Pamięć w kB: `FLASH RAM [RESERVED]`. `RESERVED` zostaje odjęte od FLASH w pliku linkera `flash.ld`. _(tylko STM32)_
 
 #### Konfiguracja kompilacji
@@ -285,7 +293,7 @@ Platforma HOST dostarcza stub'y dla modułów zależnych od sprzętu (GPIO, time
 #### Narzędzia
 
 - `-a --assets`: Pobiera materiały pomocnicze _(dokumentacja, diagramy)_. Opcjonalnie przyjmuje nazwę folderu docelowego.
-- `-u --update`: Podmienia plik wykonywalny Forge na wskazaną wersję (domyślnie `latest`); instalację z `pip` aktualizuje się przez `pip`.
+- `-u --update`: Podmienia plik wykonywalny Forge na wskazaną wersję _(domyślnie `latest`)_; instalację z `pip` aktualizuje się przez `pip`.
 - `-z --size`: Raportuje zajętość FLASH i RAM pliku `.elf`; `make` używa tego po linkowaniu.
 - `-y --yes`: Automatycznie potwierdza wszystkie pytania _(tryb nieinteraktywny)_.
 
@@ -325,16 +333,16 @@ opencplc -n myapp -c STM32G081 --dvr shtc3  # bare-metal z driverem shtc3
 opencplc -n myapp -c host                   # projekt desktopowy (Windows/Linux)
 
 # Zarządzanie projektami
-opencplc myapp  # załaduj projekt 'myapp'
-opencplc 3      # załaduj projekt #3 z listy
-opencplc -r     # przeładuj aktywny projekt
-opencplc -l     # lista wszystkich projektów
-opencplc -i     # informacje o aktywnym projekcie
+opencplc myapp              # załaduj projekt 'myapp'
+opencplc 3                  # załaduj projekt #3 z listy
+opencplc -r                 # przeładuj aktywny projekt
+opencplc -l                 # lista wszystkich projektów
+opencplc -i                 # informacje o aktywnym projekcie
 opencplc myapp -s 066AFF49  # przypisz ST-Link do 'myapp'
 
 # Przykłady demonstracyjne
-opencplc -e                  # pobierz przykłady do projects/examples
-opencplc examples/blinky     # załaduj przykład 'blinky'
+opencplc -e                 # pobierz Demo do projects/demo
+opencplc demo/blinky        # załaduj projekt 'blinky'
 
 # Pobieranie projektów
 opencplc -g https://github.com/user/repo

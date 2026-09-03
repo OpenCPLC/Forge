@@ -10,7 +10,7 @@ answers), `resolver` (the project model) and `project` (generators).
 
 import signal, sys
 from xaeian import Print, Color as c, PATH
-from .config import URL_DEMO, DIR_EXAMPLES
+from .config import URL_DEMO, DIR_DEMO
 from .args import flag, load_args, check_flags
 from .templates import load_templates
 from .project import prepare_project, generate
@@ -58,7 +58,7 @@ def main():
   args.name, args.new = utils.assign_name(args.name, args.new, flag.n)
   args.name, args.reload = utils.assign_name(args.name, args.reload, flag.r)
   args.name, args.delete = utils.assign_name(args.name, args.delete, flag.d)
-  persist_config(forge_cfg, create=bool(args.new or args.example)) # a workspace starts here
+  persist_config(forge_cfg, create=bool(args.new or args.demo)) # a workspace starts here
   if not forge_cfg.get("available-versions"):
     ensure_refs(forge_cfg, args.yes) # first run: the version list must exist
   PATHS, fw_ver = paths_setup(args, forge_cfg)
@@ -78,11 +78,11 @@ def main():
       utils.install_git(args.yes)
     ref = args.get[1] if len(args.get) > 1 else None
     args.name = utils.project_remote(args.get[0], PATHS["pro"], ref, args.name)
-  if args.example:
+  if args.demo:
     utils.install_git(args.yes)
-    utils.git_clone_missing(URL_DEMO, DIR_EXAMPLES, "main", args.yes)
-    p.inf(f"Examples in {c.ORANGE}{DIR_EXAMPLES}{c.END}, "
-      f"load one with {c.CYAN}opencplc examples/<name>{c.END}")
+    utils.git_clone_missing(URL_DEMO, DIR_DEMO, "main", args.yes)
+    p.inf(f"Demo in {c.ORANGE}{DIR_DEMO}{c.END}, "
+      f"load one with {c.CYAN}opencplc demo/<name>{c.END}")
     sys.exit(0)
   PRO = utils.get_project_list(PATHS["pro"])
   project_select(args, PRO)

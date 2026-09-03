@@ -26,7 +26,7 @@ def get_hal_dirs(hal:str) -> list:
 CHIPS = {
   "STM32G081": {
     "platform": "STM32", "family": "G0",
-    "flash_kB": 128, "ram_kB": 36, "ram_shared_kB": 0,
+    "flash_kB": 128, "ram_kB": 36,
     "cpu": "cortex-m0plus", "fpu": False,
     "uart": {"nbr": 1, "tx": "PC4", "rx": "PC5", "dma": 4},
     "led": {"port": "GPIOA", "pin": 5, "name": "Nucleo-G071RB green `LD2`"},
@@ -37,7 +37,7 @@ CHIPS = {
   },
   "STM32G0C1": {
     "platform": "STM32", "family": "G0",
-    "flash_kB": 512, "ram_kB": 144, "ram_shared_kB": 0,
+    "flash_kB": 512, "ram_kB": 144,
     "cpu": "cortex-m0plus", "fpu": False,
     "uart": {"nbr": 1, "tx": "PC4", "rx": "PC5", "dma": 4},
     "led": {"port": "GPIOA", "pin": 5, "name": "Nucleo-G0B1RE green `LD2`"},
@@ -48,18 +48,20 @@ CHIPS = {
   },
   "STM32WB55": {
     "platform": "STM32", "family": "WB",
-    "flash_kB": 1024, "ram_kB": 192, "ram_shared_kB": 10,
+    # Of the 1024kB CPU1 owns what lies below the wireless stack, which `make stack`
+    # installs at 0x080D0000: SFSA 0xD0 is 208 pages of 4kB, so CPU1 gets 832kB.
+    "flash_kB": 832, "ram_kB": 192,
     "cpu": "cortex-m4", "fpu": True,
     "uart": {"nbr": 1, "tx": "PB6", "rx": "PB7", "dma": 4},
     "led": {"port": "GPIOB", "pin": 0, "name": "Nucleo-WB55RG green `LD2`"},
     "define": "STM32WB55xx", "device": "STM32WB55RG",
     "svd": "stm32wb55.svd", "hal": "stm32wb",
     "ld": "stm32wb.ld", "openocd": "stm32wbx",
-    "erase": "stm32wbx mass_erase 0"
+    "erase": "stm32wbx mass_erase 0", "stack": "flash_cpu2.sh"
   },
   "HOST": {
     "platform": "Host", "family": "",
-    "flash_kB": 0, "ram_kB": 0, "ram_shared_kB": 0,
+    "flash_kB": 0, "ram_kB": 0,
     "cpu": "native", "fpu": True,
     "uart": {"nbr": 0, "tx": "", "rx": "", "dma": 0},
     "led": {"port": "", "pin": 0, "name": ""},

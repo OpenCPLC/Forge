@@ -86,8 +86,8 @@ MAIN_H_HOST = """#define PRO_CHIP_HOST
 #define LOG_LEVEL LOG_LEVEL_INF
 """
 
-UNO_INI = "chip = STM32G0C1\nplc = true\nflash_kB = 492\nram_kB = 144\n" \
-  "clock_Hz = 59904000\ndrivers = max31865\n"
+UNO_INI = "name = Uno\nchip = STM32G0C1\nplc = true\nflash_kB = 492\n" \
+  "ram_kB = 144\nclock_Hz = 59904000\ndrivers = max31865\n"
 
 def build_workspace(ws, core:str="1.0.0", project:str="myapp"):
   """Synthetic workspace: minimal Core tree plus one project."""
@@ -109,7 +109,8 @@ def uno_cfg(name:str="myapp", core:str="1.0.0") -> dict:
   return parse_chip("STM32G0C1") | {
     "pro_name": name, "pro_ver": core, "fw_ver": core,
     "opt_level": "Og", "log_level": "LOG_LEVEL_INF",
-    "board": "uno", "board_dir": f"opencplc/{core}/brd/uno", "board_drivers": ["max31865"],
+    "board": "uno", "board_title": "Uno", "board_dir": f"opencplc/{core}/brd/uno",
+    "board_drivers": ["max31865"],
     "plc": True,
     "project_drivers": [], "flash_kB": 492, "ram_kB": 144, "freq_Hz": 59904000,
   }
@@ -153,7 +154,8 @@ def host_cfg(name:str) -> dict:
   return parse_chip("HOST") | {
     "pro_name": name, "pro_ver": "1.0.0", "fw_ver": "1.0.0", "freq_Hz": 0,
     "opt_level": "O0", "log_level": "LOG_LEVEL_INF",
-    "board": None, "board_dir": None, "board_drivers": [], "plc": False,
+    "board": None, "board_title": "", "board_dir": None, "board_drivers": [],
+    "plc": False,
     "project_drivers": [],
   }
 
@@ -195,9 +197,11 @@ def age(*paths, seconds:float=10.0):
 
 INI = "chip = STM32G0C1\nplc = true\nflash_kB = 492\nram_kB = 144\nclock_Hz = 59904000\n"
 
-def make_board(core, name:str, ini:str=INI, header:bool=True):
+def make_board(core, name:str, ini:str=INI, header:bool=True, title:str=""):
+  """Board directory with a manifest; the title defaults to the directory name."""
   d = core / "brd" / name
   d.mkdir(parents=True, exist_ok=True)
+  if "name = " not in ini: ini = f"name = {title or name}\n" + ini
   (d / f"opencplc_{name}.ini").write_text(ini)
   if header:
     (d / f"opencplc_{name}.h").write_text("")

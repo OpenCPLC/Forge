@@ -23,3 +23,9 @@ def every_chip_has_erase_and_hal():
   for name, cfg in CHIPS.items():
     assert "erase" in cfg, name
     assert get_hal_dirs(cfg["hal"]), name
+
+def wb55_flash_stops_below_the_wireless_stack():
+  """CPU1 must not be offered flash that belongs to CPU2."""
+  stack_start = 0xD0 * 4 # SFSA 0xD0, pages of 4kB
+  assert 0x08000000 + stack_start * 1024 == 0x080D0000
+  assert CHIPS["STM32WB55"]["flash_kB"] == stack_start

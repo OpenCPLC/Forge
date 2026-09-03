@@ -52,7 +52,10 @@ CFLAGS += -g -MMD -MP -MF"$(@:%.o=%.d)"
 OBJECTS := $(patsubst %.c,$(BUILD)/opencplc/%.o,$(CORE_C))
 OBJECTS += $(patsubst %.c,$(BUILD)/project/%.o,$(PRO_C))
 
-CONFIG_DEPS = $(PROJECT)/main.h $(MAKEFILE_PATH)
+# Every object depends on the makefile, because a flag change touches all of them.
+# main.h is not listed: `-MMD -MP` records in the .d files which objects really include it,
+# so editing it rebuilds exactly those.
+CONFIG_DEPS = $(MAKEFILE_PATH)
 
 # Configuration changed: Forge rewrites this file and Make restarts once with fresh sources.
 # The stamp carries the reload time, so a rewrite with identical content rebuilds nothing.

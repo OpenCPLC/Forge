@@ -124,7 +124,7 @@ def info_show(pro:Project):
   path_prefix = replace_end(pro.pro_dir, pro.name, "")
   p.inf(f"Project: {c.GREY}{path_prefix}{c.END}{c.BLUE}{pro.name}{c.END}")
   p.gap(f"Platform: {c.PINK}{pro.platform}{c.END}")
-  p.gap(f"Board {flag.b}: {c.TURQUS}{str(pro.board or 'None').capitalize()}{c.END}")
+  p.gap(f"Board {flag.b}: {c.TURQUS}{pro.board_title or 'None'}{c.END}")
   p.gap(f"PLC layer {flag.P}: {c.TURQUS}{'yes' if pro.plc else 'no'}{c.END}")
   p.gap(f"Chip {flag.c}: {c.PINK}{pro.chip}{c.END}")
   p.gap(f"Project version: {c.VIOLET}{pro.pro_ver}{c.END}")

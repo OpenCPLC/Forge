@@ -25,7 +25,7 @@ def drivers_are_optional(core):
   assert parse_board(str(d / f"opencplc_{d.name}.ini"), "uno", "x").drivers == []
 
 def missing_field_is_rejected(core):
-  d = make_board(core, "uno", "chip = STM32G0C1\nplc = true\nflash_kB = 492\n")
+  d = make_board(core, "uno", "name = Uno\nchip = STM32G0C1\nplc = true\nflash_kB = 492\n")
   with pytest.raises(ValueError, match="ram_kB"):
     parse_board(str(d / f"opencplc_{d.name}.ini"), "uno", "x")
 
@@ -80,7 +80,7 @@ def any_ini_serves_as_the_manifest(core):
   make_board(core, "uno")
   d = core / "brd" / "nano"
   d.mkdir(parents=True)
-  (d / "zzz.ini").write_text(INI.replace("STM32G0C1", "STM32G081"))
+  (d / "zzz.ini").write_text("name = Nano\n" + INI.replace("STM32G0C1", "STM32G081"))
   (d / "opencplc_nano.h").write_text("")
   boards = load_boards("opencplc/1.0.0")
   assert sorted(boards) == ["nano", "uno"]
@@ -100,3 +100,33 @@ def plc_field_is_required_and_boolean(core):
   d = make_board(core, "uno", INI.replace("plc = true", "plc = yes"))
   with pytest.raises(ValueError, match="plc"):
     parse_board(str(d / f"opencplc_{d.name}.ini"), "uno", "x")
+
+def the_manifest_carries_the_board_name(core):
+  make_board(core, "uno", title="Uno")
+  make_board(core, "card_g0", title="CardG0")
+  boards = load_boards("opencplc/1.0.0")
+  assert boards["card_g0"].title == "CardG0"
+  for written in ("uno", "Uno", "UNO"):
+    assert board_pick(boards, written).name == "uno"
+  for written in ("card_g0", "CardG0", "CARD_G0"):
+    assert board_pick(boards, written).name == "card_g0"
+
+def a_name_that_is_not_the_directory_is_rejected(core):
+  d = make_board(core, "uno", title="Nano")
+  with pytest.raises(ValueError, match="Nano"):
+    parse_board(str(d / f"opencplc_{d.name}.ini"), "uno", "x")
+
+def none_is_reserved_for_a_project_without_a_board(core):
+  d = make_board(core, "none", title="None")
+  with pytest.raises(ValueError, match="reserved"):
+    parse_board(str(d / f"opencplc_{d.name}.ini"), "none", "x")
+
+def reserve_is_optional_and_comes_off_the_top(core):
+  from opencplc.configure import board_fields
+  d = make_board(core, "uno", INI + "reserve_kB = 20" + chr(10), title="Uno")
+  board = parse_board(str(d / "opencplc_uno.ini"), "uno", "x")
+  assert (board.flash_kB, board.reserve_kB) == (492, 20)
+  assert board_fields(board)["flash_kB"] == 472
+  d = make_board(core, "big", INI + "reserve_kB = 999" + chr(10), title="Big")
+  with pytest.raises(ValueError, match="reserve_kB"):
+    parse_board(str(d / "opencplc_big.ini"), "big", "x")

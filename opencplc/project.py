@@ -31,6 +31,13 @@ def rel_from(items:list[str], base:str) -> list[str]:
   """Paths stripped of a directory prefix, e.g. core paths relative to the Core dir."""
   return [item[len(base) + 1:] for item in items if item.startswith(base + "/")]
 
+def stack_command(pro:Project) -> str:
+  """Radio stack rule of a project: the Core script, or a refusal on a chip without one."""
+  if not pro.stack_script:
+    return f"echo Chip {c.PINK}{pro.chip}{c.END} has no radio stack&& exit 1"
+  script = f'bash "$(OPENCPLC)/scr/{pro.stack_script}"'
+  return f"{script} $(if $(STLINK),--sn=$(STLINK)) $(if $(FUS),--fus)"
+
 def config_inputs(pro:Project) -> list[str]:
   """Reload inputs of the project makefile, anchored in $(PROJECT)."""
   dirs = ["$(PROJECT)" if d == pro.pro_dir else "$(PROJECT)/" + d[len(pro.pro_dir) + 1:]
@@ -59,7 +66,7 @@ def project_header(cfg:dict, paths:dict):
   is_windows = platform.system() == "Windows"
   plc_msg = f" {c.TURQUS}PLC{c.END}" if cfg.get("plc") else ""
   if cfg.get("board"):
-    chip_msg = f"{c.TURQUS}{cfg['board'].capitalize()}{c.END}{plc_msg}"
+    chip_msg = f"{c.TURQUS}{cfg['board_title']}{c.END}{plc_msg}"
   elif cfg["platform"] == "STM32":
     chip_msg = f"{c.PINK}{cfg['chip']}{c.END}{plc_msg}"
   else:
@@ -82,7 +89,7 @@ def prepare_project(cfg:dict, paths:dict):
     "${PRO_VERSION}": cfg["pro_ver"],
     "${OPT_LEVEL}": cfg.get("opt_level", "Og" if is_embedded else "O2"),
     "${LOG_LEVEL}": cfg.get("log_level", "LOG_LEVEL_INF"),
-    "${BOARD}": cfg["board"].upper() if cfg.get("board") else "None",
+    "${BOARD}": cfg["board_title"] or "None",
     "${PLC}": "true" if cfg.get("plc") else "false",
     "${DRIVERS}": ", ".join(cfg.get("project_drivers", [])),
     "${CHIP}": cfg.get("chip", "").upper(),
@@ -108,8 +115,8 @@ def prepare_project(cfg:dict, paths:dict):
     utils.create_file("main.c", main_c, paths["pro"], subs, color=c.BLUE)
   if not FILE.exists(f"{paths['pro']}/main.h"):
     main_h = tpl.get("main.h", templates["main.h"])
-    drivers_drop = "" if cfg.get("project_drivers") else "PRO_DRIVERS"
-    utils.create_file("main.h", main_h, paths["pro"], subs, remove_line=drivers_drop, color=c.BLUE)
+    drop = "" if cfg["project_drivers"] else "PRO_DRIVERS"
+    utils.create_file("main.h", main_h, paths["pro"], subs, remove_line=drop, color=c.BLUE)
 
 def generate(pro:Project, activate:bool=True):
   """
@@ -141,12 +148,11 @@ def generate(pro:Project, activate:bool=True):
     "${MCU_FLAGS}": pro.mcu_flags,
     "${OPT_LEVEL}": pro.opt_level,
     "${LOG_LEVEL}": pro.log_level,
-    "${BOARD}": pro.board.upper() if pro.board else "None",
+    "${BOARD}": pro.board_title or "None",
     "${BOARD_LOWER}": (pro.board or "").lower(),
     "${CHIP}": pro.chip,
     "${FLASH}": pro.flash_kB,
     "${RAM}": pro.ram_kB,
-    "${RAM_SHARED}": pro.ram_shared_kB,
     "${FREQ}": pro.freq_Hz,
     "${HAL}": pro.hal,
     "${PLATFORM}": pro.platform,
@@ -157,6 +163,7 @@ def generate(pro:Project, activate:bool=True):
     "${SVD}": pro.svd,
     "${OPENOCD_TARGET}": pro.openocd_target,
     "${ERASE_CMD}": pro.erase_command,
+    "${STACK_CMD}": stack_command(pro),
     "${EXE_EXT}": ".exe" if is_windows else "",
     "${PROJECT_COLORED}": colored_path(pro.pro_dir, pro.name),
     "${BUILD_COLORED}": colored_path(pro.build_dir, pro.name),
@@ -174,7 +181,8 @@ def generate(pro:Project, activate:bool=True):
   utils.create_file("makefile", templates["workspace.mk"], "", {
     "${ACTIVE}": pro.pro_dir,
     "${ACTIVE_COLORED}": colored_path(pro.pro_dir, pro.name),
-    "${GOLD}": c.GOLD, "${CMD}": c.CYAN, "${GREY}": c.GREY, "${END}": c.END,
+    "${GOLD}": c.GOLD, "${CMD}": c.CYAN, "${GREY}": c.GREY,
+    "${END}": c.END,
     "${ERR}": f"{c.RED}ERR{c.END}",
   })
   DIR.ensure(".vscode")

@@ -23,7 +23,7 @@ from .install import (
 )
 from .hash import hash_string, c_code_enum
 from .common import (
-  is_yes, color_url, assign_name, detect_os, validate_project_name
+  is_yes, color_url, assign_name, validate_project_name
 )
 
 __all__ = [
@@ -39,5 +39,5 @@ __all__ = [
   "install_git", "install_toolchains", "verify_compiler",
   "RESET_CONSOLE", "FTP_PATH", "INSTALL_PATH",
   "hash_string", "c_code_enum",
-  "is_yes", "color_url", "assign_name", "detect_os", "validate_project_name",
+  "is_yes", "color_url", "assign_name", "validate_project_name",
 ]

@@ -8,7 +8,7 @@ from conftest import load_template, render, parse_main_h, parse_dispatcher
 UNO_SUBS = {
   "${NAME}": "myapp",
   "${DATE}": "2026-01-01",
-  "${BOARD}": "UNO",
+  "${BOARD}": "Uno",
   "${PLC}": "true",
   "${DRIVERS}": "max31865",
   "${CHIP}": "STM32G0C1",
@@ -22,7 +22,7 @@ UNO_SUBS = {
 
 def embedded_main_h_roundtrip():
   info = parse_main_h(render(load_template("main.h"), UNO_SUBS))
-  assert info["PRO_BOARD"] == "UNO"
+  assert info["PRO_BOARD"] == "Uno"
   assert info["PRO_CHIP"] == "STM32G0C1"
   assert info["PRO_PLC"] == "true"
   assert info["PRO_DRIVERS"] == "max31865"

@@ -69,7 +69,10 @@ OBJECTS += $(patsubst %.s,$(BUILD)/opencplc/%.o,$(CORE_S))
 OBJECTS += $(patsubst %.c,$(BUILD)/project/%.o,$(PRO_C))
 OBJECTS += $(patsubst %.s,$(BUILD)/project/%.o,$(PRO_S))
 
-CONFIG_DEPS = $(PROJECT)/main.h $(MAKEFILE_PATH)
+# Every object depends on the makefile, because a flag change touches all of them.
+# main.h is not listed: `-MMD -MP` records in the .d files which objects really include it,
+# so editing it rebuilds exactly those.
+CONFIG_DEPS = $(MAKEFILE_PATH)
 
 # Configuration changed: Forge rewrites this file and Make restarts once with fresh sources.
 # The stamp carries the reload time, so a rewrite with identical content rebuilds nothing.
@@ -118,7 +121,9 @@ build: $(BUILD)/$(TARGET).elf $(BUILD)/$(TARGET).hex $(BUILD)/$(TARGET).bin
 ifneq ($(STLINK),)
 OPENOCD_SERIAL = -c "adapter serial $(STLINK)"
 endif
-OPENOCD = openocd -f interface/stlink.cfg $(OPENOCD_SERIAL) -f target/${OPENOCD_TARGET}.cfg -c
+UNDER_RESET = -c "reset_config srst_only srst_nogate connect_assert_srst"
+OPENOCD = openocd -f interface/stlink.cfg $(OPENOCD_SERIAL) \
+  -f target/${OPENOCD_TARGET}.cfg $(UNDER_RESET) -c
 
 flash:
 	@$(OPENOCD) "program $(BUILD)/$(TARGET).elf verify reset exit" && echo Flashed ${VIOLET}$(TARGET).elf${END}|| (echo Flashing ${RED}failed${END}&& exit 1)
@@ -126,7 +131,11 @@ flash:
 run: build flash
 
 erase:
-	@$(OPENOCD) "init; halt; ${ERASE_CMD}; reset halt; exit" && echo Erased ${PINK}${CHIP}${END}|| (echo Erasing ${RED}failed${END}&& exit 1)
+	@$(OPENOCD) "init; reset init; ${ERASE_CMD}; reset halt; exit" && echo Erased ${PINK}${CHIP}${END}|| (echo Erasing ${RED}failed${END}&& exit 1)
+
+# Radio stack of the second core, make stack FUS=1 provisions a factory board
+stack:
+	@${STACK_CMD}
 
 # make dist TAG=1.2.0 names the copy <target>-1.2.0.hex
 DIST := $(TARGET)$(if $(TAG),-$(TAG))
@@ -141,6 +150,6 @@ clean:
 
 clr: clean
 
-.PHONY: build run flash erase dist clean clr
+.PHONY: build run flash erase stack dist clean clr
 
 -include $(OBJECTS:.o=.d)

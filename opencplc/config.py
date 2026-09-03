@@ -27,9 +27,9 @@ Framework version rules:
   active  → PRO_VERSION (main.h); a new project takes -f or the opencplc.json "version"
 """
 
-# Workspace layout, fixed by Forge; examples are ordinary projects cloned from Demo
+# Workspace layout, fixed by Forge; Demo holds ordinary projects, cloned as a whole
 DIR_PROJECTS = "projects"
-DIR_EXAMPLES = "projects/examples"
+DIR_DEMO = "projects/demo"
 DIR_FRAMEWORK = "opencplc"
 DIR_BUILD = "build"
 

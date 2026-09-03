@@ -95,3 +95,10 @@ def prepare_creates_skeleton_once(ws, tmp_path):
   main_c.write_text("// user edit\n")
   prepare_project(cfg, paths)
   assert main_c.read_text() == "// user edit\n"
+
+def the_dispatcher_forwards_every_project_target(ws):
+  """Anything a project declares in .PHONY is reachable from the workspace root."""
+  generate(resolve_uno())
+  phony = lambda text: set(text.split(".PHONY:")[1].split(chr(10))[0].split())
+  assert phony((ws / "projects" / "myapp" / "makefile").read_text()) \
+    - phony((ws / "makefile").read_text()) == set()

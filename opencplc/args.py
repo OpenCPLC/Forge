@@ -31,7 +31,7 @@ class Args:
   """Parsed command line; every flag has a neutral default."""
   name: str = ""
   new: str|bool = False
-  example: bool = False
+  demo: bool = False
   reload: bool = False
   delete: str|bool = False
   get: list[str] = None
@@ -90,8 +90,8 @@ def load_args() -> Args:
   # Project actions
   parser.add_argument("-n", "--new", type=str, nargs="?", const=True, metavar="NAME",
     help="Create new project (optionally with NAME)")
-  parser.add_argument("-e", "--example", action="store_true",
-    help="Download Demo examples into projects/examples")
+  parser.add_argument("-e", "--demo", action="store_true",
+    help="Download Demo projects into projects/demo")
   parser.add_argument("-r", "--reload", action="store_true",
     help="Reload the active project, or the one in the current directory")
   parser.add_argument("-d", "--delete", type=str, nargs="?", const=True, metavar="NAME",
@@ -151,7 +151,7 @@ def load_args() -> Args:
   return Args(
     name=ns.name,
     new=ns.new,
-    example=ns.example,
+    demo=ns.demo,
     reload=ns.reload,
     delete=ns.delete,
     get=ns.get or [],

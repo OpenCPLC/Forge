@@ -1,5 +1,11 @@
 # Changes `opencplc`
 
+## `0.4.1` Board names and radio stack
+
+- `name` and `reserve_kB` in the board manifest
+- `make stack` flashes CPU2, `-e --demo` clones Demo
+- STM32WB55 keeps 832kB, the wireless stack owns the rest
+
 ## `0.4.0` Boards and drivers outside PLC
 
 Breaking: `-b custom` is gone,

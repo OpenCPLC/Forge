@@ -14,14 +14,14 @@ endif
 .DEFAULT_GOAL := build
 
 ifeq ($(ACTIVE),)
-build run flash erase dist clean clr:
+build run flash erase stack dist clean clr:
 	$(error No active project, select one with: ${CMD}opencplc <name>${END})
 else
 build:
 	@echo Entering directory: ${ACTIVE_COLORED}
 	@$(MAKE) --no-print-directory -q -C $(ACTIVE) build && echo Nothing to be done for ${GOLD}build${END}|| $(MAKE) --no-print-directory -C $(ACTIVE) build || (echo ${ERR} Build failed in ${ACTIVE_COLORED}&& exit 1)
 
-run flash erase dist clean clr:
+run flash erase stack dist clean clr:
 	@echo Entering directory: ${ACTIVE_COLORED}
 	@$(MAKE) --no-print-directory -C $(ACTIVE) $@
 endif
@@ -32,4 +32,4 @@ clean_all:
 
 clr_all: clean_all
 
-.PHONY: build run flash erase dist clean clr clean_all clr_all
+.PHONY: build run flash erase stack dist clean clr clean_all clr_all

@@ -2,19 +2,11 @@
 
 """Small CLI helpers: OS detection, prompts, name validation."""
 
-import sys, platform
+import sys
 from typing import Any
 from xaeian import Print, Color as c, Ico
 
 p = Print()
-
-def detect_os() -> str:
-  """Host OS as windows, linux, macos or unknown."""
-  system = platform.system().lower()
-  if system == "windows": return "windows"
-  elif system == "linux": return "linux"
-  elif system == "darwin": return "macos"
-  return "unknown"
 
 def is_yes(msg:str="Proceed automatically") -> bool:
   """Ask msg and read a yes/no answer; y, yes, t, tak and true count as yes."""

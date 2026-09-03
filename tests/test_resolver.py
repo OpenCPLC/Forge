@@ -109,7 +109,7 @@ def unselected_drivers_stay_out_of_a_bare_metal_build(ws):
 
 def a_board_prefix_is_not_the_board(ws, tmp_path):
   """Selecting uno never drags in uno_mini."""
-  from conftest import make_board, INI
+  from conftest import make_board
   mini = make_board(tmp_path / "opencplc" / "1.0.0", "uno_mini")
   (mini / "opencplc_uno_mini.c").write_text("// mini\n")
   pro = resolve_uno()

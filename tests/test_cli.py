@@ -29,7 +29,7 @@ def new_project_generates_everything(ws, monkeypatch):
   assert (pro / "main.c").exists() and (pro / "main.h").exists()
   assert (pro / "makefile").exists() and (pro / "flash.ld").exists()
   assert "ACTIVE := projects/app" in (ws / "makefile").read_text()
-  assert 'PRO_BOARD_UNO' in (pro / "main.h").read_text()
+  assert 'PRO_BOARD_Uno' in (pro / "main.h").read_text()
 
 def load_existing_project_by_name(ws, monkeypatch):
   assert run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-y") == 0
@@ -128,7 +128,7 @@ def pinned_project_loads_without_the_workspace_default_core(ws, monkeypatch):
 
 def new_project_without_board_or_chip_fails_with_a_list(ws, monkeypatch, capsys):
   assert run_cli(monkeypatch, "-n", "app") == 1
-  assert "uno" in capsys.readouterr().out
+  assert "Uno" in capsys.readouterr().out
 
 def reload_by_name_keeps_the_active_project(ws, monkeypatch):
   run_cli(monkeypatch, "-n", "a", "-b", "Uno", "-y")
@@ -183,22 +183,24 @@ def drivers_flag_seeds_pro_drivers(ws, monkeypatch):
 def board_brings_its_own_plc_layer(ws, monkeypatch):
   assert run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-y") == 0
   main_h = (ws / "projects" / "app" / "main.h").read_text()
-  assert "PRO_BOARD_UNO" in main_h and "PRO_PLC true" in main_h
+  assert "PRO_BOARD_Uno" in main_h and "PRO_PLC true" in main_h
 
 def board_without_the_plc_layer_gets_the_plain_skeleton(ws, monkeypatch):
   from conftest import make_board, INI
-  d = make_board(ws / "opencplc" / "1.0.0", "bare", INI.replace("plc = true", "plc = false"))
+  d = make_board(ws / "opencplc" / "1.0.0", "bare",
+    INI.replace("plc = true", "plc = false"), title="Bare")
   (d / "opencplc_bare.c").write_text("// bare" + chr(10))
   assert run_cli(monkeypatch, "-n", "app", "-b", "bare", "-y") == 0
   main_h = (ws / "projects" / "app" / "main.h").read_text()
-  assert "PRO_BOARD_BARE" in main_h and "PRO_PLC false" in main_h
+  assert "PRO_BOARD_Bare" in main_h and "PRO_PLC false" in main_h
   assert "PLC_Main" not in (ws / "projects" / "app" / "main.c").read_text()
   make = (ws / "projects" / "app" / "makefile").read_text()
   assert "brd/bare/" in make and "plc/plc.c" not in make
 
 def board_without_the_plc_layer_takes_it_from_the_flag(ws, monkeypatch):
   from conftest import make_board, INI
-  make_board(ws / "opencplc" / "1.0.0", "bare", INI.replace("plc = true", "plc = false"))
+  make_board(ws / "opencplc" / "1.0.0", "bare",
+    INI.replace("plc = true", "plc = false"), title="Bare")
   assert run_cli(monkeypatch, "-n", "app", "-b", "bare", "-P", "-y") == 0
   assert "PRO_PLC true" in (ws / "projects" / "app" / "main.h").read_text()
   assert "plc/plc.c" in (ws / "projects" / "app" / "makefile").read_text()
@@ -206,7 +208,7 @@ def board_without_the_plc_layer_takes_it_from_the_flag(ws, monkeypatch):
 def chip_flag_overrides_the_board_manifest(ws, monkeypatch):
   assert run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-c", "STM32G081", "-y") == 0
   main_h = (ws / "projects" / "app" / "main.h").read_text()
-  assert "PRO_BOARD_UNO" in main_h and "PRO_CHIP_STM32G081" in main_h
+  assert "PRO_BOARD_Uno" in main_h and "PRO_CHIP_STM32G081" in main_h
   assert "PRO_FLASH_kB 128" in main_h  # chip memory, not the 492kB of the board
   assert "SYS_CLOCK_FREQ 59904000" in main_h  # the clock still belongs to the board
   assert run_cli(monkeypatch, "app") == 0  # and it loads back the same way
