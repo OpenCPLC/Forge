@@ -18,6 +18,7 @@ class Flag:
   c = f"{Color.GREY}-c --chip{Color.END}"
   P = f"{Color.GREY}-P --plc{Color.END}"
   D = f"{Color.GREY}-D --dvr{Color.END}"
+  B = f"{Color.GREY}-B --boot{Color.END}"
   m = f"{Color.GREY}-m --memory{Color.END}"
   f = f"{Color.GREY}-f --framework{Color.END}"
   o = f"{Color.GREY}-o --opt-level{Color.END}"
@@ -38,6 +39,7 @@ class Args:
   board: str = ""
   plc: bool = False
   dvr: str = ""
+  boot: bool = False
   chip: str = ""
   memory: list[int] = None
   framework: str = ""
@@ -107,13 +109,15 @@ def load_args() -> Args:
     help="Add the PLC layer to a project without a board")
   parser.add_argument("-D", "--dvr", type=str, metavar="DRIVERS", default="",
     help="Core drivers for a new project, comma separated")
+  parser.add_argument("-B", "--boot", action="store_true",
+    help="Run the new project behind the bootloader: PRO_BOOT true")
   parser.add_argument("-m", "--memory", type=int, nargs="*", metavar=("FLASH", "RAM"),
     help="Override memory size in kB: FLASH RAM [RESERVED]", default=[])
   # Build configuration
   parser.add_argument("-f", "--framework", type=str, metavar="VER",
     help="Core version (tag/branch) for a new project, or a one-run override", default="")
   parser.add_argument("-o", "--opt-level", type=str, metavar="LEVEL",
-    help="Optimization level: O0, Og (default), O1, O2, O3", default="")
+    help="Optimization level: O0, Og (default), O1, O2, O3, Os", default="")
   parser.add_argument("-s", "--stlink", type=str, nargs="?", const="", metavar="SERIAL",
     help="Bind an ST-Link serial to the project; -s alone clears the binding")
   # Information
@@ -158,6 +162,7 @@ def load_args() -> Args:
     board=ns.board,
     plc=ns.plc,
     dvr=ns.dvr,
+    boot=ns.boot,
     chip=ns.chip,
     memory=ns.memory or [],
     framework=ns.framework,

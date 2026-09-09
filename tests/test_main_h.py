@@ -15,6 +15,7 @@ UNO_SUBS = {
   "${PRO_VERSION}": "1.0.2",
   "${FLASH}": 492,
   "${RAM}": 144,
+  "${BOOT}": "false",
   "${OPT_LEVEL}": "Og",
   "${LOG_LEVEL}": "LOG_LEVEL_INF",
   "${FREQ}": 59904000,
@@ -29,6 +30,7 @@ def embedded_main_h_roundtrip():
   assert info["PRO_VERSION"] == "1.0.2"
   assert info["PRO_FLASH_kB"] == "492"
   assert info["PRO_RAM_kB"] == "144"
+  assert info["PRO_BOOT"] == "false"
   assert info["PRO_OPT_LEVEL"] == "Og"
   assert info["LOG_LEVEL"] == "LOG_LEVEL_INF"
   assert info["SYS_CLOCK_FREQ"] == "59904000"

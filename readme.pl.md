@@ -122,6 +122,24 @@ FLASH 70.7kB / 72kB (98%)
 RAM 34.3kB / 36kB (95%)
 ```
 
+## 🥾 Bootloader
+
+Projekt z `#define PRO_BOOT true` w `main.h` działa za bootloaderem z Core i daje się aktualizować bez programatora; `-B` ustawia to nowemu projektowi.
+Ta jedna linia jest całym przełącznikiem: `PRO_FLASH_kB` znaczy to samo, a układ liczy Forge.
+Bootloader zajmuje pierwsze strony flasha _(8kB na STM32G0, 16kB na STM32WB55)_, a reszta `PRO_FLASH_kB` dzieli się na dwa równe sloty: slot aplikacji, w który linkowany jest obraz, i slot staging, do którego najpierw trafia aktualizacja.
+Strony powyżej `PRO_FLASH_kB` zostają dla projektu, tak jak bez bootloadera.
+
+```bash
+make flash    # bootloader z Core + obraz, przez ST-Link
+```
+
+Obraz ma nagłówek pod stałym offsetem z rozmiarem i za ostatnim bajtem miejsce na trailer CRC32.
+Aplikacja odbiera aktualizację swoim transportem i oddaje bajty do `BOOT_Begin`, `BOOT_Write` i `BOOT_End` _(`hal/stm32/sys/boot.h`)_: obraz ląduje w slocie staging razem z trailerem, aplikacja się resetuje, bootloader kopiuje cały, zweryfikowany obraz do slotu aplikacji i go uruchamia. Obraz z programatora ma trailer skasowany i działa taki, jaki jest.
+Przerwany transfer albo zanik zasilania w trakcie kopiowania nie szkodzi: działa stary obraz albo kopiowanie powtarza się przy następnym starcie.
+Do testów ten sam transfer można wpisać w konsoli: `#define CMD_BOOT ON` w `main.h` dokłada komendę shella `boot`.
+
+Bootloader przychodzi z Core w `scr/`, po jednej binarce na rodzinę _(`boot_stm32g0.bin`, `boot_stm32wb.bin`)_.
+
 ## ⚙️ Config
 
 Przy pierwszym projekcie ⚒️Forge tworzy plik konfiguracyjny **`opencplc.json`**.
@@ -200,6 +218,7 @@ Bez płytki w `main.h` stoi `PRO_BOARD_None`, a o resztę dba `PRO_PLC`:
 samo `-c <chip>` to goły mikrokontroler _(tylko HAL i biblioteki)_, a `-c <chip> -P` dokłada warstwę PLC na własnym sprzęcie, gdzie mapowanie peryferiów i `PLC_Main` piszesz sam.
 
 Drivery urządzeń mieszkają w `dvr/`, poza warstwą PLC, więc może z nich korzystać każdy projekt.
+Foldery w `dvr/` grupują je rodzajami, `temp/` dla termometrów, `acc/` dla akcelerometrów, `disp/` dla wyświetlaczy; driver nazywa się jak jego plik, gdziekolwiek leży.
 Płytka bierze te, które wymienia jej manifest, a projekt dokłada kolejne flagą `--dvr` przy tworzeniu albo w `main.h`: `#define PRO_DRIVERS "shtc3, hd44780"`.
 Do builda trafiają wyłącznie wymienione drivery.
 
@@ -275,12 +294,13 @@ Platforma HOST dostarcza stub'y dla modułów zależnych od sprzętu _(GPIO, tim
 - `-c --chip`: Mikrokontroler lub platforma: `STM32G081`, `STM32G0C1`, `STM32WB55`, `HOST`. Bez `-b` projekt działa bez warstwy PLC, tylko HAL i biblioteki standardowe. Przydatne dla Nucleo lub własnego hardware.
 - `-P --plc`: Dokłada warstwę PLC do projektu bez płytki, na własnym sprzęcie.
 - `-D --dvr`: Drivery framework'a nowego projektu, po przecinku _(`shtc3, hd44780`)_. Kolejne dopisujesz w `PRO_DRIVERS` w `main.h`.
+- `-B --boot`: Nowy projekt działa za bootloaderem: `PRO_BOOT true` w `main.h`, patrz [Bootloader](#-bootloader).
 - `-m --memory`: Pamięć w kB: `FLASH RAM [RESERVED]`. `RESERVED` zostaje odjęte od FLASH w pliku linkera `flash.ld`. _(tylko STM32)_
 
 #### Konfiguracja kompilacji
 
 - `-f --framework`: Wersja frameworka: `latest`, `develop`, `0.4.3`. Dla nowego projektu staje się `PRO_VERSION`, dla istniejącego buduje z nią jednorazowo.
-- `-o --opt-level`: Poziom optymalizacji: `O0`, `Og` _(domyślny)_, `O1`, `O2`, `O3`. Poziomy `O2`/`O3` wyświetlają ostrzeżenie dla STM32 _(timing, debugowanie)_.
+- `-o --opt-level`: Poziom optymalizacji: `O0`, `Og` _(domyślny)_, `O1`, `O2`, `O3`, `Os`. Poziomy `O2`/`O3` wyświetlają ostrzeżenie dla STM32 _(timing, debugowanie)_.
 - `-s --stlink`: Przypisuje numer seryjny ST-Linka do projektu; samo `-s` czyści przypisanie.
 
 #### Informacje

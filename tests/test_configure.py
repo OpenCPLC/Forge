@@ -11,7 +11,7 @@ from conftest import build_workspace, load_template, render, ws_paths, refs_cfg,
 MAIN_H = {
   "${NAME}": "myapp", "${DATE}": "2026-01-01", "${BOARD}": "Uno", "${PLC}": "true",
   "${DRIVERS}": "", "${CHIP}": "STM32G0C1", "${PRO_VERSION}": "1.0.0", "${FLASH}": 480,
-  "${RAM}": 140, "${OPT_LEVEL}": "O1", "${LOG_LEVEL}": "LOG_LEVEL_DBG",
+  "${RAM}": 140, "${BOOT}": "true", "${OPT_LEVEL}": "O1", "${LOG_LEVEL}": "LOG_LEVEL_DBG",
   "${FREQ}": 48000000,
 }
 
@@ -32,6 +32,13 @@ def existing_project_reads_main_h(ws):
   assert cfg["opt_level"] == "O1"
   assert cfg["log_level"] == "LOG_LEVEL_DBG"
   assert cfg["freq_Hz"] == 48000000
+  assert cfg["boot"] is True
+
+def a_main_h_without_pro_boot_runs_from_the_start_of_flash(ws):
+  main_h = (ws / "projects" / "myapp" / "main.h")
+  main_h.write_text("\n".join(l for l in main_h.read_text().splitlines() if "PRO_BOOT" not in l))
+  cfg = config_load(Args(name="myapp"), pro_map(ws), ws_paths(), "1.0.0", refs_cfg())
+  assert cfg["boot"] is False
 
 def config_flags_are_rejected_for_existing_project(ws):
   for kwargs in ({"board": "uno"}, {"chip": "STM32G081"}, {"memory": [128, 36]},

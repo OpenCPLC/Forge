@@ -87,6 +87,9 @@ def config_new(args, PRO:dict, PATHS:dict, fw_ver:str, forge_cfg:dict) -> dict:
   """Config for a fresh project from its flags."""
   reject_existing(args, PRO, PATHS)
   cfg = hardware_config(args, PATHS)
+  if args.boot and cfg["platform"] != "STM32":
+    p.err(f"Flag {flag.B} needs an STM32 chip {flag.c}")
+    sys.exit(1)
   # Memory override: -m FLASH RAM [RESERVED]
   if args.memory and len(args.memory) >= 2:
     user_kB = args.memory[2] if len(args.memory) > 2 else 0
@@ -98,6 +101,7 @@ def config_new(args, PRO:dict, PATHS:dict, fw_ver:str, forge_cfg:dict) -> dict:
     "fw_ver": fw_ver,
     "opt_level": args.opt_level or OPT_DEFAULT,
     "log_level": "LOG_LEVEL_INF",
+    "boot": args.boot,
     "project_drivers": parse_drivers(args.dvr),
   }
 
@@ -115,6 +119,7 @@ def flags_reject(args):
   if args.opt_level: used.append((flag.o, "PRO_OPT_LEVEL"))
   if args.plc: used.append((flag.P, "PRO_PLC"))
   if args.dvr: used.append((flag.D, "PRO_DRIVERS"))
+  if args.boot: used.append((flag.B, "PRO_BOOT"))
   if not used: return
   used_flag, define = used[0]
   p.err(f"Flag {used_flag} only configures a new project")
@@ -141,7 +146,7 @@ def read_main_h(args, PRO:dict, PATHS:dict) -> dict:
   lines = utils.lines_clear(lines, "//")
   info = utils.get_vars(lines, ["PRO_BOARD", "PRO_CHIP"], "_", "#define", required=False)
   info |= utils.get_vars(lines, ["PRO_VERSION", "PRO_FLASH_kB", "PRO_RAM_kB",
-    "PRO_OPT_LEVEL", "PRO_PLC", "PRO_DRIVERS", "LOG_LEVEL", "SYS_CLOCK_FREQ"],
+    "PRO_OPT_LEVEL", "PRO_PLC", "PRO_BOOT", "PRO_DRIVERS", "LOG_LEVEL", "SYS_CLOCK_FREQ"],
     " ", "#define", required=False)
   if not info.get("PRO_CHIP"):
     p.err(f"File {c.BLUE}main.h{c.END} missing {c.SKY}PRO_CHIP{c.END} definition")
@@ -203,6 +208,7 @@ def config_load(args, PRO:dict, PATHS:dict, fw_ver:str, forge_cfg:dict) -> dict:
     "fw_ver": fw_ver,
     "opt_level": info.get("PRO_OPT_LEVEL", "Og"),
     "log_level": info.get("LOG_LEVEL", "LOG_LEVEL_INF"),
+    "boot": info.get("PRO_BOOT", "").strip().lower() == "true",
     "project_drivers": parse_drivers(info.get("PRO_DRIVERS", "")),
   }
   use_ver = resolve_version(args, pro_ver, PATHS, fw_ver, forge_cfg)
@@ -233,7 +239,7 @@ def opt_normalize(cfg:dict):
   """Clamp optimization level; O2/O3 on STM32 builds as written, with a warning."""
   opt = cfg.get("opt_level", "Og")
   cfg["opt_level"] = opt[0].upper() + opt[1:].lower() if len(opt) > 1 else opt
-  valid = ("O0", "Og", "O1", "O2", "O3")
+  valid = ("O0", "Og", "O1", "O2", "O3", "Os")
   if cfg["opt_level"] not in valid:
     p.wrn(f"Unknown optimization level {c.MAGNTA}{opt}{c.END}, using {c.CYAN}Og{c.END}")
     p.inf(f"Valid options: {', '.join(f'{c.CYAN}{v}{c.END}' for v in valid)}")

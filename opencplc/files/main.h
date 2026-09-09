@@ -15,6 +15,7 @@
 #define PRO_VERSION "${PRO_VERSION}"
 #define PRO_FLASH_kB ${FLASH}
 #define PRO_RAM_kB ${RAM}
+#define PRO_BOOT ${BOOT}
 #define PRO_OPT_LEVEL "${OPT_LEVEL}"
 #define PRO_DRIVERS "${DRIVERS}"
 

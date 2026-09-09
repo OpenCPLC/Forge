@@ -5,6 +5,7 @@ TARGET := ${TARGET}
 STLINK := ${STLINK}
 FLASH_kB := ${FLASH}
 RAM_kB := ${RAM}
+BOOT := ${BOOT}
 
 # Paths anchored to this file, so make -C works from any directory
 THIS_MAKEFILE := $(lastword $(MAKEFILE_LIST))
@@ -125,8 +126,15 @@ UNDER_RESET = -c "reset_config srst_only srst_nogate connect_assert_srst"
 OPENOCD = openocd -f interface/stlink.cfg $(OPENOCD_SERIAL) \
   -f target/${OPENOCD_TARGET}.cfg $(UNDER_RESET) -c
 
+ifeq ($(BOOT),true)
+# Bootloader of the family from the Core, then the image into its slot
+BOOT_BIN = $(OPENCPLC)/scr/boot_${HAL}.bin
+flash:
+	@$(OPENOCD) "program $(BOOT_BIN) 0x08000000 verify" -c "program $(BUILD)/$(TARGET).bin ${FLASH_ORIGIN} verify reset exit" && echo Flashed ${VIOLET}$(TARGET).bin${END} behind ${VIOLET}boot_${HAL}.bin${END}|| (echo Flashing ${RED}failed${END}&& exit 1)
+else
 flash:
 	@$(OPENOCD) "program $(BUILD)/$(TARGET).elf verify reset exit" && echo Flashed ${VIOLET}$(TARGET).elf${END}|| (echo Flashing ${RED}failed${END}&& exit 1)
+endif
 
 run: build flash
 

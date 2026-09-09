@@ -85,7 +85,7 @@ Your application runs as a VRTS thread next to the PLC thread and the debugger t
 Add your own modules as more files in the project directory and its subfolders.
 
 `main.h` holds the configuration Forge reads on every load.
-The `PRO_*` definitions describe the board, chip, PLC layer, framework version and memory sizes, while `LOG_LEVEL` and `SYS_CLOCK_FREQ` are yours to change.
+The `PRO_*` definitions describe the board, chip, PLC layer, framework version, memory sizes and the bootloader _(`PRO_BOOT`)_, while `LOG_LEVEL` and `SYS_CLOCK_FREQ` are yours to change.
 Extra framework drivers go there too: `#define PRO_DRIVERS "shtc3, hd44780"`.
 
 Here _(roughly)_ ends **Forge** job, and further work goes like typical **embedded systems** project using [**✨Make**](#-make).
@@ -122,6 +122,24 @@ After linking Forge reports memory usage:
 FLASH 70.7kB / 72kB (98%)
 RAM 34.3kB / 36kB (95%)
 ```
+
+## 🥾 Bootloader
+
+A project with `#define PRO_BOOT true` in `main.h` runs behind the Core bootloader and can be updated without a programmer; `-B` sets it for a new project.
+That one line is the whole switch: `PRO_FLASH_kB` keeps its meaning and Forge computes the layout.
+The bootloader owns the first pages of flash _(8kB on STM32G0, 16kB on STM32WB55)_ and the rest of `PRO_FLASH_kB` splits into two equal slots: the application slot the image is linked into, and a staging slot an update lands in first.
+Flash pages above `PRO_FLASH_kB` stay with the project, as without a bootloader.
+
+```bash
+make flash    # bootloader from the Core + the image, over ST-Link
+```
+
+The image carries a header at a fixed offset with its size and, behind its last byte, room for a CRC32 trailer.
+The application takes an update over whatever transport it has and hands the bytes to `BOOT_Begin`, `BOOT_Write` and `BOOT_End` _(`hal/stm32/sys/boot.h`)_: the image lands in the staging slot with its trailer, the application resets, the bootloader copies a whole, verified image into the application slot and starts it. An image from the programmer keeps the trailer erased and runs as it is.
+An interrupted transfer or a power loss during the copy is harmless: the old image runs, or the copy repeats on the next start.
+For tests the same transfer can be typed into the console: `#define CMD_BOOT ON` in `main.h` compiles the `boot` shell command in.
+
+The bootloader ships with the Core under `scr/`, one binary per family _(`boot_stm32g0.bin`, `boot_stm32wb.bin`)_.
 
 ## ⚙️ Config
 
@@ -201,6 +219,7 @@ Without a board `main.h` holds `PRO_BOARD_None`, and `PRO_PLC` decides the rest:
 `-c <chip>` alone is bare metal _(HAL and libraries only)_, `-c <chip> -P` adds the PLC layer on your own hardware, where peripheral mapping and `PLC_Main` are yours to write.
 
 Device drivers live in `dvr/`, outside the PLC layer, so any project can use them.
+Folders under `dvr/` group them by kind, `temp/` for thermometers, `acc/` for accelerometers, `disp/` for displays; a driver is named by its file, wherever it sits.
 A board takes the ones its manifest names; a project adds more with `--dvr` at creation or in `main.h`: `#define PRO_DRIVERS "shtc3, hd44780"`.
 Only the named drivers reach the build.
 
@@ -279,12 +298,13 @@ Full list:
 - `-c --chip`: Microcontroller or platform: `STM32G081`, `STM32G0C1`, `STM32WB55`, `HOST` _(compile for PC)_. Without `-b --board`, the project runs without the PLC layer, only HAL and standard framework libraries. Useful for Nucleo boards or custom hardware.
 - `-P --plc`: Adds the PLC layer to a project without a board, on your own hardware.
 - `-D --dvr`: Framework drivers of a new project, comma separated _(`shtc3, hd44780`)_. Later ones go into `PRO_DRIVERS` in `main.h`.
+- `-B --boot`: Runs the new project behind the bootloader: `PRO_BOOT true` in `main.h`, see [Bootloader](#-bootloader).
 - `-m --memory`: Memory in kB: `FLASH RAM [RESERVED]`. `RESERVED` is the memory allocated for config and EEPROM, subtracted from FLASH in the linker file `flash.ld`. _(STM32 only)_
 
 #### Build config
 
 - `-f --framework`: Framework version: `latest`, `develop`, `0.4.3`. For a new project it becomes `PRO_VERSION`; for an existing one it builds with that version once.
-- `-o --opt-level`: Compiler optimization level: `O0`, `Og` _(default)_, `O1`, `O2`, `O3`. Levels `O2` and `O3` show a warning for STM32 _(timing, debugging)_.
+- `-o --opt-level`: Compiler optimization level: `O0`, `Og` _(default)_, `O1`, `O2`, `O3`, `Os`. Levels `O2` and `O3` show a warning for STM32 _(timing, debugging)_.
 - `-s --stlink`: Binds an ST-Link serial to the project; `-s` alone clears the binding.
 
 #### Info

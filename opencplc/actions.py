@@ -3,7 +3,7 @@
 """
 One-shot CLI actions.
 
-`info_actions()` handles -v, -F, -hl, -u and -a: things that answer and exit
+`info_actions()` handles -v, -F, -hl, -u, -a and -z: things that answer and exit
 without touching any project. `info_show()` prints the resolved model for -i.
 """
 
@@ -132,6 +132,9 @@ def info_show(pro:Project):
   if pro.platform == "STM32":
     p.gap(f"FLASH{c.GREY}/{c.END}RAM {flag.m}: {c.GOLD}{pro.flash_kB}{c.END}kB"
       f"{c.GREY}/{c.END}{c.GOLD}{pro.ram_kB}{c.END}kB")
+    slot = (f", image at {c.GOLD}0x{pro.flash_origin:08X}{c.END} in a "
+      f"{c.GOLD}{pro.image_kB}{c.END}kB slot") if pro.boot else ""
+    p.gap(f"Bootloader {flag.B}: {c.TURQUS}{'yes' if pro.boot else 'no'}{c.END}{slot}")
     p.gap(f"System frequency clock: {c.GOLD}{pro.freq_Hz}{c.END}Hz")
   p.gap(f"Optimization level {flag.o}: {c.CYAN}{pro.opt_level}{c.END}")
   p.gap(f"Log level: {c.SKY}{pro.log_level.replace('LOG_LEVEL_', '')}{c.END}")

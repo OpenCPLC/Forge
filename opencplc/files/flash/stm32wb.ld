@@ -8,7 +8,7 @@ _Min_Stack_Size = 0x400;
 MEMORY
 {
   RAM(xrw)        : ORIGIN = 0x20000008, LENGTH = ${RAM}K - 8
-  FLASH(rx)       : ORIGIN = 0x08000000, LENGTH = ${FLASH}K
+  FLASH(rx)       : ORIGIN = ${FLASH_ORIGIN}, LENGTH = ${FLASH}K
   RAM_SHARED(xrw) : ORIGIN = 0x20030000, LENGTH = 10K
 }
 
@@ -18,6 +18,11 @@ SECTIONS
     . = ALIGN(4);
     KEEP(*(.isr_vector))
     . = ALIGN(4);
+  } >FLASH
+
+  /* Image header at a fixed offset, read by the bootloader and the update tool */
+  .app_header ORIGIN(FLASH) + 0x200 : {
+    KEEP(*(.app_header))
   } >FLASH
 
   .text : {
@@ -122,4 +127,14 @@ SECTIONS
     *(MB_MEM2) ;
     _eMB_MEM2 = . ;
   } >RAM_SHARED AT> FLASH
+
+  /* End of the image, the value of its header; the erased bytes behind it take the CRC32
+     trailer the device writes when it stages an update. A symbol set inside a section is
+     section-relative unless made ABSOLUTE */
+  .app_trailer : {
+    . = ALIGN(8);
+    _image_size = ABSOLUTE(. - ORIGIN(FLASH));
+    LONG(0xFFFFFFFF);
+    LONG(0xFFFFFFFF);
+  } >FLASH
 }

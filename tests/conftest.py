@@ -46,7 +46,7 @@ def parse_main_h(text:str) -> dict:
   lines = utils.lines_clear(text.splitlines(), "//")
   info = utils.get_vars(lines, ["PRO_BOARD", "PRO_CHIP"], "_", "#define", required=False)
   info |= utils.get_vars(lines, ["PRO_VERSION", "PRO_FLASH_kB", "PRO_RAM_kB",
-    "PRO_OPT_LEVEL", "PRO_PLC", "PRO_DRIVERS", "LOG_LEVEL", "SYS_CLOCK_FREQ"], " ",
+    "PRO_OPT_LEVEL", "PRO_PLC", "PRO_BOOT", "PRO_DRIVERS", "LOG_LEVEL", "SYS_CLOCK_FREQ"], " ",
     "#define", required=False)
   return info
 
@@ -68,6 +68,8 @@ CORE_FILES = [
   "brd/eco/opencplc_eco.c", "brd/eco/opencplc_eco.h",
   "dvr/max31865.c", "dvr/max31865.h",
   "dvr/shtc3.c", "dvr/shtc3.h",
+  "dvr/temp/sht4x.c", "dvr/temp/sht4x.h",
+  "dvr/acc/ism330.c", "dvr/acc/ism330.h",
 ]
 MAIN_H_UNO = """#define PRO_BOARD_UNO
 #define PRO_CHIP_STM32G0C1

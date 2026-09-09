@@ -4,7 +4,7 @@
 
 import pytest
 from xaeian import file_context
-from opencplc.resolver import resolve_project
+from opencplc.resolver import resolve_project, available_drivers
 from conftest import build_workspace, uno_cfg, ws_paths, resolve_uno
 
 @pytest.fixture()
@@ -49,8 +49,38 @@ def identity_and_flash_fields(ws):
   assert pro.openocd_target == "stm32g0x"
   assert pro.linker == "stm32g0.ld"
   assert pro.stlink == "ABC123"
-  assert pro.defines == ["STM32", "STM32G0", "STM32G0C1xx", "OpenCPLC"]
+  assert pro.defines == ["STM32", "STM32G0", "STM32G0C1xx", "OpenCPLC", "BOOT_PAGES=4"]
   assert pro.mcu_flags == "-mcpu=cortex-m0plus -mthumb -mfloat-abi=soft"
+
+def without_boot_the_image_takes_the_whole_region(ws):
+  pro = resolve_uno()
+  assert not pro.boot
+  assert pro.flash_origin == 0x08000000 and pro.flash_kB == 492 and pro.image_kB == 492
+  assert not any(d.startswith("BOOT_SLOT_PAGES") for d in pro.defines)
+
+def boot_links_the_image_into_the_application_slot(ws):
+  """492kB minus the 8kB bootloader, halved into whole 2kB pages: 242kB per slot."""
+  pro = resolve_project(uno_cfg() | {"boot": True}, ws_paths(), {})
+  assert pro.boot and pro.flash_origin == 0x08002000
+  assert pro.flash_kB == 492 and pro.image_kB == 242 # PRO_FLASH_kB stays, the slot is derived
+  assert "BOOT_PAGES=4" in pro.defines and "BOOT_SLOT_PAGES=121" in pro.defines
+
+def wb55_slots_are_whole_pages_of_4k(ws):
+  from opencplc.platforms import parse_chip
+  cfg = uno_cfg() | parse_chip("STM32WB55") | {"boot": True, "flash_kB": 818}
+  pro = resolve_project(cfg, ws_paths(), {})
+  assert pro.flash_origin == 0x08004000 and pro.image_kB == 400
+  assert "BOOT_PAGES=4" in pro.defines and "BOOT_SLOT_PAGES=100" in pro.defines
+
+def boot_needs_room_for_two_slots(ws):
+  with pytest.raises(SystemExit):
+    resolve_project(uno_cfg() | {"boot": True, "flash_kB": 10}, ws_paths(), {})
+
+def host_carries_no_flash_layout(ws):
+  from conftest import host_model
+  pro = host_model()
+  assert not pro.boot and pro.flash_origin == 0
+  assert not any(d.startswith("BOOT_") for d in pro.defines)
 
 def resolution_is_stable(ws):
   assert resolve_uno() == resolve_uno()
@@ -106,6 +136,22 @@ def unselected_drivers_stay_out_of_a_bare_metal_build(ws):
   pro = resolve_project(cfg, ws_paths(), {})
   assert not any("/dvr/" in f for f in pro.core_c_sources)
   assert not any(d.endswith("/dvr") for d in pro.include_dirs)
+
+def a_driver_is_found_in_any_folder_under_dvr(ws):
+  pro = resolve_project(uno_cfg() | {"project_drivers": ["ism330"]}, ws_paths(), {})
+  assert "opencplc/1.0.0/dvr/acc/ism330.c" in pro.core_c_sources
+  assert any(d.endswith("/dvr/acc") for d in pro.include_dirs)
+  assert not any("sht4x" in f for f in pro.core_c_sources)
+  assert not any(d.endswith("/dvr/temp") for d in pro.include_dirs)
+
+def a_driver_folder_is_included_only_with_one_of_its_drivers(ws):
+  pro = resolve_project(uno_cfg() | {"project_drivers": ["sht4x"]}, ws_paths(), {})
+  assert "opencplc/1.0.0/dvr/temp/sht4x.c" in pro.core_c_sources
+  assert any(d.endswith("/dvr/temp") for d in pro.include_dirs)
+  assert not any(d.endswith("/dvr/acc") for d in pro.include_dirs)
+
+def available_drivers_reach_into_folders(ws):
+  assert available_drivers("opencplc/1.0.0") == ["ism330", "max31865", "sht4x", "shtc3"]
 
 def a_board_prefix_is_not_the_board(ws, tmp_path):
   """Selecting uno never drags in uno_mini."""

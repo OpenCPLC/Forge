@@ -96,6 +96,26 @@ def prepare_creates_skeleton_once(ws, tmp_path):
   prepare_project(cfg, paths)
   assert main_c.read_text() == "// user edit\n"
 
+def plain_project_links_at_the_start_of_flash(ws):
+  generate(resolve_uno())
+  ld = (ws / "projects" / "myapp" / "flash.ld").read_text()
+  assert "ORIGIN = 0x08000000, LENGTH = 492K" in ld
+  assert ".app_header ORIGIN(FLASH) + 0x200" in ld and ".app_trailer" in ld
+  make = (ws / "projects" / "myapp" / "makefile").read_text()
+  assert "BOOT := false" in make and "FLASH_kB := 492" in make
+  assert "program $(BUILD)/$(TARGET).elf verify reset exit" in make
+
+def boot_project_links_into_its_slot_and_flashes_both_images(ws):
+  generate(resolve_project(uno_cfg() | {"boot": True}, ws_paths(), {}))
+  ld = (ws / "projects" / "myapp" / "flash.ld").read_text()
+  assert "ORIGIN = 0x08002000, LENGTH = 242K" in ld
+  make = (ws / "projects" / "myapp" / "makefile").read_text()
+  assert "BOOT := true" in make and "FLASH_kB := 242" in make
+  assert "$(OPENCPLC)/scr/boot_stm32g0.bin" in make
+  assert 'program $(BOOT_BIN) 0x08000000 verify" -c "program' in make
+  assert '$(BUILD)/$(TARGET).bin 0x08002000 verify reset exit' in make
+  assert "-DBOOT_SLOT_PAGES=121" in make
+
 def the_dispatcher_forwards_every_project_target(ws):
   """Anything a project declares in .PHONY is reachable from the workspace root."""
   generate(resolve_uno())

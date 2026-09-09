@@ -14,7 +14,7 @@ import platform
 from datetime import datetime
 from xaeian import Print, Color as c, FILE, DIR, PATH, replace_end
 from .templates import load_templates
-from .resolver import Project
+from .resolver import Project, flash_layout
 from . import utils
 
 p = Print()
@@ -58,8 +58,13 @@ def include_flags(pro:Project) -> list[str]:
       flags.append("-I$(WORKSPACE)/" + d)
   return flags
 
-def project_header(cfg:dict, paths:dict):
-  """Print which project and configuration this run works on."""
+def project_header(cfg:dict, paths:dict, new:bool=False):
+  """
+  Print which project and configuration this run works on.
+
+  A new project under the bootloader says what that costs, because the flag halves the
+  flash it can use and nothing else on screen would show it.
+  """
   rel_path = PATH.local(paths["pro"])
   path_prefix = replace_end(rel_path, cfg["pro_name"], "")
   p.inf(f"Project {c.GREY}{path_prefix}{c.END}{c.BLUE}{cfg['pro_name']}{c.END}")
@@ -73,13 +78,17 @@ def project_header(cfg:dict, paths:dict):
     host_os = "Windows" if is_windows else "Linux"
     chip_msg = f"{c.PINK}{cfg['platform']}{c.END} {c.GREY}({host_os}){c.END}"
   p.gap(f"using framework version {c.VIOLET}{cfg['fw_ver']}{c.END} configured for {chip_msg}")
+  if new and cfg.get("boot"):
+    origin, slot_kB, _ = flash_layout(cfg)
+    p.gap(f"bootloader takes {c.GOLD}{cfg['boot_kB']}{c.END}kB, image at "
+      f"{c.GOLD}0x{origin:08X}{c.END} in one of two {c.GOLD}{slot_kB}{c.END}kB slots")
 
 def prepare_project(cfg:dict, paths:dict):
   """Create the project skeleton: its directory plus main.c/main.h when missing."""
   templates = load_templates()
   is_embedded = cfg["platform"] == "STM32"
   tpl = templates.get(cfg["hal"], {})
-  project_header(cfg, paths)
+  project_header(cfg, paths, new=not FILE.exists(f"{paths['pro']}/main.h"))
   DIR.ensure(paths["pro"])
   if cfg.get("plc"):
     DIR.ensure(f"{paths['fw']}/plc")
@@ -91,6 +100,7 @@ def prepare_project(cfg:dict, paths:dict):
     "${LOG_LEVEL}": cfg.get("log_level", "LOG_LEVEL_INF"),
     "${BOARD}": cfg["board_title"] or "None",
     "${PLC}": "true" if cfg.get("plc") else "false",
+    "${BOOT}": "true" if cfg.get("boot") else "false",
     "${DRIVERS}": ", ".join(cfg.get("project_drivers", [])),
     "${CHIP}": cfg.get("chip", "").upper(),
     "${FLASH}": cfg["flash_kB"],
@@ -151,7 +161,9 @@ def generate(pro:Project, activate:bool=True):
     "${BOARD}": pro.board_title or "None",
     "${BOARD_LOWER}": (pro.board or "").lower(),
     "${CHIP}": pro.chip,
-    "${FLASH}": pro.flash_kB,
+    "${FLASH}": pro.image_kB,
+    "${FLASH_ORIGIN}": f"0x{pro.flash_origin:08X}",
+    "${BOOT}": "true" if pro.boot else "false",
     "${RAM}": pro.ram_kB,
     "${FREQ}": pro.freq_Hz,
     "${HAL}": pro.hal,

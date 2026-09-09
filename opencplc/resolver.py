@@ -31,9 +31,9 @@ class Project:
   # Hardware
   platform: str  # "STM32" | "Host"
   chip: str
-  board: str|None    # board directory name, None without a board
-  board_title: str   # board name for generated code and messages, "" without a board
-  plc: bool          # PLC layer compiled in
+  board: str|None   # board directory name, None without a board
+  board_title: str  # board name for generated code and messages, "" without a board
+  plc: bool         # PLC layer compiled in
   family: str
   hal: str
   define: str
@@ -41,7 +41,8 @@ class Project:
   device: str
   svd: str
   # Build configuration
-  flash_kB: int
+  flash_kB: int # PRO_FLASH_kB, the flash region of the project
+  image_kB: int # what the image may take: the region, or its slot under the bootloader
   ram_kB: int
   freq_Hz: int
   opt_level: str
@@ -60,6 +61,8 @@ class Project:
   openocd_target: str
   erase_command: str
   stack_script: str # Core script that flashes the radio stack, "" when the chip has none
+  boot: bool        # image runs under the bootloader, linked into the application slot
+  flash_origin: int # address the image is linked at
   stlink: str
   build_dir: str
   # Device drivers selected by the board and by PRO_DRIVERS
@@ -103,13 +106,18 @@ def other_board(cfg:dict, core_dir:str, folder:str) -> bool:
   board_dir = cfg.get("board_dir") # exact directory, so uno never drags in uno_mini
   return not (board_dir and (folder == board_dir or folder.startswith(board_dir + "/")))
 
-def driver_folder(core_dir:str, folder:str) -> bool:
-  """True for the dvr directory of core_dir."""
-  return folder == f"{core_dir}/dvr"
+def in_drivers(core_dir:str, folder:str) -> bool:
+  """True for dvr of core_dir and every folder below it."""
+  dvr = f"{core_dir}/dvr"
+  return folder == dvr or folder.startswith(dvr + "/")
 
 def unused_driver(cfg:dict, core_dir:str, folder:str, file:str) -> bool:
-  """Core drivers compile only when selected by the board or by PRO_DRIVERS."""
-  if not driver_folder(core_dir, folder): return False
+  """
+  Core drivers compile only when selected by the board or by PRO_DRIVERS.
+
+  A driver is named by its file, whatever folder under dvr it sits in.
+  """
+  if not in_drivers(core_dir, folder): return False
   return PATH.basename(file).rsplit(".", 1)[0].lower() not in cfg["drivers"]
 
 def core_sources(cfg:dict, core_dir:str, ext:str) -> list[str]:
@@ -119,12 +127,13 @@ def core_sources(cfg:dict, core_dir:str, ext:str) -> list[str]:
     for f in fs if not unused_driver(cfg, core_dir, folder, f))
 
 def core_includes(cfg:dict, core_dir:str) -> list[str]:
-  """Core directories holding headers for this variant."""
-  return sorted(f for f in core_tree(cfg, core_dir, ".h") if not other_board(cfg, core_dir, f)
-    and (not driver_folder(core_dir, f) or cfg["drivers"]))
+  """Core directories holding headers for this variant, under dvr only those of selected drivers."""
+  tree = core_tree(cfg, core_dir, ".h")
+  return sorted(folder for folder, fs in tree.items() if not other_board(cfg, core_dir, folder)
+    and any(not unused_driver(cfg, core_dir, folder, f) for f in fs))
 
 def available_drivers(core_dir:str) -> list[str]:
-  """Core drivers with both .c and .h in dvr."""
+  """Core drivers with both .c and .h anywhere under dvr."""
   dvr = f"{core_dir}/dvr"
   names_c = {PATH.basename(f).rsplit(".", 1)[0].lower()
     for fs in rel_tree(dvr, ".c").values() for f in fs}
@@ -142,6 +151,33 @@ def validate_drivers(cfg:dict, core_dir:str):
   listed = ", ".join(f"{c.TURQUS}{n}{c.END}" for n in available) or f"{c.GREY}none{c.END}"
   p.inf(f"Drivers in this Core: {listed}")
   sys.exit(1)
+
+FLASH_BASE = 0x08000000
+
+def flash_layout(cfg:dict) -> tuple[int, int, list[str]]:
+  """
+  Link origin, link length [kB] and the `BOOT_*` defines of the image.
+
+  Without PRO_BOOT the image takes the whole region. Under the bootloader the region past
+  `boot_kB` splits into two equal slots of whole pages: the application slot the image is
+  linked into and the staging slot an update lands in first. Every STM32 build carries
+  `BOOT_PAGES`, a chip constant; `BOOT_SLOT_PAGES` marks the image as one in a slot.
+  """
+  flash_kB = cfg["flash_kB"]
+  boot_kB, page_kB = cfg.get("boot_kB", 0), cfg.get("page_kB", 0)
+  defines = [f"BOOT_PAGES={boot_kB // page_kB}"] if boot_kB and page_kB else []
+  if not cfg.get("boot"):
+    return FLASH_BASE, flash_kB, defines
+  if not boot_kB:
+    p.err(f"Chip {c.PINK}{cfg['chip']}{c.END} has no bootloader")
+    p.run(f"Set {c.SKY}PRO_BOOT false{c.END} in {c.BLUE}main.h{c.END}")
+    sys.exit(1)
+  slot_kB = (flash_kB - boot_kB) // 2 // page_kB * page_kB
+  if slot_kB < page_kB:
+    p.err(f"{c.SKY}PRO_FLASH_kB{c.END} {c.GOLD}{flash_kB}{c.END}kB leaves no room for "
+      f"two slots behind the {c.GOLD}{boot_kB}{c.END}kB bootloader")
+    sys.exit(1)
+  return FLASH_BASE + boot_kB * 1024, slot_kB, defines + [f"BOOT_SLOT_PAGES={slot_kB // page_kB}"]
 
 def project_sources(pro_dir:str, ext:str) -> list[str]:
   """Project files with ext, sorted and workspace-relative."""
@@ -173,6 +209,8 @@ def resolve_project(cfg:dict, paths:dict, forge_cfg:dict) -> Project:
   defines = list(cfg["defines"])
   if cfg.get("plc"):
     defines.append("OpenCPLC")
+  flash_origin, image_kB, boot_defines = flash_layout(cfg) if is_embedded else (0, 0, [])
+  defines += boot_defines
   board_drivers = list(cfg.get("board_drivers", []))
   project_drivers = list(cfg.get("project_drivers", []))
   cfg["drivers"] = list(dict.fromkeys(board_drivers + project_drivers))
@@ -199,6 +237,7 @@ def resolve_project(cfg:dict, paths:dict, forge_cfg:dict) -> Project:
     device=cfg["device"],
     svd=cfg.get("svd", ""),
     flash_kB=cfg["flash_kB"],
+    image_kB=image_kB,
     ram_kB=cfg["ram_kB"],
     freq_Hz=cfg.get("freq_Hz", 0),
     opt_level=cfg.get("opt_level", "Og"),
@@ -215,6 +254,8 @@ def resolve_project(cfg:dict, paths:dict, forge_cfg:dict) -> Project:
     openocd_target=cfg.get("openocd", ""),
     erase_command=cfg.get("erase", ""),
     stack_script=cfg.get("stack", ""),
+    boot=bool(cfg.get("boot")) and is_embedded,
+    flash_origin=flash_origin,
     stlink=(forge_cfg.get("stlink") or {}).get(f"projects/{name}", ""),
     build_dir=f"{PATH.local(paths['build'])}/projects/{name}",
     board_drivers=board_drivers,

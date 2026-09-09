@@ -23,6 +23,9 @@ def get_hal_dirs(hal:str) -> list:
   """HAL subdirectories compiled for a chip family, shared layers first."""
   return HAL_DIRS.get(hal, [hal])
 
+# The bootloader owns `boot_kB` at the start of flash: its code and one page as the mailbox,
+# one image per family in the Core as `scr/boot_<hal>.bin`. `PRO_BOOT true` halves the rest
+# of `PRO_FLASH_kB` into an application slot and a staging slot, whole pages each
 CHIPS = {
   "STM32G081": {
     "platform": "STM32", "family": "G0",
@@ -33,7 +36,8 @@ CHIPS = {
     "define": "STM32G081xx", "device": "STM32G081RB",
     "svd": "stm32g081.svd", "hal": "stm32g0",
     "ld": "stm32g0.ld", "openocd": "stm32g0x",
-    "erase": "stm32g0x mass_erase 0"
+    "erase": "stm32g0x mass_erase 0",
+    "page_kB": 2, "boot_kB": 8
   },
   "STM32G0C1": {
     "platform": "STM32", "family": "G0",
@@ -44,7 +48,8 @@ CHIPS = {
     "define": "STM32G0C1xx", "device": "STM32G0C1RE",
     "svd": "stm32g0c1.svd", "hal": "stm32g0",
     "ld": "stm32g0.ld", "openocd": "stm32g0x",
-    "erase": "stm32g0x mass_erase 0"
+    "erase": "stm32g0x mass_erase 0",
+    "page_kB": 2, "boot_kB": 8
   },
   "STM32WB55": {
     "platform": "STM32", "family": "WB",
@@ -57,7 +62,8 @@ CHIPS = {
     "define": "STM32WB55xx", "device": "STM32WB55RG",
     "svd": "stm32wb55.svd", "hal": "stm32wb",
     "ld": "stm32wb.ld", "openocd": "stm32wbx",
-    "erase": "stm32wbx mass_erase 0", "stack": "flash_cpu2.sh"
+    "erase": "stm32wbx mass_erase 0", "stack": "flash_cpu2.sh",
+    "page_kB": 4, "boot_kB": 16
   },
   "HOST": {
     "platform": "Host", "family": "",
@@ -67,7 +73,8 @@ CHIPS = {
     "led": {"port": "", "pin": 0, "name": ""},
     "define": host_define(), "device": "Desktop",
     "svd": "", "hal": "host",
-    "ld": "", "openocd": "", "erase": ""
+    "ld": "", "openocd": "", "erase": "",
+    "page_kB": 0, "boot_kB": 0
   }
 }
 

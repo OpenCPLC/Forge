@@ -213,6 +213,24 @@ def chip_flag_overrides_the_board_manifest(ws, monkeypatch):
   assert "SYS_CLOCK_FREQ 59904000" in main_h  # the clock still belongs to the board
   assert run_cli(monkeypatch, "app") == 0  # and it loads back the same way
 
+def boot_flag_seeds_pro_boot_and_the_slot(ws, monkeypatch):
+  assert run_cli(monkeypatch, "-n", "app", "-c", "STM32G0C1", "-B", "-y") == 0
+  assert "PRO_BOOT true" in (ws / "projects" / "app" / "main.h").read_text()
+  make = (ws / "projects" / "app" / "makefile").read_text()
+  assert "-DBOOT_SLOT_PAGES=126" in make and "BOOT := true" in make # (512 - 8) / 2 = 252kB
+  assert "ORIGIN = 0x08002000, LENGTH = 252K" in (ws / "projects" / "app" / "flash.ld").read_text()
+  assert run_cli(monkeypatch, "app", "-B") == 1 # PRO_BOOT is edited in main.h afterwards
+
+def a_new_boot_project_says_what_the_flag_costs(ws, monkeypatch, capsys):
+  """The flag halves the flash, so creation says so; a later load stays quiet."""
+  assert run_cli(monkeypatch, "-n", "app", "-c", "STM32G0C1", "-B", "-y") == 0
+  assert "252" in capsys.readouterr().out
+  assert run_cli(monkeypatch, "app") == 0
+  assert "252" not in capsys.readouterr().out
+
+def boot_flag_needs_an_stm32_chip(ws, monkeypatch):
+  assert run_cli(monkeypatch, "-n", "sim", "-c", "HOST", "-B", "-y") == 1
+
 def update_outside_a_frozen_build_points_at_pip(tmp_path, monkeypatch, capsys):
   monkeypatch.setattr(actions, "FROZEN", False)
   with pytest.raises(SystemExit):

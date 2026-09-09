@@ -24,6 +24,15 @@ def every_chip_has_erase_and_hal():
     assert "erase" in cfg, name
     assert get_hal_dirs(cfg["hal"]), name
 
+def every_stm32_chip_reserves_whole_bootloader_pages():
+  """Whole pages for the bootloader: code pages plus the mailbox page; the host has none."""
+  for name, cfg in CHIPS.items():
+    if cfg["platform"] != "STM32":
+      assert cfg["boot_kB"] == 0, name
+      continue
+    assert cfg["page_kB"] > 0 and cfg["boot_kB"] % cfg["page_kB"] == 0, name
+    assert cfg["boot_kB"] >= 2 * cfg["page_kB"], name
+
 def wb55_flash_stops_below_the_wireless_stack():
   """CPU1 must not be offered flash that belongs to CPU2."""
   stack_start = 0xD0 * 4 # SFSA 0xD0, pages of 4kB
