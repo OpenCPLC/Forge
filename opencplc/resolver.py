@@ -3,10 +3,10 @@
 """
 Project resolution.
 
-`resolve_project()` walks the framework and project trees once and returns a
-`Project`: the single model every generator and `-i` read from. Paths in the
-model are workspace-relative and sorted, so identical inputs resolve to an
-identical model; absolute paths appear only while scanning.
+`resolve_project()` walks framework and project trees once and returns a `Project`.
+That is the single model every generator and `-i` read from.
+Paths in it are workspace-relative and sorted, so identical inputs resolve identically.
+Absolute paths appear only while scanning.
 """
 
 from dataclasses import dataclass, field
@@ -78,9 +78,8 @@ def core_tree(cfg:dict, core_dir:str, ext:str) -> dict[str, list[str]]:
   """
   Core source tree for the selected variant.
 
-  HAL, lib, the boards and the selected drivers are always in; the PLC layer only
-  when the project asks for it. Boards and drivers live outside plc/, so a project
-  without the PLC layer can use them too.
+  HAL, lib, boards and selected drivers are always in, PLC layer only when asked for.
+  Boards and drivers live outside plc/, so a project without that layer can use them too.
   """
   found = {}
   for sub in get_hal_dirs(cfg["hal"]):
@@ -98,8 +97,8 @@ def other_board(cfg:dict, core_dir:str, folder:str) -> bool:
   """
   Board directories other than the selected one are excluded.
 
-  Boards sit in brd/ at the Core root, and under plc/ in the versions that kept them there,
-  so a project on any Core compiles its own board and no other.
+  Boards sit in brd/ at Core root, and under plc/ in versions that kept them there.
+  A project on any Core compiles its own board and no other.
   """
   roots = (f"{core_dir}/brd/", f"{core_dir}/plc/brd/")
   if not any(folder.startswith(root) for root in roots): return False
@@ -127,7 +126,7 @@ def core_sources(cfg:dict, core_dir:str, ext:str) -> list[str]:
     for f in fs if not unused_driver(cfg, core_dir, folder, f))
 
 def core_includes(cfg:dict, core_dir:str) -> list[str]:
-  """Core directories holding headers for this variant, under dvr only those of selected drivers."""
+  """Core header directories for this variant, under dvr only the selected drivers."""
   tree = core_tree(cfg, core_dir, ".h")
   return sorted(folder for folder, fs in tree.items() if not other_board(cfg, core_dir, folder)
     and any(not unused_driver(cfg, core_dir, folder, f) for f in fs))
@@ -156,12 +155,13 @@ FLASH_BASE = 0x08000000
 
 def flash_layout(cfg:dict) -> tuple[int, int, list[str]]:
   """
-  Link origin, link length [kB] and the `BOOT_*` defines of the image.
+  Link origin, link length [kB] and `BOOT_*` defines of the image.
 
-  Without PRO_BOOT the image takes the whole region. Under the bootloader the region past
-  `boot_kB` splits into two equal slots of whole pages: the application slot the image is
-  linked into and the staging slot an update lands in first. Every STM32 build carries
-  `BOOT_PAGES`, a chip constant; `BOOT_SLOT_PAGES` marks the image as one in a slot.
+  Without PRO_BOOT the image takes the whole region.
+  Under the bootloader the region past `boot_kB` splits into two equal slots of whole pages.
+  Image is linked into the application slot, an update lands in the staging one first.
+  Every STM32 build carries `BOOT_PAGES`, a chip constant.
+  `BOOT_SLOT_PAGES` marks the image as one in a slot.
   """
   flash_kB = cfg["flash_kB"]
   boot_kB, page_kB = cfg.get("boot_kB", 0), cfg.get("page_kB", 0)

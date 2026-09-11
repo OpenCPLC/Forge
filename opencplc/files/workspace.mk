@@ -19,11 +19,11 @@ build run flash erase stack dist clean clr:
 else
 build:
 	@echo Entering directory: ${ACTIVE_COLORED}
-	@$(MAKE) --no-print-directory -q -C $(ACTIVE) build && echo Nothing to be done for ${GOLD}build${END}|| $(MAKE) --no-print-directory -C $(ACTIVE) build || (echo ${ERR} Build failed in ${ACTIVE_COLORED}&& exit 1)
+	@"$(MAKE)" --no-print-directory -q -C $(ACTIVE) build && echo Nothing to be done for ${GOLD}build${END}|| "$(MAKE)" --no-print-directory -C $(ACTIVE) build || (echo ${ERR} Build failed in ${ACTIVE_COLORED}&& exit 1)
 
 run flash erase stack dist clean clr:
 	@echo Entering directory: ${ACTIVE_COLORED}
-	@$(MAKE) --no-print-directory -C $(ACTIVE) $@
+	@"$(MAKE)" --no-print-directory -C $(ACTIVE) $@
 endif
 
 clean_all:

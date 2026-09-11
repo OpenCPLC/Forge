@@ -3,10 +3,10 @@
 """
 Project configuration.
 
-A new project is configured from the -b/-c/-m/-o/-f/-D flags; an existing one is
-read back from the #define entries in its main.h. Ready boards come from the
-selected Core (`brd/*/*.ini`) and the board decides whether the PLC layer is in;
-without a board the project is bare metal, or PLC on your own hardware with -P.
+A new project is configured from -b/-c/-m/-o/-f/-D flags.
+An existing one is read back from #define entries in its main.h.
+Ready boards come from the selected Core (`brd/*/*.ini`), and a board decides about PLC layer.
+Without a board the project is bare metal, or PLC on your own hardware with -P.
 Both paths return the same cfg dict that `resolve_project()` consumes.
 """
 
@@ -107,10 +107,10 @@ def config_new(args, PRO:dict, PATHS:dict, fw_ver:str, forge_cfg:dict) -> dict:
 
 def flags_reject(args):
   """
-  Config flags only create projects; an existing one is edited in main.h and reloaded.
+  Config flags only create projects, an existing one is edited in main.h and reloaded.
 
-  -f is the exception: it builds an existing project on another Core version for one run,
-  leaving PRO_VERSION alone - a way to try a newer Core before pinning it.
+  -f is the exception: it builds an existing project on another Core version for one run.
+  PRO_VERSION stays as it is, so a newer Core can be tried before pinning it.
   """
   used = []
   if args.board: used.append((flag.b, "PRO_BOARD_<NAME>"))
@@ -163,8 +163,9 @@ def resolve_version(args, pro_ver:str, PATHS:dict, fw_ver:str, forge_cfg:dict) -
   """
   Core version that builds this project.
 
-  Priority: -f for this run, then the PRO_VERSION pin, then the workspace default when
-  the pinned version cannot be cloned. Every step that is not the plain case says so.
+  Priority: -f for this run, then the PRO_VERSION pin.
+  Workspace default steps in when the pinned version cannot be cloned.
+  Every step that is not the plain case says so.
   """
   if not DIR.exists(PATH.resolve(f"{PATHS['framework']}/{pro_ver}", read=False)):
     utils.version_check(pro_ver, ensure_refs(forge_cfg, args.yes),

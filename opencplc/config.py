@@ -1,7 +1,7 @@
 # opencplc/config.py
 
 """
-URLs and the console conventions of Forge.
+URLs and console conventions of Forge.
 
 Console color conventions (xaeian.Color) - one meaning per color, grouped in families:
 

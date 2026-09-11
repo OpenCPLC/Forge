@@ -47,18 +47,18 @@ OPT = -${OPT_LEVEL}
 CFLAGS = -std=c11 $(OPT) -Wall -Wextra $(C_DEFS) $(C_INCLUDES)
 CFLAGS += -g -MMD -MP -MF"$(@:%.o=%.d)"
 
-# Core (opencplc/) and project objects in separate trees, named after full source paths;
-# outputs sit next to them
+# Core (opencplc/) and project objects in separate trees, named after full source paths
+# Outputs sit next to them
 OBJECTS := $(patsubst %.c,$(BUILD)/opencplc/%.o,$(CORE_C))
 OBJECTS += $(patsubst %.c,$(BUILD)/project/%.o,$(PRO_C))
 
-# Every object depends on the makefile, because a flag change touches all of them.
-# main.h is not listed: `-MMD -MP` records in the .d files which objects really include it,
-# so editing it rebuilds exactly those.
+# Every object depends on the makefile, because a flag change touches all of them
+# main.h is not listed: `-MMD -MP` records in the .d files which objects really include it
+# Editing it rebuilds exactly those
 CONFIG_DEPS = $(MAKEFILE_PATH)
 
-# Configuration changed: Forge rewrites this file and Make restarts once with fresh sources.
-# The stamp carries the reload time, so a rewrite with identical content rebuilds nothing.
+# Configuration changed: Forge rewrites this file and Make restarts once with fresh sources
+# Stamp carries the reload time, so a rewrite with identical content rebuilds nothing
 FORGE = opencplc
 CONFIG_INPUTS = $(wildcard ${CONFIG_INPUTS})
 FORGE_STAMP := $(BUILD)/.forge
@@ -83,18 +83,33 @@ $(BUILD)/project/%.o: $(PROJECT)/%.c $(CONFIG_DEPS)
 $(EXE): $(OBJECTS)
 		$(CC) $(OBJECTS) $(LIBS) -o $@
 
+# Only top make with build as its goal says it
+# Run in the project that is this one, under the dispatcher that one, behind dist nobody
+ifeq ($(MAKELEVEL),0)
+ifeq ($(filter-out build,$(MAKECMDGOALS)),)
+BUILD_SAYS := yes
+endif
+endif
+
+ifeq ($(BUILD_SAYS),yes)
+build:
+	@"$(MAKE)" --no-print-directory -q $(EXE) && echo Nothing to be done for ${GOLD}build${END}|| "$(MAKE)" --no-print-directory $(EXE)
+else
 build: $(EXE)
+endif
 
 run: build
 	@echo Running ${GREEN}$(notdir $(EXE))${END}
 	@$(EXE)
 
 # make dist TAG=1.2.0 names the copy <target>-1.2.0
+# Stamp touched, so a new file in the project does not force a reload on the next make
 DIST := $(TARGET)$(if $(TAG),-$(TAG))$(suffix $(EXE))
 
 dist: build
 	@$(call COPY,$(EXE),$(PROJECT)/$(DIST))
-	@echo Copied ${GREEN}$(DIST)${END} to ${PROJECT_COLORED}
+	@$(call TOUCH,$(FORGE_STAMP))
+	@echo Copied ${LIME}$(DIST)${END} to ${PROJECT_COLORED}
 
 clean:
 	@$(call RMDIR,$(BUILD))

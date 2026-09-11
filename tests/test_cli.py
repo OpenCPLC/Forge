@@ -255,3 +255,22 @@ def the_replaced_executable_goes_on_the_next_run(tmp_path, monkeypatch):
   (tmp_path / "opencplc.exe.old").write_bytes(b"old")
   actions.info_actions(Args(), refs_cfg())
   assert not (tmp_path / "opencplc.exe.old").exists()
+
+def framework_flag_alone_clones_the_version(ws, monkeypatch, capsys):
+  cloned = []
+  monkeypatch.setattr(actions.utils, "install_git", lambda yes: None)
+  monkeypatch.setattr(ws_mod.utils, "git_get_refs", lambda url, opt="--ref": ["2.0.0", "1.0.0"])
+  monkeypatch.setattr(actions.utils, "git_clone_missing",
+    lambda url, path, ref, yes=False, required=True: bool(cloned.append(ref)) or True)
+  assert run_cli(monkeypatch, "-f", "2.0.0", "-y") == 0
+  assert cloned == ["2.0.0"]
+  assert not (ws / "makefile").exists() # no project touched
+
+def framework_flag_alone_leaves_a_cloned_version_alone(ws, monkeypatch, capsys):
+  monkeypatch.setattr(actions.utils, "git_clone_missing", _raise_disk_full)
+  assert run_cli(monkeypatch, "-f", "1.0.0", "-y") == 0
+  assert "1.0.0" in capsys.readouterr().out
+
+def framework_flag_with_a_project_still_builds_it(ws, monkeypatch):
+  assert run_cli(monkeypatch, "myapp", "-f", "1.0.0") == 0
+  assert "ACTIVE := projects/myapp" in (ws / "makefile").read_text()

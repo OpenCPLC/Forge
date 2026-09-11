@@ -23,9 +23,9 @@ def get_hal_dirs(hal:str) -> list:
   """HAL subdirectories compiled for a chip family, shared layers first."""
   return HAL_DIRS.get(hal, [hal])
 
-# The bootloader owns `boot_kB` at the start of flash: its code and one page as the mailbox,
-# one image per family in the Core as `scr/boot_<hal>.bin`. `PRO_BOOT true` halves the rest
-# of `PRO_FLASH_kB` into an application slot and a staging slot, whole pages each
+# Bootloader owns `boot_kB` at the start of flash: its code and one page as the mailbox
+# One image per family in Core as `scr/boot_<hal>.bin`
+# `PRO_BOOT true` halves the rest of `PRO_FLASH_kB` into application and staging slots
 CHIPS = {
   "STM32G081": {
     "platform": "STM32", "family": "G0",
@@ -53,8 +53,8 @@ CHIPS = {
   },
   "STM32WB55": {
     "platform": "STM32", "family": "WB",
-    # Of the 1024kB CPU1 owns what lies below the wireless stack, which `make stack`
-    # installs at 0x080D0000: SFSA 0xD0 is 208 pages of 4kB, so CPU1 gets 832kB.
+    # Of 1024kB CPU1 owns what lies below the wireless stack, installed by `make stack`
+    # Stack sits at 0x080D0000: SFSA 0xD0 is 208 pages of 4kB, so CPU1 gets 832kB
     "flash_kB": 832, "ram_kB": 192,
     "cpu": "cortex-m4", "fpu": True,
     "uart": {"nbr": 1, "tx": "PB6", "rx": "PB7", "dma": 4},

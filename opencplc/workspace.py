@@ -4,7 +4,7 @@
 Workspace state.
 
 Finds the opencplc.json root from any directory inside the workspace,
-loads and persists the configuration, fetches framework refs once per run,
+loads and persists configuration, fetches framework refs once per run,
 keeps the Core checkout present and answers what projects exist here.
 """
 
@@ -44,8 +44,8 @@ def enter_workspace() -> str:
   root = find_workspace() or cwd
   if not os.path.samefile(root, cwd):
     os.chdir(root) # subprocesses (git, make) follow the process cwd
-    p.inf(f"Workspace: {c.ORANGE}{PATH.normalize(root)}{c.END}")
-  # The xaeian file API follows its own root: the import-time cwd, or the exe dir when frozen
+    p.inf(f"Workspace: {c.CREAM}{PATH.normalize(root)}{c.END}")
+  # xaeian file API follows its own root: import-time cwd, or exe dir when frozen
   set_context(root_path=root)
   return cwd
 
@@ -59,7 +59,7 @@ def forge_config(templates:dict) -> dict:
   if missing:
     p.err(f"Missing key {c.SKY}{missing[0]}{c.END} in {c.ORANGE}opencplc.json{c.END}")
     sys.exit(1)
-  # Only the documented fields survive a save; the version list is Forge's own cache
+  # Only documented fields survive a save, version list is Forge's own cache
   cfg = {k: cfg[k] for k in (*template, "available-versions") if k in cfg}
   cfg["stlink"] = cfg["stlink"] if isinstance(cfg["stlink"], dict) else {}
   return cfg

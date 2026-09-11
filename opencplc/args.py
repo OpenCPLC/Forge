@@ -115,7 +115,8 @@ def load_args() -> Args:
     help="Override memory size in kB: FLASH RAM [RESERVED]", default=[])
   # Build configuration
   parser.add_argument("-f", "--framework", type=str, metavar="VER",
-    help="Core version (tag/branch) for a new project, or a one-run override", default="")
+    help="Core version (tag/branch) for a new project, a one-run override, or alone: download it",
+    default="")
   parser.add_argument("-o", "--opt-level", type=str, metavar="LEVEL",
     help="Optimization level: O0, Og (default), O1, O2, O3, Os", default="")
   parser.add_argument("-s", "--stlink", type=str, nargs="?", const="", metavar="SERIAL",

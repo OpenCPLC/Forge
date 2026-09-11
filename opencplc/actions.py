@@ -3,13 +3,13 @@
 """
 One-shot CLI actions.
 
-`info_actions()` handles -v, -F, -hl, -u, -a and -z: things that answer and exit
+`info_actions()` handles -v, -F, -f, -hl, -u, -a and -z: things that answer and exit
 without touching any project. `info_show()` prints the resolved model for -i.
 """
 
 import sys, subprocess
-from xaeian import Print, Color as c, FILE, DIR, PATH, replace_end
-from .config import URL_FTP, URL_FORGE, EXE_NAME
+from xaeian import Print, Color as c, Ico, FILE, DIR, PATH, replace_end
+from .config import URL_FTP, URL_FORGE, URL_CORE, EXE_NAME, DIR_FRAMEWORK
 from .args import flag
 from .resolver import Project
 from .workspace import ensure_refs
@@ -40,9 +40,9 @@ def update_forge(args):
   """
   -u: swap the running executable for a release from GitHub.
 
-  The new file goes next to the running one, wherever that is, never into the workspace.
-  Windows keeps a lock on a running image, so the old executable is renamed aside and
-  dropped on the next run; the download happens first, so nothing moves without the bytes.
+  New file goes next to the running one, wherever that is, never into the workspace.
+  Windows locks a running image, so the old one is renamed aside and dropped on the next run.
+  Download happens first, so nothing moves without the bytes.
   """
   if not FROZEN:
     p.err("Forge runs here as a Python package")
@@ -75,8 +75,33 @@ def update_forge(args):
     sys.exit(1)
   p.ok(f"Forge updated to {c.VIOLET}{target}{c.END}")
 
+# Flags of a project run, where -f is an override, not a download
+PROJECT_FLAGS = ("name", "new", "demo", "reload", "delete", "get", "board", "chip", "plc",
+  "dvr", "boot", "memory", "opt_level", "project_list", "info", "version",
+  "framework_versions", "size", "hash_list", "update", "assets")
+
+def framework_fetch(args, forge_cfg:dict) -> bool:
+  """
+  -f VER alone: clone that Core version, no project involved.
+
+  A way to read a version before `PRO_VERSION` points at it.
+  Already cloned stays as it is.
+  """
+  if not args.framework or args.stlink is not None: return False
+  if any(getattr(args, name) for name in PROJECT_FLAGS): return False
+  ver = args.framework
+  path = PATH.resolve(f"{DIR_FRAMEWORK}/{ver}", read=False)
+  if DIR.exists(path):
+    p.ok(f"Framework {c.VIOLET}{ver}{c.END} already in {c.ORANGE}{PATH.local(path)}{c.END}")
+    return True
+  utils.version_check(ver, ensure_refs(forge_cfg, args.yes),
+    f"{Ico.RUN} Check version list: {flag.F}")
+  utils.install_git(args.yes)
+  utils.git_clone_missing(URL_CORE, path, ver, args.yes)
+  return True
+
 def info_actions(args, forge_cfg:dict) -> bool:
-  """One-shot actions: -v, -F, -hl, -u, -a, -z. True when any of them ran."""
+  """One-shot actions: -v, -F, -f, -hl, -u, -a, -z. True when any of them ran."""
   if FROZEN:
     FILE.remove(f"{PATH.script_dir()}/{EXE_NAME}.old") # what an earlier -u replaced
   ran = False
@@ -98,6 +123,8 @@ def info_actions(args, forge_cfg:dict) -> bool:
       color = c.VIOLET if ver == active else c.CYAN
       parts.append(f"{color}{ver}{c.END}{suffix}")
     print("Framework Versions: " + ", ".join(parts))
+    ran = True
+  if framework_fetch(args, forge_cfg):
     ran = True
   if args.hash_list:
     print(utils.c_code_enum(args.hash_list, args.hash_title, args.hash_define))

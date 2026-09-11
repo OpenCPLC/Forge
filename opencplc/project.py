@@ -3,14 +3,13 @@
 """
 Project generators.
 
-`prepare_project()` creates the skeleton files a project keeps for life
-(main.c, main.h). `generate()` renders everything Forge owns from the
-resolved `Project` model: the project makefile and flash.ld inside the
-project directory, the workspace dispatcher and the VS Code configuration.
+`prepare_project()` creates skeleton files a project keeps for life: main.c and main.h.
+`generate()` renders everything Forge owns from the resolved `Project` model:
+makefile and flash.ld in the project, workspace dispatcher, VS Code configuration.
 An unchanged file keeps its bytes and its mtime.
 """
 
-import platform
+import os, shutil, platform
 from datetime import datetime
 from xaeian import Print, Color as c, FILE, DIR, PATH, replace_end
 from .templates import load_templates
@@ -31,11 +30,29 @@ def rel_from(items:list[str], base:str) -> list[str]:
   """Paths stripped of a directory prefix, e.g. core paths relative to the Core dir."""
   return [item[len(base) + 1:] for item in items if item.startswith(base + "/")]
 
+def bash_exe() -> str:
+  """
+  Bash that can open a Windows path.
+
+  On Windows `bash` from PATH is usually WSL, blind to `C:/...`.
+  Git brings its own, so that one wins when present.
+  """
+  if platform.system() != "Windows": return "bash"
+  git = shutil.which("git")
+  if not git: return "bash"
+  root = os.path.dirname(git) # git.exe sits in cmd, bin or mingw64/bin
+  for _ in range(3):
+    root = os.path.dirname(root)
+    for rel in ("bin/bash.exe", "usr/bin/bash.exe"):
+      bash = f"{root}/{rel}".replace("\\", "/")
+      if FILE.exists(bash): return f'"{bash}"'
+  return "bash"
+
 def stack_command(pro:Project) -> str:
-  """Radio stack rule of a project: the Core script, or a refusal on a chip without one."""
+  """Radio stack rule of a project: Core script, or a refusal on a chip without one."""
   if not pro.stack_script:
     return f"echo Chip {c.PINK}{pro.chip}{c.END} has no radio stack&& exit 1"
-  script = f'bash "$(OPENCPLC)/scr/{pro.stack_script}"'
+  script = f'{bash_exe()} "$(OPENCPLC)/scr/{pro.stack_script}"'
   return f"{script} $(if $(STLINK),--sn=$(STLINK)) $(if $(FUS),--fus)"
 
 def config_inputs(pro:Project) -> list[str]:
@@ -62,8 +79,8 @@ def project_header(cfg:dict, paths:dict, new:bool=False):
   """
   Print which project and configuration this run works on.
 
-  A new project under the bootloader says what that costs, because the flag halves the
-  flash it can use and nothing else on screen would show it.
+  A new project under the bootloader says what that costs.
+  The flag halves flash it can use and nothing else on screen would show it.
   """
   rel_path = PATH.local(paths["pro"])
   path_prefix = replace_end(rel_path, cfg["pro_name"], "")
@@ -132,9 +149,9 @@ def generate(pro:Project, activate:bool=True):
   """
   Render the project makefile and linker from the model.
 
-  With `activate` the workspace follows too: the dispatcher points at this project
-  and VS Code gets its configuration. A reload from inside a project directory
-  leaves both alone, so parallel builds never fight over the active project.
+  With `activate` the workspace follows too: dispatcher points here, VS Code gets its config.
+  A reload from inside a project directory leaves both alone.
+  Parallel builds never fight over the active project.
   """
   templates = load_templates()
   tpl = templates.get(pro.hal, {})
@@ -180,7 +197,7 @@ def generate(pro:Project, activate:bool=True):
     "${PROJECT_COLORED}": colored_path(pro.pro_dir, pro.name),
     "${BUILD_COLORED}": colored_path(pro.build_dir, pro.name),
     "${GOLD}": c.GOLD, "${GREEN}": c.GREEN, "${PINK}": c.PINK, "${VIOLET}": c.VIOLET,
-    "${RED}": c.RED, "${END}": c.END,
+    "${LIME}": c.LIME, "${RED}": c.RED, "${END}": c.END,
   }
   # Linker script and makefile live inside the project - parallel builds stay disjoint
   if pro.linker:

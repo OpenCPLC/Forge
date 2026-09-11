@@ -182,6 +182,12 @@ opencplc <project_name> --new -f 0.4.3
 opencplc <project_name> --new -f develop
 ```
 
+Alone the flag only downloads, so a version can be read before any project points at it:
+
+```bash
+opencplc -f develop
+```
+
 ### 📌 Project versioning
 
 Each project stores in `main.h` the framework version it was created with _(definition `PRO_VERSION`)_.
@@ -303,7 +309,7 @@ Full list:
 
 #### Build config
 
-- `-f --framework`: Framework version: `latest`, `develop`, `0.4.3`. For a new project it becomes `PRO_VERSION`; for an existing one it builds with that version once.
+- `-f --framework`: Framework version: `latest`, `develop`, `0.4.3`. For a new project it becomes `PRO_VERSION`; for an existing one it builds with that version once; alone it only clones the version into `opencplc/`.
 - `-o --opt-level`: Compiler optimization level: `O0`, `Og` _(default)_, `O1`, `O2`, `O3`, `Os`. Levels `O2` and `O3` show a warning for STM32 _(timing, debugging)_.
 - `-s --stlink`: Binds an ST-Link serial to the project; `-s` alone clears the binding.
 

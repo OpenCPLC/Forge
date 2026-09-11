@@ -181,6 +181,12 @@ opencplc <project_name> --new -f 0.4.3
 opencplc <project_name> --new -f develop
 ```
 
+Sama flaga tylko pobiera, więc wersję można obejrzeć, zanim wskaże ją jakikolwiek projekt:
+
+```sh
+opencplc -f develop
+```
+
 ### 📌 Wersjonowanie projektu
 
 Każdy projekt przechowuje w pliku `main.h` wersję framework'a, na której został utworzony _(definicja `PRO_VERSION`)_.
@@ -299,7 +305,7 @@ Platforma HOST dostarcza stub'y dla modułów zależnych od sprzętu _(GPIO, tim
 
 #### Konfiguracja kompilacji
 
-- `-f --framework`: Wersja frameworka: `latest`, `develop`, `0.4.3`. Dla nowego projektu staje się `PRO_VERSION`, dla istniejącego buduje z nią jednorazowo.
+- `-f --framework`: Wersja frameworka: `latest`, `develop`, `0.4.3`. Dla nowego projektu staje się `PRO_VERSION`, dla istniejącego buduje z nią jednorazowo, sama klonuje wersję do `opencplc/`.
 - `-o --opt-level`: Poziom optymalizacji: `O0`, `Og` _(domyślny)_, `O1`, `O2`, `O3`, `Os`. Poziomy `O2`/`O3` wyświetlają ostrzeżenie dla STM32 _(timing, debugowanie)_.
 - `-s --stlink`: Przypisuje numer seryjny ST-Linka do projektu; samo `-s` czyści przypisanie.
 

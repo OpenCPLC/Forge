@@ -3,9 +3,12 @@
 """
 CLI entry point: parses arguments and orchestrates the run.
 
-The moving parts live in their own modules: `workspace` (root, config, refs,
-project inventory), `configure` (project configuration), `actions` (one-shot
-answers), `resolver` (the project model) and `project` (generators).
+Moving parts live in their own modules:
+`workspace` root, config, refs, project inventory
+`configure` project configuration
+`actions` one-shot answers
+`resolver` project model
+`project` generators
 """
 
 import signal, sys

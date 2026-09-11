@@ -1,5 +1,11 @@
 # Changes `opencplc`
 
+## `0.4.3` Core download
+
+- `make` works when a path holds spaces
+- `-f VER` alone downloads a Core version, nothing else
+- `make stack` runs script through bash Git brings
+
 ## `0.4.2` Bootloader
 
 - `-B --boot` links image into one of two slots behind Core bootloader

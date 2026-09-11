@@ -63,20 +63,20 @@ LIBS = -lc -lm -lnosys
 LDFLAGS = $(MCU) -specs=nano.specs -T$(LD_SCRIPT) $(LIBS)
 LDFLAGS += -Wl,--no-warn-rwx-segment,-Map=$(BUILD)/$(TARGET).map,--cref -Wl,--gc-sections
 
-# Core (opencplc/) and project objects in separate trees, named after full source paths;
-# outputs sit next to them
+# Core (opencplc/) and project objects in separate trees, named after full source paths
+# Outputs sit next to them
 OBJECTS := $(patsubst %.c,$(BUILD)/opencplc/%.o,$(CORE_C))
 OBJECTS += $(patsubst %.s,$(BUILD)/opencplc/%.o,$(CORE_S))
 OBJECTS += $(patsubst %.c,$(BUILD)/project/%.o,$(PRO_C))
 OBJECTS += $(patsubst %.s,$(BUILD)/project/%.o,$(PRO_S))
 
-# Every object depends on the makefile, because a flag change touches all of them.
-# main.h is not listed: `-MMD -MP` records in the .d files which objects really include it,
-# so editing it rebuilds exactly those.
+# Every object depends on the makefile, because a flag change touches all of them
+# main.h is not listed: `-MMD -MP` records in the .d files which objects really include it
+# Editing it rebuilds exactly those
 CONFIG_DEPS = $(MAKEFILE_PATH)
 
-# Configuration changed: Forge rewrites this file and Make restarts once with fresh sources.
-# The stamp carries the reload time, so a rewrite with identical content rebuilds nothing.
+# Configuration changed: Forge rewrites this file and Make restarts once with fresh sources
+# Stamp carries the reload time, so a rewrite with identical content rebuilds nothing
 FORGE = opencplc
 CONFIG_INPUTS = $(wildcard ${CONFIG_INPUTS})
 FORGE_STAMP := $(BUILD)/.forge
@@ -117,7 +117,22 @@ $(BUILD)/%.hex: $(BUILD)/%.elf
 $(BUILD)/%.bin: $(BUILD)/%.elf
 	$(BIN) $< $@
 
-build: $(BUILD)/$(TARGET).elf $(BUILD)/$(TARGET).hex $(BUILD)/$(TARGET).bin
+ARTIFACTS := $(BUILD)/$(TARGET).elf $(BUILD)/$(TARGET).hex $(BUILD)/$(TARGET).bin
+
+# Only top make with build as its goal says it
+# Run in the project that is this one, under the dispatcher that one, behind dist nobody
+ifeq ($(MAKELEVEL),0)
+ifeq ($(filter-out build,$(MAKECMDGOALS)),)
+BUILD_SAYS := yes
+endif
+endif
+
+ifeq ($(BUILD_SAYS),yes)
+build:
+	@"$(MAKE)" --no-print-directory -q $(ARTIFACTS) && echo Nothing to be done for ${GOLD}build${END}|| "$(MAKE)" --no-print-directory $(ARTIFACTS)
+else
+build: $(ARTIFACTS)
+endif
 
 ifneq ($(STLINK),)
 OPENOCD_SERIAL = -c "adapter serial $(STLINK)"
@@ -127,7 +142,7 @@ OPENOCD = openocd -f interface/stlink.cfg $(OPENOCD_SERIAL) \
   -f target/${OPENOCD_TARGET}.cfg $(UNDER_RESET) -c
 
 ifeq ($(BOOT),true)
-# Bootloader of the family from the Core, then the image into its slot
+# Family bootloader from Core, then the image into its slot
 BOOT_BIN = $(OPENCPLC)/scr/boot_${HAL}.bin
 flash:
 	@$(OPENOCD) "program $(BOOT_BIN) 0x08000000 verify" -c "program $(BUILD)/$(TARGET).bin ${FLASH_ORIGIN} verify reset exit" && echo Flashed ${VIOLET}$(TARGET).bin${END} behind ${VIOLET}boot_${HAL}.bin${END}|| (echo Flashing ${RED}failed${END}&& exit 1)
@@ -146,11 +161,13 @@ stack:
 	@${STACK_CMD}
 
 # make dist TAG=1.2.0 names the copy <target>-1.2.0.hex
+# Stamp touched, so a new file in the project does not force a reload on the next make
 DIST := $(TARGET)$(if $(TAG),-$(TAG))
 
 dist: build
 	@$(call COPY,$(BUILD)/$(TARGET).hex,$(PROJECT)/$(DIST).hex)
-	@echo Copied ${GREEN}$(DIST).hex${END} to ${PROJECT_COLORED}
+	@$(call TOUCH,$(FORGE_STAMP))
+	@echo Copied ${LIME}$(DIST).hex${END} to ${PROJECT_COLORED}
 
 clean:
 	@$(call RMDIR,$(BUILD))

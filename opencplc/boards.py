@@ -3,14 +3,12 @@
 """
 Ready boards discovered in the selected Core.
 
-A board is one directory `brd/<name>/` holding an .ini manifest, the public header
-`opencplc_<name>.h` and its sources. The manifest gives the defaults of a new project:
-the chip, the initial memory and clock and the drivers the board implementation needs.
-Optional `reserve_kB` is flash the board keeps for itself, taken off the top like the third
-value of -m.
-Only `plc` is binding - a board that needs the PLC layer does not build without it,
-while a board that does not still accepts it from -P. Nothing here is hard-coded in
-Forge: adding a board means adding a directory to Core.
+A board is one directory `brd/<name>/`: an .ini manifest, header `opencplc_<name>.h`, sources.
+Manifest gives defaults of a new project: chip, initial memory and clock, drivers it needs.
+Optional `reserve_kB` is flash the board keeps for itself, taken off the top like -m third value.
+Only `plc` is binding: a board that needs the PLC layer does not build without it.
+A board that does not need it still accepts it from -P.
+Nothing here is hard-coded in Forge, adding a board means adding a directory to Core.
 """
 
 import os, re, sys, configparser
