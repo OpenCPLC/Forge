@@ -16,7 +16,7 @@ def is_yes(msg:str="Proceed automatically") -> bool:
   return ans in ("yes", "y", "true", "tak", "t")
 
 def color_url(url:str) -> str:
-  """Repository URL: grey scheme, teal body."""
+  """URL as Forge shows every one: grey scheme, teal body."""
   return url.replace("https://", f"{c.GREY}https://{c.END}{c.TEAL}") + c.END
 
 def assign_name(name:Any, flag:Any, msg:str) -> tuple[str, Any]:

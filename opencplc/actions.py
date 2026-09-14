@@ -9,7 +9,7 @@ without touching any project. `info_show()` prints the resolved model for -i.
 
 import sys, subprocess
 from xaeian import Print, Color as c, Ico, FILE, DIR, PATH, replace_end
-from .config import URL_FTP, URL_FORGE, URL_CORE, EXE_NAME, DIR_FRAMEWORK
+from .config import URL_DL, URL_FORGE, URL_CORE, EXE_NAME, DIR_FRAMEWORK
 from .args import flag
 from .resolver import Project
 from .workspace import ensure_refs
@@ -49,7 +49,7 @@ def update_forge(args):
     p.run(f"Update it with {c.CYAN}pip install -U opencplc{c.END}")
     sys.exit(1)
   latest = args.update in ("last", "latest")
-  utils.install_git(args.yes)
+  utils.ensure_git(args.yes)
   versions = utils.git_get_refs(URL_FORGE, "--tags")
   if not versions:
     p.err(f"No access to {c.TEAL}GitHub{c.END}")
@@ -96,7 +96,7 @@ def framework_fetch(args, forge_cfg:dict) -> bool:
     return True
   utils.version_check(ver, ensure_refs(forge_cfg, args.yes),
     f"{Ico.RUN} Check version list: {flag.F}")
-  utils.install_git(args.yes)
+  utils.ensure_git(args.yes)
   utils.git_clone_missing(URL_CORE, path, ver, args.yes)
   return True
 
@@ -141,7 +141,7 @@ def info_actions(args, forge_cfg:dict) -> bool:
     for f in files:
       dst = PATH.resolve(f"{args.assets}/{f}", read=False)
       if not FILE.exists(dst):
-        utils.download(f"{URL_FTP}/{f}", dst)
+        utils.fetch(f"{URL_DL}/assets/{f}", dst)
     p.ok(f"Assets downloaded to {c.ORANGE}{args.assets}{c.END}")
     ran = True
   return ran

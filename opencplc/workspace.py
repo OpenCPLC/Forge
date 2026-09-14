@@ -88,7 +88,7 @@ def ensure_refs(forge_cfg:dict, yes:bool) -> list[str]:
   """Framework refs from GitHub, fetched once per run and cached in opencplc.json."""
   global REFS_FRESH
   if REFS_FRESH: return forge_cfg["available-versions"]
-  utils.install_git(yes)
+  utils.ensure_git(yes)
   versions = utils.git_get_refs(URL_CORE, "--ref")
   if versions:
     forge_cfg["available-versions"] = versions

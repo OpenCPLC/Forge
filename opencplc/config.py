@@ -33,9 +33,9 @@ DIR_DEMO = "projects/demo"
 DIR_FRAMEWORK = "opencplc"
 DIR_BUILD = "build"
 
-# GitHub URLs
+# Remote homes: GitHub for code, dl.opencplc.com for tool packages and assets
 URL_GIT = "https://github.com/OpenCPLC"
-URL_FTP = "https://sqrt.pl/opencplc"
+URL_DL = "https://dl.opencplc.com"
 URL_CORE = f"{URL_GIT}/Core"
 EXE_NAME = "opencplc.exe"
 URL_FORGE = f"{URL_GIT}/Forge"

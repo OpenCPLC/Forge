@@ -11,7 +11,7 @@ Moving parts live in their own modules:
 `project` generators
 """
 
-import signal, sys
+import os, signal, sys
 from xaeian import Print, Color as c, PATH
 from .config import URL_DEMO, DIR_DEMO
 from .args import flag, load_args, check_flags
@@ -38,14 +38,12 @@ signal.signal(signal.SIGINT, handle_sigint)
 
 def ensure_toolchains(is_embedded:bool, yes:bool):
   """Install missing tools, then make sure the compiler actually runs."""
-  utils.install_toolchains(is_embedded, yes)
-  if utils.RESET_CONSOLE:
-    p.wrn(f"New tools were installed and added to system {c.SKY}PATH{c.END}")
-    p.tip(f"Restart your console after finishing to use them directly")
+  utils.ensure_tools(is_embedded, yes)
   if not utils.verify_compiler(is_embedded):
     compiler = "arm-none-eabi-gcc" if is_embedded else "gcc"
     p.err(f"Compiler {c.YELLOW}{compiler}{c.END} not working")
-    p.inf(f"Check installation and {c.SKY}PATH{c.END}")
+    if os.name == "nt": p.inf(f"Remove {c.ORANGE}{utils.tools_dir()}{c.END} and run again")
+    else: p.inf(f"Check installation and {c.SKY}PATH{c.END}")
     sys.exit(1)
 
 def main():
@@ -78,11 +76,11 @@ def main():
   # Remote project - name read from its main.h when not given
   if args.get:
     if not args.get[0].endswith(".zip"):
-      utils.install_git(args.yes)
+      utils.ensure_git(args.yes)
     ref = args.get[1] if len(args.get) > 1 else None
     args.name = utils.project_remote(args.get[0], PATHS["pro"], ref, args.name)
   if args.demo:
-    utils.install_git(args.yes)
+    utils.ensure_git(args.yes)
     utils.git_clone_missing(URL_DEMO, DIR_DEMO, "main", args.yes)
     p.inf(f"Demo in {c.ORANGE}{DIR_DEMO}{c.END}, "
       f"load one with {c.CYAN}opencplc demo/<name>{c.END}")

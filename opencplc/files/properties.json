@@ -23,7 +23,7 @@
       "cStandard": "c11",
       "cppStandard": "c++17",
       "intelliSenseMode": "gcc-arm",
-      "compilerPath": "${env:ARMGCC}/arm-none-eabi-gcc.exe",
+      "compilerPath": "${TOOLS_ARM_GCC}",
       "compilerArgs": [
         "-mcpu=${CPU}",
         "-mthumb"

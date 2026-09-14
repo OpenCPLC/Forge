@@ -168,11 +168,8 @@ flowchart LR
   MAKE --> BIN["build/projects/myapp/myapp.hex"]
 ```
 
-First **Forge** installs the **Git** client, then _(once it knows the project platform)_ **Make**, **GNU Arm Embedded Toolchain** and **OpenOCD**, and sets system variables if these apps aren't visible from console.
-For HOST platform, **MinGW** _(GCC for Windows)_ is installed instead of ARM toolchain.
-If you don't want anyone messing with your system, install these tools yourself and put them on **PATH**.
-When ⚒️**Forge** installs missing apps, it adds them to system PATH and continues.
-Restart your console afterward to use them directly.
+On Windows ⚒️**Forge** brings its own **Make**, **GNU Arm Embedded Toolchain**, **OpenOCD** and **MinGW** into `%LOCALAPPDATA%\OpenCPLC`, no admin rights needed, and **Git** through `winget`.
+After the first run open a new console, so `make` is found. On Linux the tools come from your distribution.
 
 Then if needed, it clones OpenCPLC framework from [repository](https://github.com/OpenCPLC/Core) to `opencplc/<version>`.
 A new project takes the version from `opencplc.json` or the one given with `-f --framework`:
@@ -347,7 +344,8 @@ Forge finds the workspace from any directory inside it, so a project directory i
 When something goes wrong:
 
 - Forge lands in the wrong workspace: a stray `opencplc.json` sits somewhere between the project and the real root, remove it.
-- Compiler not found right after the tools were installed: the console still has the old `PATH`, close it and open a new one.
+- `make` not found right after the first run: the console still has the old `PATH`, close it and open a new one.
+- A tool misbehaves: remove `%LOCALAPPDATA%\OpenCPLC` and run Forge again, it installs the packages afresh.
 - `make` stops at `opencplc -r` with an error about the version or the board: `main.h` points at something this framework doesn't have, fix the entry and run `make` again.
 - A project is missing from `-l`: its directory has no `main.h`.
 

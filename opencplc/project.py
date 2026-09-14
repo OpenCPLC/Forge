@@ -48,6 +48,10 @@ def bash_exe() -> str:
       if FILE.exists(bash): return f'"{bash}"'
   return "bash"
 
+def without(text:str, phrases:list[str]) -> str:
+  """Lines of text holding none of the phrases."""
+  return "\n".join(ln for ln in text.splitlines() if not any(ph in ln for ph in phrases))
+
 def stack_command(pro:Project) -> str:
   """Radio stack rule of a project: Core script, or a refusal on a chip without one."""
   if not pro.stack_script:
@@ -198,7 +202,7 @@ def generate(pro:Project, activate:bool=True):
     "${BUILD_COLORED}": colored_path(pro.build_dir, pro.name),
     "${GOLD}": c.GOLD, "${GREEN}": c.GREEN, "${PINK}": c.PINK, "${VIOLET}": c.VIOLET,
     "${LIME}": c.LIME, "${RED}": c.RED, "${END}": c.END,
-  }
+  } | utils.template_paths(pro.platform == "STM32")
   # Linker script and makefile live inside the project - parallel builds stay disjoint
   if pro.linker:
     ld_template = templates["flash"].get(pro.linker, templates["flash"]["stm32g0.ld"])
@@ -217,12 +221,12 @@ def generate(pro:Project, activate:bool=True):
   DIR.ensure(".vscode")
   props = tpl.get("properties.json", templates["properties.json"])
   drop = ([] if pro.plc else ["/plc/", '"OpenCPLC"']) + ([] if pro.board else ["/brd/"])
-  if drop:
-    props = "\n".join(ln for ln in props.splitlines() if not any(d in ln for d in drop))
-  utils.create_file("c_cpp_properties.json", props, ".vscode", subs)
+  utils.create_file("c_cpp_properties.json", without(props, drop), ".vscode", subs)
+  # cortex-debug takes its tools from PATH where Forge has no packages to point at
   launch = tpl.get("launch.json", templates["launch.json"])
-  stlink_drop = "" if pro.stlink else "openOCDPreConfigLaunchCommands"
-  utils.create_file("launch.json", launch, ".vscode", subs, remove_line=stlink_drop)
+  drop = [] if pro.stlink else ["openOCDPreConfigLaunchCommands"]
+  drop += [] if is_windows else ["TOOLS_ARM_DIR", "TOOLS_OPENOCD_EXE"]
+  utils.create_file("launch.json", without(launch, drop), ".vscode", subs)
   utils.create_file("tasks.json", templates["tasks.json"], ".vscode", subs)
   # Shared files - created once, kept afterwards
   if not FILE.exists(".vscode/settings.json"):

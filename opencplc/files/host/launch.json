@@ -8,7 +8,7 @@
       "program": "${workspaceRoot}/${BUILD_DIR}/${TARGET}${EXE_EXT}",
       "cwd": "${workspaceFolder}",
       "MIMode": "gdb",
-      "miDebuggerPath": "gdb",
+      "miDebuggerPath": "${TOOLS_GDB}",
       "preLaunchTask": "make"
     }
   ]

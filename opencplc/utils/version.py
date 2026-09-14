@@ -50,7 +50,7 @@ def git_clone(url:str, path:str, ref:str|None=None, drop_on_err:bool=False):
   result = subprocess.run(cmd, capture_output=True, text=True)
   if result.returncode:
     if drop_on_err and DIR.exists(path): DIR.remove(path, force=True)
-    p.err(f"Clone failed: {c.TEAL}{url}{c.END}")
+    p.err(f"Clone failed: {color_url(url)}")
     sys.exit(1)
 
 def git_get_refs(url:str, option:Literal["--heads", "--tags", "--ref"]="--ref") -> list[str]:
@@ -72,7 +72,7 @@ def git_clone_missing(url:str, path:str, ref:str, yes:bool=False, required:bool=
   full_path = PATH.resolve(path, read=False)
   if DIR.exists(full_path): return True
   p.wrn(f"Missing {c.ORANGE}{PATH.local(full_path)}{c.END}, "
-    f"clone from {c.TEAL}{url}{c.END} {c.GREY}({ref}){c.END}")
+    f"clone from {color_url(url)} {c.GREY}({ref}){c.END}")
   if not yes and not is_yes():
     if not required: return False
     p.err(f"You can download it manually from {color_url(url)}")
@@ -83,5 +83,5 @@ def git_clone_missing(url:str, path:str, ref:str, yes:bool=False, required:bool=
     loc = f"{c.GREY}{loc[:len(loc)-len(ref)]}{c.END}{c.VIOLET}{ref}{c.END}"
   else:
     loc = f"{c.GREY}{loc}{c.END}"
-  p.ok(f"Cloned {c.TEAL}{url}{c.END} to {loc}")
+  p.ok(f"Cloned {color_url(url)} to {loc}")
   return True

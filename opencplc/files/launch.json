@@ -19,6 +19,8 @@
       "request": "launch",
       "type": "cortex-debug",
       "servertype": "openocd",
+      "armToolchainPath": "${TOOLS_ARM_DIR}",
+      "serverpath": "${TOOLS_OPENOCD_EXE}",
       "device": "${DEVICE}",
       "configFiles": [
         "interface/stlink.cfg",

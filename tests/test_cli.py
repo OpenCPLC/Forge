@@ -17,7 +17,7 @@ def ws(tmp_path, monkeypatch):
   write_forge_config(tmp_path)
   monkeypatch.chdir(tmp_path)
   monkeypatch.setattr(ws_mod, "REFS_FRESH", False)
-  monkeypatch.setattr(ws_mod.utils, "install_git", lambda yes: None)
+  monkeypatch.setattr(ws_mod.utils, "ensure_git", lambda yes: None)
   monkeypatch.setattr(ws_mod.utils, "git_get_refs", lambda url, opt="--ref": ["1.0.0"])
   monkeypatch.setattr(forge, "ensure_toolchains", lambda is_embedded, yes: None)
   with file_context(root_path=str(tmp_path)):
@@ -258,7 +258,7 @@ def the_replaced_executable_goes_on_the_next_run(tmp_path, monkeypatch):
 
 def framework_flag_alone_clones_the_version(ws, monkeypatch, capsys):
   cloned = []
-  monkeypatch.setattr(actions.utils, "install_git", lambda yes: None)
+  monkeypatch.setattr(actions.utils, "ensure_git", lambda yes: None)
   monkeypatch.setattr(ws_mod.utils, "git_get_refs", lambda url, opt="--ref": ["2.0.0", "1.0.0"])
   monkeypatch.setattr(actions.utils, "git_clone_missing",
     lambda url, path, ref, yes=False, required=True: bool(cloned.append(ref)) or True)

@@ -1,5 +1,9 @@
 # Changes `opencplc`
 
+## `0.4.4` Own tools
+
+- Tools land in `%LOCALAPPDATA%/OpenCPLC` and every build uses them, PATH plays no part
+
 ## `0.4.3` Core download
 
 - `make` works when a path holds spaces

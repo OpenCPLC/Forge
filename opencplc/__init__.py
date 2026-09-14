@@ -1,12 +1,12 @@
 # opencplc/__init__.py
 
-__version__ = "0.4.3"
+__version__ = "0.4.4"
 __repo__ = "OpenCPLC/Forge"
 __python__ = ">=3.12"
 __description__ = "Project configuration and build tool for OpenCPLC"
 __author__ = "Xaeian"
 __keywords__ = ["embedded", "stm32", "opencplc", "build", "forge"]
-__dependencies__ = ["xaeian>=0.9.0", "packaging"]
+__dependencies__ = ["xaeian>=0.9.3", "packaging"]
 __scripts__ = {
   "opencplc": "opencplc.__main__:main",
 }

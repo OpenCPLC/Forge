@@ -12,7 +12,7 @@ from opencplc.templates import load_templates
 def workspace(tmp_path, monkeypatch):
   monkeypatch.chdir(tmp_path)
   monkeypatch.setattr(forge, "REFS_FRESH", False)
-  monkeypatch.setattr(forge.utils, "install_git", lambda yes: None)
+  monkeypatch.setattr(forge.utils, "ensure_git", lambda yes: None)
   with file_context(root_path=str(tmp_path)):
     yield tmp_path
 

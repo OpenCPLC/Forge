@@ -3,27 +3,46 @@
 """Downloads, ZIP extraction and fetching a remote project."""
 
 import sys, re
-import urllib.request
+import urllib.request, urllib.error, http.client
 from xaeian import Print, Color as c, FILE, DIR, PATH
+from xaeian.net import download as download_file
 from .version import git_clone
-from .common import validate_project_name
+from .common import color_url, validate_project_name
+from .. import __version__
 
 p = Print()
 
+# Forge speaks under its own name: Cloudflare in front of dl.opencplc.com refuses `Python-urllib`
+_opener = urllib.request.build_opener()
+_opener.addheaders = [("User-Agent", f"opencplc/{__version__}")]
+urllib.request.install_opener(_opener)
+
+def _unreachable(url:str, e:Exception):
+  """Say why a fetch failed and exit: an HTTP status, a timeout, or a connection that failed."""
+  if isinstance(e, urllib.error.HTTPError):
+    p.err(f"HTTP {c.GOLD}{e.code}{c.END} for {color_url(url)}")
+  elif isinstance(e, TimeoutError) or isinstance(getattr(e, "reason", None), TimeoutError):
+    p.err(f"Timed out on {color_url(url)}")
+  else:
+    p.err(f"Connection failed on {color_url(url)} | {e}")
+  sys.exit(1)
+
 def download(url:str, save_path:str="", timeout:float=10) -> bytes:
-  """Fetch url, saving to save_path when given; a network or HTTP error exits."""
+  """Fetch `url` into memory, saving to `save_path` when given; a network or HTTP error exits."""
   try:
-    resp = urllib.request.urlopen(url, timeout=timeout)
-    data = resp.read()
-    if save_path:
-      FILE.save(save_path, data)
-    return data
-  except urllib.error.HTTPError as e:  # subclass of URLError, so it goes first
-    p.err(f"HTTP {c.GOLD}{e.code}{c.END} for {c.TEAL}{url}{c.END}")
-    sys.exit(1)
-  except urllib.error.URLError:
-    p.err(f"Failed to connect to {c.TEAL}{url}{c.END}")
-    sys.exit(1)
+    data = urllib.request.urlopen(url, timeout=timeout).read()
+  except (OSError, http.client.HTTPException) as e: # `URLError` and a mid-transfer cut alike
+    _unreachable(url, e)
+  if save_path:
+    FILE.save(save_path, data)
+  return data
+
+def fetch(url:str, path:str):
+  """Fetch `url` straight into `path`; a network or HTTP error exits."""
+  try:
+    download_file(url, path)
+  except (OSError, http.client.HTTPException) as e:
+    _unreachable(url, e)
 
 def unzip(data:bytes, path:str, drop_on_err:bool=True):
   """Unpack ZIP bytes into path; a bad archive exits and drops the partial directory."""
@@ -71,5 +90,5 @@ def project_remote(url:str, path:str, ref:str|None=None, name:str="") -> str:
     p.err(f"Project {c.BLUE}{name}{c.END} already exists")
     sys.exit(1)
   DIR.move(tmp, dst)
-  p.ok(f"Project {c.BLUE}{name}{c.END} downloaded from {c.TEAL}{url}{c.END}")
+  p.ok(f"Project {c.BLUE}{name}{c.END} downloaded from {color_url(url)}")
   return name

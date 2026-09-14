@@ -12,8 +12,8 @@
         "${DEFINE}",
         "_DEBUG"
       ],
-      "cStandard": "gnu17",
-      "compilerPath": "gcc"
+      "compilerPath": "${TOOLS_GCC}",
+      "cStandard": "gnu17"
     }
   ],
   "version": 4

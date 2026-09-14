@@ -167,11 +167,8 @@ flowchart LR
   MAKE --> BIN["build/projects/myapp/myapp.hex"]
 ```
 
-W pierwszej kolejności **Forge** zainstaluje klienta **Git**, a gdy pozna platformę projektu, również **Make**, **GNU Arm Embedded Toolchain** i **OpenOCD** oraz ustawi odpowiednio zmienne systemowe, jeżeli aplikacje nie są widoczne w systemie z poziomu konsoli.
-Dla platformy HOST zamiast toolchain'a ARM instalowany jest **MinGW** _(GCC dla Windows)_.
-Jeżeli nie chcemy, aby ktoś grzebał w naszym systemie, instalujemy te narzędzia sami i dodajemy je do **PATH**.
-Gdy ⚒️**Forge** zainstaluje brakujące aplikacje, doda je do systemowego PATH i będzie kontynuować pracę.
-Po zakończeniu zrestartuj konsolę, aby korzystać z nich bezpośrednio.
+Na Windows ⚒️**Forge** przynosi własne **Make**, **GNU Arm Embedded Toolchain**, **OpenOCD** i **MinGW** do `%LOCALAPPDATA%\OpenCPLC`, bez uprawnień administratora, a **Git** przez `winget`.
+Po pierwszym uruchomieniu otwórz nową konsolę, żeby `make` był widoczny. Na Linuksie narzędzia pochodzą z dystrybucji.
 
 Następnie, w razie konieczności, sklonuje framework OpenCPLC z [repozytorium](https://github.com/OpenCPLC/Core) do katalogu `opencplc/<wersja>`.
 Nowy projekt dostaje wersję z pliku `opencplc.json` albo wskazaną za pomocą `-f --framework`:
@@ -343,7 +340,8 @@ Forge znajduje workspace z dowolnego katalogu w jego wnętrzu, więc konsolę mo
 Gdy coś nie działa:
 
 - Forge trafia w zły workspace: gdzieś między projektem a właściwym katalogiem leży resztkowy `opencplc.json`, usuń go.
-- Brak kompilatora zaraz po instalacji narzędzi: konsola ma jeszcze stary `PATH`, zamknij ją i otwórz nową.
+- Brak `make` zaraz po pierwszym uruchomieniu: konsola ma jeszcze stary `PATH`, zamknij ją i otwórz nową.
+- Narzędzie się psuje: usuń `%LOCALAPPDATA%\OpenCPLC` i uruchom Forge ponownie, zainstaluje paczki od nowa.
 - `make` zatrzymuje się na `opencplc -r` z błędem o wersji albo płytce: `main.h` wskazuje na coś, czego ten framework nie ma, popraw wpis i uruchom `make` ponownie.
 - Projektu nie ma na liście `-l`: w jego katalogu brakuje `main.h`.
 

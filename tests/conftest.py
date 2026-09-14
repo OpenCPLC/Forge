@@ -7,7 +7,7 @@ Collection rules and shared helpers for the suite.
 so collection is narrowed to the ones each module defines itself.
 """
 
-import inspect, os
+import inspect, os, json
 
 import pytest
 
@@ -169,25 +169,44 @@ def host_model(name:str="app"):
 def make_run(ws, *goals:str, project:str="app"):
   """GNU Make on a project directory, with the reload rule pointed at this interpreter."""
   import subprocess
-  env, forge = forge_env()
+  env, forge = forge_env(ws)
   return subprocess.run(["make", "-C", str(ws / "projects" / project), *goals, forge],
     capture_output=True, text=True, env=env)
 
 def make_root(ws, *goals:str):
   """GNU Make in the workspace root, on the active project."""
   import subprocess
-  env, forge = forge_env()
+  env, forge = forge_env(ws)
   return subprocess.run(["make", *goals, forge], cwd=ws, capture_output=True, text=True, env=env)
 
 def write_file(path, text:str):
   path.parent.mkdir(parents=True, exist_ok=True)
   path.write_text(text)
 
-def forge_env():
+def fake_tools(ws) -> str:
+  """
+  A tools directory Forge takes as complete, so a reload installs nothing.
+
+  Package folders stay empty and PATH falls through to the real compilers behind them;
+  `make/make.exe` is a copy of the real one, since the exported PATH puts that folder first.
+  """
+  import shutil
+  from opencplc.utils.tools import PACKAGES
+  root = ws / ".tools"
+  for name in PACKAGES:
+    (root / name / ("" if name == "make" else "bin")).mkdir(parents=True, exist_ok=True)
+  shutil.copy(shutil.which("make"), root / "make" / "make.exe")
+  (root / "tools.json").write_text(json.dumps(PACKAGES))
+  return str(root)
+
+def forge_env(ws):
   """Environment and FORGE override that let Make run this interpreter's opencplc."""
-  import os, sys
+  import os, sys, xaeian
   env = os.environ.copy()
-  env["PYTHONPATH"] = REPO_ROOT
+  # the same xaeian these tests import, wherever it comes from
+  xaeian_home = os.path.dirname(os.path.dirname(xaeian.__file__))
+  env["PYTHONPATH"] = os.pathsep.join([REPO_ROOT, xaeian_home])
+  env["OPENCPLC_TOOLS"] = fake_tools(ws)
   return env, f"FORGE={sys.executable} -m opencplc"
 
 def age(*paths, seconds:float=10.0):
@@ -219,7 +238,7 @@ def frozen_forge(tmp_path, monkeypatch, version="9.9.9"):
   exe.write_bytes(b"old")
   monkeypatch.setattr(actions, "FROZEN", True)
   monkeypatch.setattr(actions.PATH, "script_dir", staticmethod(lambda: str(tmp_path)))
-  monkeypatch.setattr(actions.utils, "install_git", lambda yes: None)
+  monkeypatch.setattr(actions.utils, "ensure_git", lambda yes: None)
   monkeypatch.setattr(actions.utils, "git_get_refs", lambda url, opt="--ref": [version])
   monkeypatch.setattr(actions.utils, "download", lambda url, *a, **k: b"new")
   return exe

@@ -7,21 +7,24 @@ HOST projects compile with the local gcc over a synthetic Core; embedded
 makefiles are checked with a dry run. Skipped where make or gcc is missing.
 """
 
-import shutil, subprocess
+import re, shutil, subprocess
 import pytest
 from xaeian import file_context
 from opencplc.project import generate
 from conftest import (
   resolve_uno, build_workspace, host_model, make_run, make_root, write_file,
-  write_forge_config, forge_env, age, MAIN_H_HOST,
+  write_forge_config, forge_env, fake_tools, age, MAIN_H_HOST,
 )
 
 HAVE_MAKE = shutil.which("make") is not None
 HAVE_GCC = shutil.which("gcc") is not None
+HAVE_ARM_GCC = shutil.which("arm-none-eabi-gcc") is not None
 
 @pytest.fixture()
-def ws(tmp_path):
+def ws(tmp_path, monkeypatch):
   """Synthetic Core with real C: hal/host, lib and one host project calling into both."""
+  # `generate()` here and the reload inside Make must agree on the tools directory
+  monkeypatch.setenv("OPENCPLC_TOOLS", fake_tools(tmp_path))
   core = tmp_path / "opencplc" / "1.0.0"
   write_file(core / "hal" / "host" / "sys.c", "int sys_tick(void) { return 42; }\n")
   write_file(core / "hal" / "host" / "sys.h", "int sys_tick(void);\n")
@@ -82,7 +85,7 @@ def switching_projects_keeps_the_other_build(ws):
   assert {f: f.stat().st_mtime_ns
     for f in (ws / "build" / "projects" / "app").rglob("*.o")} == stamp
 
-@pytest.mark.skipif(not HAVE_MAKE, reason="make required")
+@pytest.mark.skipif(not (HAVE_MAKE and HAVE_ARM_GCC), reason="make and arm-none-eabi-gcc required")
 def embedded_makefile_parses_in_dry_run(tmp_path):
   build_workspace(tmp_path)
   write_forge_config(tmp_path) # a dry run still remakes makefiles, so Forge really runs
@@ -180,5 +183,5 @@ def atomic_save_of_one_file_rebuilds_nothing(ws):
   os.replace(tmp, ws / "projects" / "app" / "util.c")
   res = make_run(ws, "build")
   assert res.returncode == 0, res.stdout + res.stderr
-  assert "using framework version" in res.stdout  # Forge did run
-  assert "/opencplc/" not in res.stdout           # no Core object was rebuilt
+  assert "using framework version" in res.stdout # Forge did run
+  assert not re.search(r"-o \S*build/projects/app/opencplc/", res.stdout) # no Core object compiled

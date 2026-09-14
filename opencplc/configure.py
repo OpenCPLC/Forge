@@ -178,7 +178,7 @@ def resolve_version(args, pro_ver:str, PATHS:dict, fw_ver:str, forge_cfg:dict) -
     return fw_ver
   if pro_ver != fw_ver:
     fw_path = PATH.resolve(f"{PATHS['framework']}/{pro_ver}", read=False)
-    utils.install_git(args.yes)
+    utils.ensure_git(args.yes)
     if not utils.git_clone_missing(URL_CORE, fw_path, pro_ver, args.yes, required=False):
       p.wrn(f"Project {c.BLUE}{args.name}{c.END} version {c.GREY}({pro_ver}){c.END} "
         f"differs from framework {c.VIOLET}({fw_ver}){c.END}")

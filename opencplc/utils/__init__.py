@@ -1,6 +1,6 @@
 # opencplc/utils/__init__.py
 
-"""Helpers shared by the CLI modules: files, text, versions, network, install."""
+"""Helpers shared by the CLI modules: files, text, versions, network, tools."""
 
 from .files import (
   load_lines, files_list, files_mdate, files_mdate_max, last_modification,
@@ -15,12 +15,8 @@ from .version import (
   version_is_release, version_active,
   git_get_refs, git_clone, git_clone_missing
 )
-from .network import download, unzip, project_remote
-from .install import (
-  ENV, is_admin, program_version, install, install_missing_add_path,
-  install_git, install_toolchains, verify_compiler,
-  RESET_CONSOLE, FTP_PATH, INSTALL_PATH
-)
+from .network import download, fetch, unzip, project_remote
+from .tools import tools_dir, template_paths, ensure_git, ensure_tools, verify_compiler
 from .hash import hash_string, c_code_enum
 from .common import (
   is_yes, color_url, assign_name, validate_project_name
@@ -34,10 +30,8 @@ __all__ = [
   "version_real", "version_older_than", "version_check",
   "version_is_release", "version_active",
   "git_get_refs", "git_clone", "git_clone_missing",
-  "download", "unzip", "project_remote",
-  "ENV", "is_admin", "program_version", "install", "install_missing_add_path",
-  "install_git", "install_toolchains", "verify_compiler",
-  "RESET_CONSOLE", "FTP_PATH", "INSTALL_PATH",
+  "download", "fetch", "unzip", "project_remote",
+  "tools_dir", "template_paths", "ensure_git", "ensure_tools", "verify_compiler",
   "hash_string", "c_code_enum",
   "is_yes", "color_url", "assign_name", "validate_project_name",
 ]
