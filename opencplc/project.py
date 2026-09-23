@@ -201,7 +201,7 @@ def generate(pro:Project, activate:bool=True):
     "${PROJECT_COLORED}": colored_path(pro.pro_dir, pro.name),
     "${BUILD_COLORED}": colored_path(pro.build_dir, pro.name),
     "${GOLD}": c.GOLD, "${GREEN}": c.GREEN, "${PINK}": c.PINK, "${VIOLET}": c.VIOLET,
-    "${LIME}": c.LIME, "${RED}": c.RED, "${END}": c.END,
+    "${LIME}": c.LIME, "${RED}": c.RED, "${BLUE}": c.BLUE, "${GREY}": c.GREY, "${END}": c.END,
   } | utils.template_paths(pro.platform == "STM32")
   # Linker script and makefile live inside the project - parallel builds stay disjoint
   if pro.linker:

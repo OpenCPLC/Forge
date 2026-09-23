@@ -92,7 +92,7 @@ def framework_fetch(args, forge_cfg:dict) -> bool:
   ver = args.framework
   path = PATH.resolve(f"{DIR_FRAMEWORK}/{ver}", read=False)
   if DIR.exists(path):
-    p.ok(f"Framework {c.VIOLET}{ver}{c.END} already in {c.ORANGE}{PATH.local(path)}{c.END}")
+    p.ok(f"Framework {c.VIOLET}{ver}{c.END} already in {c.CREAM}{PATH.local(path)}{c.END}")
     return True
   utils.version_check(ver, ensure_refs(forge_cfg, args.yes),
     f"{Ico.RUN} Check version list: {flag.F}")
@@ -142,7 +142,7 @@ def info_actions(args, forge_cfg:dict) -> bool:
       dst = PATH.resolve(f"{args.assets}/{f}", read=False)
       if not FILE.exists(dst):
         utils.fetch(f"{URL_DL}/assets/{f}", dst)
-    p.ok(f"Assets downloaded to {c.ORANGE}{args.assets}{c.END}")
+    p.ok(f"Assets downloaded to {c.CREAM}{args.assets}{c.END}")
     ran = True
   return ran
 

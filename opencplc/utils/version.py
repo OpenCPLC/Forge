@@ -71,7 +71,7 @@ def git_clone_missing(url:str, path:str, ref:str, yes:bool=False, required:bool=
   """Clone when path is missing, after confirmation; False when declined and not required."""
   full_path = PATH.resolve(path, read=False)
   if DIR.exists(full_path): return True
-  p.wrn(f"Missing {c.ORANGE}{PATH.local(full_path)}{c.END}, "
+  p.wrn(f"Missing {c.CREAM}{PATH.local(full_path)}{c.END}, "
     f"clone from {color_url(url)} {c.GREY}({ref}){c.END}")
   if not yes and not is_yes():
     if not required: return False

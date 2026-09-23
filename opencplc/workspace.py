@@ -120,7 +120,7 @@ def ensure_framework(fw_ver:str, PATHS:dict, forge_cfg:dict, yes:bool):
   fw_lib = PATH.resolve(f"{PATHS['fw']}/lib", read=False)
   if not DIR.exists(fw_hal) or not DIR.exists(fw_lib):
     p.err(f"Framework {c.VIOLET}{fw_ver}{c.END} is incomplete or corrupted")
-    p.inf(f"Try removing {c.ORANGE}{PATHS['fw']}{c.END} and run again")
+    p.inf(f"Try removing {c.CREAM}{PATHS['fw']}{c.END} and run again")
     sys.exit(1)
 
 #----------------------------------------------------------------------------------- Active project

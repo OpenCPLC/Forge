@@ -60,7 +60,7 @@ def reject_existing(args, PRO:dict, PATHS:dict):
       sys.exit(1)
   parent_dir = PATH.dirname(PATHS["pro"])
   if not utils.check_write_permission(parent_dir):
-    p.err(f"No write permission in {c.ORANGE}{parent_dir}{c.END}")
+    p.err(f"No write permission in {c.CREAM}{parent_dir}{c.END}")
     sys.exit(1)
 def hardware_config(args, PATHS:dict) -> dict:
   """Board and chip of a new project, from -b/-c/-P."""

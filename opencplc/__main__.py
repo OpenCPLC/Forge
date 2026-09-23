@@ -42,7 +42,7 @@ def ensure_toolchains(is_embedded:bool, yes:bool):
   if not utils.verify_compiler(is_embedded):
     compiler = "arm-none-eabi-gcc" if is_embedded else "gcc"
     p.err(f"Compiler {c.YELLOW}{compiler}{c.END} not working")
-    if os.name == "nt": p.inf(f"Remove {c.ORANGE}{utils.tools_dir()}{c.END} and run again")
+    if os.name == "nt": p.inf(f"Remove {c.CREAM}{utils.tools_dir()}{c.END} and run again")
     else: p.inf(f"Check installation and {c.SKY}PATH{c.END}")
     sys.exit(1)
 
@@ -82,7 +82,7 @@ def main():
   if args.demo:
     utils.ensure_git(args.yes)
     utils.git_clone_missing(URL_DEMO, DIR_DEMO, "main", args.yes)
-    p.inf(f"Demo in {c.ORANGE}{DIR_DEMO}{c.END}, "
+    p.inf(f"Demo in {c.CREAM}{DIR_DEMO}{c.END}, "
       f"load one with {c.CYAN}opencplc demo/<name>{c.END}")
     sys.exit(0)
   PRO = utils.get_project_list(PATHS["pro"])

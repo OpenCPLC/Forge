@@ -147,7 +147,7 @@ ifeq ($(BOOT),true)
 # Family bootloader from Core, then the image into its slot
 BOOT_BIN = $(OPENCPLC)/scr/boot_${HAL}.bin
 flash:
-	@$(OPENOCD) "program $(BOOT_BIN) 0x08000000 verify" -c "program $(BUILD)/$(TARGET).bin ${FLASH_ORIGIN} verify reset exit" && echo Flashed ${VIOLET}$(TARGET).bin${END} behind ${VIOLET}boot_${HAL}.bin${END}|| (echo Flashing ${RED}failed${END}&& exit 1)
+	@$(OPENOCD) "program $(BOOT_BIN) 0x08000000 verify" -c "program $(BUILD)/$(TARGET).bin ${FLASH_ORIGIN} verify reset exit" && echo Flashed ${BLUE}$(TARGET).bin${END} behind ${GREY}boot_${HAL}.bin${END}|| (echo Flashing ${RED}failed${END}&& exit 1)
 else
 flash:
 	@$(OPENOCD) "program $(BUILD)/$(TARGET).elf verify reset exit" && echo Flashed ${VIOLET}$(TARGET).elf${END}|| (echo Flashing ${RED}failed${END}&& exit 1)
