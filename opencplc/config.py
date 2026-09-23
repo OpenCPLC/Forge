@@ -9,12 +9,13 @@ Console color conventions (xaeian.Color) - one meaning per color, grouped in fam
            SKY    → what is set inside them: PRO_VERSION, PRO_CHIP, LOG_LEVEL, config keys, PATH
   hardware PINK   → platform and chip (STM32, STM32G0C1)
            TURQUS → board from Core (Uno) and the PLC layer
-  build    ORANGE → what Forge generates: makefile, flash.ld, opencplc.json, .vscode, opencplc/
+  build    ORANGE → what Forge generates: makefile, flash.ld, opencplc.json, .vscode
+           CREAM  → a folder that is the point: workspace, missing version, one to remove or fix
            YELLOW → tools: Git, Make, arm-none-eabi-gcc
            GOLD   → numbers: list index, memory, frequency
            CYAN   → what you pick or type: optimization level, valid choices, commands
   version  VIOLET → the active one (max one per message)
-           GREY   → the rest: other versions, location prefixes, flags, hints
+           GREY   → the rest: other versions, locations, flags, hints
   outside  TEAL   → GitHub, repository URLs, sample names
   state    MAGNTA → invalid value
            GREEN  → yes, RED → no (prompts and log icons)

@@ -82,7 +82,7 @@ def create_file(
   FILE.save(fp, content)
   if not color: color = c.ORANGE
   path_display = PATH.local(path) if path and path not in (".", "./") else ""
-  suffix = f" in {c.CREAM}{path_display}{c.END}" if path_display else ""
+  suffix = f" in {c.GREY}{path_display}{c.END}" if path_display else ""
   action = "Overwritten" if exists else "Created"
   p.ok(f"{action} {color}{name}{c.END}{suffix}")
   return fp
@@ -97,7 +97,7 @@ def get_project_list(path:str) -> dict[str, str]:
     if name.lower() not in (n.lower() for n in result):
       result[name] = pro_path
     else:
-      p.wrn(f"Duplicate project name {c.MAGNTA}{name}{c.END} at {c.CREAM}{pro_path}{c.END}")
+      p.wrn(f"Duplicate project name {c.MAGNTA}{name}{c.END} at {c.GREY}{pro_path}{c.END}")
   return result
 
 def check_write_permission(path:str) -> bool:

@@ -222,8 +222,8 @@ def user_path_add(path:str):
     if entry.lower() in (e.lower() for e in entries): return
     winreg.SetValueEx(key, "Path", 0, kind, ";".join(entries + [entry]))
   _broadcast_env_change()
-  p.wrn(f"{c.CREAM}{entry}{c.END} added to your PATH, "
-    f"open a new console to use {c.YELLOW}make{c.END} from it")
+  p.wrn(f"{c.GREY}{entry}{c.END} added to your PATH, "
+    f"open a new console to use {c.YELLOW}make{c.END}")
 
 def _broadcast_env_change():
   """Tell open windows the environment changed; a console picks it up when it starts."""
