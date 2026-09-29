@@ -231,3 +231,29 @@ def _broadcast_env_change():
   HWND_BROADCAST, WM_SETTINGCHANGE, SMTO_ABORTIFHUNG = 0xFFFF, 0x001A, 0x0002
   ctypes.windll.user32.SendMessageTimeoutW(HWND_BROADCAST, WM_SETTINGCHANGE, 0, "Environment",
     SMTO_ABORTIFHUNG, 5000, ctypes.byref(ctypes.c_ulong(0)))
+
+#----------------------------------------------------------------------------------- CubeProgrammer
+
+# `make stack` alone needs it: FUS and the radio stack of CPU2 are beyond openocd.
+# ST hands it out after a login, so Forge never ships it, only finds it.
+CUBE_CLI = "STM32_Programmer_CLI"
+CUBE_BIN = "STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin" # under Program Files
+CUBE_URL = "https://www.st.com/en/development-tools/stm32cubeprog.html"
+
+def cube_bin() -> str:
+  """
+  CubeProgrammer's `bin` in its default Windows home, "" when it is not there.
+
+  The path goes into the makefile as text, so it has to hold for every make that reads it.
+  A 32-bit make reads `%ProgramFiles%` as `Program Files (x86)`.
+  Started from Git Bash, make knows it only as `PROGRAMFILES`.
+  `ProgramW6432` names the 64-bit folder to any process, under one name in every language.
+  """
+  if not WINDOWS: return ""
+  home = os.environ.get("ProgramW6432") or os.environ.get("ProgramFiles", "C:/Program Files")
+  path = f"{home}/{CUBE_BIN}"
+  return PATH.normalize(path) if FILE.exists(f"{path}/{CUBE_CLI}.exe") else ""
+
+def cube_found() -> bool:
+  """CubeProgrammer reachable by `make stack`: in its default home or on PATH."""
+  return bool(cube_bin() or shutil.which(CUBE_CLI))

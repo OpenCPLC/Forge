@@ -321,6 +321,7 @@ Full list:
 
 - `-a --assets`: Downloads helper materials for design _(docs, diagrams)_. Optionally accepts a folder name as destination.
 - `-u --update`: Replace the Forge executable with the given version _(default: `latest`)_; a `pip` install updates through `pip` instead.
+- `--program`: Sends a `.hex` to the board through the programmer, e.g. the one from `make dist`.
 - `-z --size`: Reports FLASH and RAM usage of an `.elf`; `make` uses it after linking.
 - `-y --yes`: Auto-confirms all prompts _(non-interactive mode)_.
 

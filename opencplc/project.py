@@ -53,11 +53,16 @@ def without(text:str, phrases:list[str]) -> str:
   return "\n".join(ln for ln in text.splitlines() if not any(ph in ln for ph in phrases))
 
 def stack_command(pro:Project) -> str:
-  """Radio stack rule of a project: Core script, or a refusal on a chip without one."""
+  """Radio stack rule of a project: Core script, or a refusal saying what is missing."""
   if not pro.stack_script:
     return f"echo Chip {c.PINK}{pro.chip}{c.END} has no radio stack&& exit 1"
+  if not utils.cube_found():
+    missing = f"{c.YELLOW}STM32CubeProgrammer{c.END} not found"
+    source = f"install it from {utils.color_url(utils.CUBE_URL)}"
+    reload = f"reload with {c.CYAN}opencplc -r{c.END}"
+    return f"echo {missing}, {source} and {reload}&& exit 1"
   script = f'{bash_exe()} "$(OPENCPLC)/scr/{pro.stack_script}"'
-  return f"{script} $(if $(STLINK),--sn=$(STLINK)) $(if $(FUS),--fus)"
+  return f"{script} $(if $(STLINK),--sn=$(STLINK)) $(if $(FUS),--fus) $(if $(FAST),--fast)"
 
 def config_inputs(pro:Project) -> list[str]:
   """Reload inputs of the project makefile, anchored in $(PROJECT)."""
@@ -185,6 +190,7 @@ def generate(pro:Project, activate:bool=True):
     "${FLASH}": pro.image_kB,
     "${FLASH_ORIGIN}": f"0x{pro.flash_origin:08X}",
     "${BOOT}": "true" if pro.boot else "false",
+    "${BOOT_IMAGE}": f"$(OPENCPLC)/scr/boot_{pro.hal}.bin" if pro.boot else "",
     "${RAM}": pro.ram_kB,
     "${FREQ}": pro.freq_Hz,
     "${HAL}": pro.hal,
@@ -197,18 +203,23 @@ def generate(pro:Project, activate:bool=True):
     "${OPENOCD_TARGET}": pro.openocd_target,
     "${ERASE_CMD}": pro.erase_command,
     "${STACK_CMD}": stack_command(pro),
+    "${CUBE_PATH}": utils.cube_bin(),
     "${EXE_EXT}": ".exe" if is_windows else "",
     "${PROJECT_COLORED}": colored_path(pro.pro_dir, pro.name),
     "${BUILD_COLORED}": colored_path(pro.build_dir, pro.name),
     "${GOLD}": c.GOLD, "${GREEN}": c.GREEN, "${PINK}": c.PINK, "${VIOLET}": c.VIOLET,
-    "${LIME}": c.LIME, "${RED}": c.RED, "${BLUE}": c.BLUE, "${GREY}": c.GREY, "${END}": c.END,
+    "${LIME}": c.LIME, "${SKY}": c.SKY, "${RED}": c.RED, "${BLUE}": c.BLUE, "${GREY}": c.GREY,
+    "${END}": c.END,
   } | utils.template_paths(pro.platform == "STM32")
   # Linker script and makefile live inside the project - parallel builds stay disjoint
   if pro.linker:
     ld_template = templates["flash"].get(pro.linker, templates["flash"]["stm32g0.ld"])
     utils.create_file("flash.ld", ld_template, pro.pro_dir, subs)
   makefile = tpl.get("project.mk", templates["project.mk"])
-  utils.create_file("makefile", makefile, pro.pro_dir, subs)
+  # CubeProgrammer joins PATH of `make stack` only from its default home, elsewhere PATH has it
+  keep_cube = bool(pro.stack_script and subs["${CUBE_PATH}"])
+  utils.create_file("makefile", makefile, pro.pro_dir, subs,
+    remove_line="" if keep_cube else "${CUBE_PATH}")
   if not activate: return
   # Workspace dispatcher - `make` at the root builds the active project
   utils.create_file("makefile", templates["workspace.mk"], "", {

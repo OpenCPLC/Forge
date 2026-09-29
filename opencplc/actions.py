@@ -3,8 +3,8 @@
 """
 One-shot CLI actions.
 
-`info_actions()` handles -v, -F, -f, -hl, -u, -a and -z: things that answer and exit
-without touching any project. `info_show()` prints the resolved model for -i.
+`info_actions()` handles -v, -F, -f, -hl, -u, -a, -z and -p, each answers without a project.
+`info_show()` and `program_image()` act on the resolved model, for -i and --program.
 """
 
 import sys, subprocess
@@ -12,6 +12,7 @@ from xaeian import Print, Color as c, Ico, FILE, DIR, PATH, replace_end
 from .config import URL_DL, URL_FORGE, URL_CORE, EXE_NAME, DIR_FRAMEWORK
 from .args import flag
 from .resolver import Project
+from .pack import pack_command
 from .workspace import ensure_refs
 from . import utils, __version__
 
@@ -78,7 +79,7 @@ def update_forge(args):
 # Flags of a project run, where -f is an override, not a download
 PROJECT_FLAGS = ("name", "new", "demo", "reload", "delete", "get", "board", "chip", "plc",
   "dvr", "boot", "memory", "opt_level", "project_list", "info", "version",
-  "framework_versions", "size", "hash_list", "update", "assets")
+  "framework_versions", "size", "pack", "program", "hash_list", "update", "assets")
 
 def framework_fetch(args, forge_cfg:dict) -> bool:
   """
@@ -101,12 +102,15 @@ def framework_fetch(args, forge_cfg:dict) -> bool:
   return True
 
 def info_actions(args, forge_cfg:dict) -> bool:
-  """One-shot actions: -v, -F, -f, -hl, -u, -a, -z. True when any of them ran."""
+  """One-shot actions: -v, -F, -f, -hl, -u, -a, -z, -p. True when any of them ran."""
   if FROZEN:
     FILE.remove(f"{PATH.script_dir()}/{EXE_NAME}.old") # what an earlier -u replaced
   ran = False
   if args.size:
     size_report(args.size[0], int(args.size[1]), int(args.size[2]))
+    ran = True
+  if args.pack:
+    pack_command(args.pack)
     ran = True
   if args.version:
     p.inf(f"OpenCPLC Forge {c.VIOLET}{__version__}{c.END}")
@@ -145,6 +149,29 @@ def info_actions(args, forge_cfg:dict) -> bool:
     p.ok(f"Assets downloaded to {c.GREY}{args.assets}{c.END}")
     ran = True
   return ran
+
+def program_image(pro:Project, path:str):
+  """--program: send a file to the board the way `make flash` does, and exit."""
+  if pro.platform != "STM32":
+    p.err(f"Flag {flag.program} needs an STM32 project")
+    sys.exit(1)
+  if PATH.ext(path).lower() not in (".hex", ".elf"):
+    p.err(f"Flag {flag.program} takes a .hex or .elf, a raw binary carries no address")
+    sys.exit(1)
+  if not FILE.exists(path):
+    p.err(f"File {c.VIOLET}{path}{c.END} not found")
+    sys.exit(1)
+  cmd = ["openocd", "-f", "interface/stlink.cfg"]
+  if pro.stlink: cmd += ["-c", f"adapter serial {pro.stlink}"]
+  cmd += ["-f", f"target/{pro.openocd_target}.cfg",
+    "-c", "reset_config srst_only srst_nogate connect_assert_srst",
+    "-c", f"program {PATH.normalize(path)} verify reset exit"]
+  name = PATH.basename(path)
+  if subprocess.run(cmd).returncode:
+    p.err(f"Programming {c.VIOLET}{name}{c.END} failed")
+    sys.exit(1)
+  p.ok(f"Programmed {c.VIOLET}{name}{c.END} into {c.PINK}{pro.chip}{c.END}")
+  sys.exit(0)
 
 def info_show(pro:Project):
   """-i: print the resolved project configuration and exit."""

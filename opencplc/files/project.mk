@@ -14,6 +14,8 @@ PROJECT := $(patsubst %/,%,$(dir $(MAKEFILE_PATH)))
 WORKSPACE := $(abspath $(PROJECT)/${UP_PATH})
 OPENCPLC := $(WORKSPACE)/${CORE_DIR}
 BUILD := $(WORKSPACE)/${BUILD_DIR}
+# Bootloader packed in front of the image, empty without one
+BOOT_IMAGE := ${BOOT_IMAGE}
 
 ifeq ($(OS),Windows_NT)
 SHELL := cmd.exe
@@ -119,7 +121,13 @@ $(BUILD)/%.hex: $(BUILD)/%.elf
 $(BUILD)/%.bin: $(BUILD)/%.elf
 	$(BIN) $< $@
 
-ARTIFACTS := $(BUILD)/$(TARGET).elf $(BUILD)/$(TARGET).hex $(BUILD)/$(TARGET).bin
+# Whole flash in one file for the programmer
+# Under the bootloader: bootloader in front, CRC in the trailer, update binary beside
+$(BUILD)/$(TARGET)-flash.hex: $(BUILD)/$(TARGET).hex
+	@cd $(WORKSPACE) && $(FORGE) --pack $< $@ $(BOOT_IMAGE)
+
+ARTIFACTS := $(BUILD)/$(TARGET).elf $(BUILD)/$(TARGET).hex $(BUILD)/$(TARGET).bin \
+  $(BUILD)/$(TARGET)-flash.hex
 
 # Only top make with build as its goal says it
 # Run in the project that is this one, under the dispatcher that one, behind dist nobody
@@ -143,33 +151,35 @@ UNDER_RESET = -c "reset_config srst_only srst_nogate connect_assert_srst"
 OPENOCD = openocd -f interface/stlink.cfg $(OPENOCD_SERIAL) \
   -f target/${OPENOCD_TARGET}.cfg $(UNDER_RESET) -c
 
-ifeq ($(BOOT),true)
-# Family bootloader from Core, then the image into its slot
-BOOT_BIN = $(OPENCPLC)/scr/boot_${HAL}.bin
+# One file with or without a bootloader, `--pack` already put it in front
 flash:
-	@$(OPENOCD) "program $(BOOT_BIN) 0x08000000 verify" -c "program $(BUILD)/$(TARGET).bin ${FLASH_ORIGIN} verify reset exit" && echo Flashed ${BLUE}$(TARGET).bin${END} behind ${GREY}boot_${HAL}.bin${END}|| (echo Flashing ${RED}failed${END}&& exit 1)
-else
-flash:
-	@$(OPENOCD) "program $(BUILD)/$(TARGET).elf verify reset exit" && echo Flashed ${VIOLET}$(TARGET).elf${END}|| (echo Flashing ${RED}failed${END}&& exit 1)
-endif
+	@$(OPENOCD) "program $(BUILD)/$(TARGET)-flash.hex verify reset exit" && echo Flashed ${VIOLET}$(TARGET)-flash.hex${END}|| (echo Flashing ${RED}failed${END}&& exit 1)
 
 run: build flash
 
 erase:
 	@$(OPENOCD) "init; reset init; ${ERASE_CMD}; reset halt; exit" && echo Erased ${PINK}${CHIP}${END}|| (echo Erasing ${RED}failed${END}&& exit 1)
 
-# Radio stack of the second core, make stack FUS=1 provisions a factory board
+# Radio stack of CPU2: FUS=1 provisions a factory board, FAST=1 trusts the installed one
+stack: export PATH := ${CUBE_PATH};$(PATH)
 stack:
 	@${STACK_CMD}
 
-# make dist TAG=1.2.0 names the copy <target>-1.2.0.hex
+# make dist TAG=1.2.0 gives <target>-1.2.0.hex, the flash image for a programmer
+# Under the bootloader the hex is the full image, <target>-1.2.0.bin the image alone for an update
 # Stamp touched, so a new file in the project does not force a reload on the next make
 DIST := $(TARGET)$(if $(TAG),-$(TAG))
 
 dist: build
-	@$(call COPY,$(BUILD)/$(TARGET).hex,$(PROJECT)/$(DIST).hex)
+	@$(call COPY,$(BUILD)/$(TARGET)-flash.hex,$(PROJECT)/$(DIST).hex)
+ifeq ($(BOOT),true)
+	@echo Full image ${LIME}$(DIST).hex${END} to ${PROJECT_COLORED}
+	@$(call COPY,$(BUILD)/$(TARGET)-update.bin,$(PROJECT)/$(DIST).bin)
+	@echo Update image ${SKY}$(DIST).bin${END} to ${PROJECT_COLORED}
+else
+	@echo Flash image ${LIME}$(DIST).hex${END} to ${PROJECT_COLORED}
+endif
 	@$(call TOUCH,$(FORGE_STAMP))
-	@echo Copied ${LIME}$(DIST).hex${END} to ${PROJECT_COLORED}
 
 clean:
 	@$(call RMDIR,$(BUILD))

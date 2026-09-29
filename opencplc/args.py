@@ -24,6 +24,8 @@ class Flag:
   o = f"{Color.GREY}-o --opt-level{Color.END}"
   i = f"{Color.GREY}-i --info{Color.END}"
   F = f"{Color.GREY}-F --framework-versions{Color.END}"
+  program = f"{Color.GREY}--program{Color.END}"
+  p = f"{Color.GREY}-p --pack{Color.END}"
 
 flag = Flag()
 
@@ -50,6 +52,8 @@ class Args:
   version: bool = False
   stlink: str|None = None
   size: list[str] = None
+  program: str|None = None
+  pack: list[str] = None
   assets: str|None = None
   update: str|None = None
   yes: bool = False
@@ -133,6 +137,10 @@ def load_args() -> Args:
   # Utilities
   parser.add_argument("-z", "--size", nargs=3, metavar=("ELF", "FLASH_kB", "RAM_kB"),
     help="Report FLASH and RAM usage of an .elf against the chip memory")
+  parser.add_argument("-p", "--pack", nargs="+", metavar="FILE",
+    help="Pack the flash image: APP.hex OUT.hex [BOOT], a makefile step")
+  parser.add_argument("--program", type=str, metavar="FILE",
+    help="Send a .hex to the board through the programmer, e.g. the one from dist")
   parser.add_argument("-a", "--assets", type=str, nargs="?", const="assets", metavar="DIR",
     help="Download datasheets and reference manuals to DIR")
   parser.add_argument("-u", "--update", type=str, nargs="?", const="latest", metavar="VER",
@@ -174,6 +182,8 @@ def load_args() -> Args:
     version=ns.version,
     stlink=ns.stlink,
     size=ns.size,
+    program=ns.program,
+    pack=ns.pack,
     assets=ns.assets,
     update=ns.update,
     yes=ns.yes,

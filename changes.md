@@ -1,5 +1,12 @@
 # Changes `opencplc`
 
+## `0.4.5` One flash file
+
+- `make flash` and F5 send one file, bootloader and image, CRC from Forge
+- `make dist` with bootloader: `.hex` full image, `.bin` image alone for an update
+- `--program FILE.hex` sends a file from dist, no build
+- `make stack` finds STM32CubeProgrammer
+
 ## `0.4.4` Own tools
 
 - Tools land in `%LOCALAPPDATA%/OpenCPLC` and every build uses them, PATH plays no part

@@ -1,36 +1,82 @@
-# Bootloader z podpisem - plan
+# Bootloader: dwie wersje
 
-Cel: nikt nie wgra do sterownika obrazu, którego nie podpisaliśmy.
-Ani przez `UPDATE` (BLE, RS, USB), ani przez programator.
-Mechanizm ma być najprostszy z możliwych: dwa tryby, jeden format, jedno miejsce sprawdzania.
+Dwie wersje bootloadera i nic pomiędzy.
+`plain` jest bez zabezpieczeń, jak dziś.
+`key` daje wysoki poziom zabezpieczeń bez dziur, ale nie tak wysoki, żeby przeszkadzał w codziennej pracy.
 
-Stan dziś: obraz ma nagłówek `{magic, size}` pod `0x200` i 4-bajtowy CRC32 za obrazem, który urządzenie dopisuje przy stage'owaniu.
-Programator zostawia trailer skasowany i bootloader to akceptuje.
-Sprawdzana jest wyłącznie integralność transferu, tożsamości obrazu nikt nie pyta.
+Stan dziś: obraz ma nagłówek `{magic, size}` pod `0x200` i CRC32 pod `[size]`, które urządzenie dopisuje przy stage'owaniu.
+Bootloader sprawdza to CRC przy każdym starcie, a skasowane CRC z programatora przepuszcza.
 
-To notatka do przemyślenia, nie zadanie na dziś.
-Nic z tego nie jest zrobione.
+## Stan
+
+### Wydanie 0.4.5, ścieżka `plain`
+
+Zrobione w Forge, 214 testów, sprawdzone na buildach G0C1 i WB55, jeszcze nie na sprzęcie:
+
+- `utils/hexfile.py`: mapa adres → bajt, zgodna z `objcopy` na prawdziwych obrazach
+- `--pack`: build daje `-flash.hex`, a pod bootloaderem CRC w trailerze, bootloader z przodu i `-update.bin` obok
+- `make flash` i F5 idą jednym plikiem `-flash.hex`, makefile i `launch.json` nie wiedzą nic o bootloaderze
+- `dist` daje `<nazwa>.hex` z pełnym obrazem, a pod bootloaderem także `<nazwa>.bin` z samym obrazem do aktualizacji
+- `--program <plik>` wgrywa `.hex` z dista tym samym poleceniem co `make flash`, surowego `.bin` odmawia
+- `make stack` bierze CubeProgrammera z domyślnego miejsca albo mówi, skąd go pobrać
+
+Przed wydaniem test na Nucleo:
+
+1. Projekt bez bootloadera: `make flash`, aplikacja startuje.
+2. Projekt z `-B` po `make erase`: `make flash`, bootloader odpala aplikację.
+3. F5: staje w `main`, breakpoint i krok działają.
+4. `make dist TAG=…`, potem `--program` z tym plikiem.
+5. Na Nucleo-WB55 jeszcze raz punkt 2, bo bootloader ma tam 16kB i inny układ slotów.
+
+Aktualizacja w polu plikiem `.hex` z dista 0.4.5 wymaga xaeian 0.9.5: `Shell.boot` wycina obraz spod adresu slotu.
+Starszy xaeian czyta nagłówek od początku pliku, a pełny obraz zaczyna się od bootloadera, więc wysłałby bootloader.
+Plik `.bin` z dista działa z każdym.
+
+### Gotowe, ale jeszcze nieużywane
+
+`utils/ed25519.py` zgadza się z wektorami RFC 8032 i z OpenSSL.
+Czeka na tryb `key`, dziś nic go nie importuje.
+
+### Do zrobienia
+
+Cały tryb `key` i wszystko po stronie Core, kolejność i stan w [pkt 11](#11-kolejność).
+Opis poziomów bezpieczeństwa dla ludzi i pod regulacje: [security.md](security.md).
 
 ---
 
-## 1. Dwa tryby
+## 1. W skrócie
 
 | | `plain` | `key` |
 | --- | --- | --- |
-| Bootloader | dzisiejszy, bez krypto | z Ed25519, klucz publiczny w środku |
-| Flash | jak dziś: G0 8kB, WB 16kB | więcej, do zmierzenia, pewnie 16-24kB na G0 |
-| Sprawdza podpis | nigdy | zawsze, przy każdym starcie |
-| Bez klucza w bootloaderze | to jest jego stan | odmawia wszystkiego |
-| Dla kogo | dev, hobby, domyślnie z pudełka | produkcja, razem z RDP1 |
+| Wybór w `main.h` | brak `PRO_BOOT_KEY` | `PRO_BOOT_KEY` |
+| Rozmiar bootloadera | jak dziś: G0 8kB, WB 16kB | większy, do zmierzenia |
+| Przy starcie sprawdza | nagłówek, CRC | nagłówek, CRC, podpis |
+| Przy instalacji sprawdza | to samo | to samo i epokę |
+| Blokada SWD | nie | `--lock`: RDP1, WRP, wyłączony `BOOT0` |
+| Dla kogo | dev, hobby, domyślnie | produkcja |
 
-Tryb wybiera `"key"` w `opencplc.json`: `null` to `plain`, nazwa klucza to `key`.
-Forge dobiera do tego bootloader i układ pamięci.
-Poza tym nic się nie zmienia: ten sam nagłówek, mailbox, transfer, `make flash`, `make dist`, F5.
+Obie wersje mają jeden format obrazu, ten sam mailbox, ten sam protokół `UPDATE` i ten sam `make`, F5, `dist`.
+Różni je tylko to, co bootloader sprawdza.
+Tryb należy do projektu, nie do workspace, bo jeden workspace trzyma wiele produktów.
 
-`plain` to dzisiejszy bootloader i dzisiejsze rozmiary.
-Nie płaci flashem za krypto, którego nie używa.
+## 2. `plain`
 
-**W trybie `key` bootloader skacze tylko do obrazu z ważnym podpisem, przy każdym starcie.**
+**Zero zabezpieczeń, tylko bezpieczniki przed wypadkiem.**
+
+Chroni przed:
+
+- uszkodzonym transferem, przez CRC jak dziś,
+- przerwą zasilania przy instalacji, jak dziś,
+- obrazem na inny chip (`chip`) i pod inny slot (`origin`).
+  To nowość za kilkadziesiąt bajtów, bo taki obraz to cegła, a nie atak.
+
+Nie chroni przed niczym, co robi człowiek.
+Każdy obraz z poprawnym CRC wchodzi przez `UPDATE`, programator wgrywa wszystko.
+To dzisiejsze zachowanie i tak ma zostać.
+
+## 3. `key`
+
+**Bootloader skacze tylko do obrazu podpisanego kluczem produktu, przy każdym starcie.**
 Nie „przy instalacji”, nie „raz i zapamiętaj”.
 Nie ma stanu „zweryfikowany” do przechowywania, więc nic nie może się rozjechać.
 Obraz z programatora podlega temu samemu co obraz z `UPDATE`.
@@ -38,214 +84,471 @@ Obraz z programatora podlega temu samemu co obraz z `UPDATE`.
 > **Nota:** Bootloader `key` bez wpisanego klucza (32B `0xFF`) nie startuje niczego, czeka na SWD.
 > Nie ma trybu „keyed, ale przepuszcza”, bo to byłaby druga droga do `plain`, tylko przez pomyłkę.
 
-## 2. Co podpis chroni
+### Epoka
 
-Podpis zamyka drogę `UPDATE`.
-Drogi programatora nie zamyka: kto ma SWD, może wgrać bootloader `plain`.
-Tę drogę zamyka wyłącznie RDP.
+`#define PRO_BOOT_EPOCH 0` w `main.h`, pod `PRO_BOOT_KEY`.
+Liczba siedzi w nagłówku, pod podpisem.
+Przy instalacji bootloader odmawia obrazu z epoką niższą niż obraz w slocie.
 
-- RDP1: debugger nie czyta i nie pisze flasha, zejście do RDP0 kasuje wszystko.
-  Odwracalne, ale kosztem zawartości.
-  To poziom na produkcję.
-- RDP2: nieodwracalne, debugger martwy na zawsze.
-  Raczej nie.
+- Zwykłe release'y jej nie ruszają, więc cofanie wersji i gałęzie LTS działają normalnie.
+- Podbijasz ją tylko wtedy, gdy release zamyka dziurę bezpieczeństwa.
+  Urządzenie, które go przyjęło, nie wróci już do dziurawej wersji.
+- Podbijaj ją tylko w przetestowanym release, bo po nim nie ma odwrotu.
+  Zły release z nową epoką naprawiasz wyłącznie do przodu.
+- Decyduje bootloader, nie aplikacja, bo przy downgradzie to właśnie aplikację atakujący podmienia.
+- Odniesieniem jest nagłówek obrazu w slocie, bez licznika w OTP.
+  Zgubić je można tylko zapisem flasha, czyli programatorem, który zamyka RDP1, albo exploitem.
+- Programator epoki nie sprawdza, bo to fizyczny dostęp, a ten zamyka RDP1.
+- Dopóki epoka wynosi `0`, mechanizm jest niewidoczny.
 
-> **Uwaga:** Bez RDP podpis jest teatrem.
-> W dokumentacji wprost: `key` + RDP1 = zamknięte urządzenie, samo jedno z nich = nic.
+### Klucze
 
-Do sprawdzenia na STM32WB: option bytes a FUS i stack CPU2, czy RDP1 nie psuje `make stack`.
+- **Klucz produktu**: `PRO_BOOT_KEY` to jego publiczna część, prywatna leży zaszyfrowana hasłem.
+  Używa go wyłącznie `make dist`.
+- **Klucz deweloperski**: per maszyna, bez hasła, Forge tworzy go sam.
+  Build, `make flash` i F5 podpisują zawsze nim, także na maszynie release.
 
-## 3. Format obrazu
+Nikt nie potrzebuje klucza produktu do codziennej pracy, a obraz produkcyjny powstaje tylko w `dist`.
+Szczegóły w [pkt 6](#6-klucze).
 
-Dziś: `[wektory][nagłówek @0x200 {magic, size}][kod][CRC32]`, `size` liczy bajty przed CRC.
+### Blokada
 
-Docelowo: `[wektory][nagłówek @0x200 {magic, size}][kod][podpis 64B]`
+`opencplc --lock` ustawia profil produkcyjny option bytes, tylko na wyraźne żądanie, z pytaniem `[YES/NO]`:
 
-- `size` liczy bajty przed podpisem, nagłówek zostaje bez zmian.
-- Podpis Ed25519 nad bajtami `[0, size)`, więc wektory i nagłówek też pod podpisem.
-- Podpis jest częścią pliku `.bin` i `.hex`, Forge dopisuje go przy buildzie.
-  Urządzenie niczego nie dopisuje.
-  Ten sam bajt w bajt trafia przez programator i przez `UPDATE`.
-- W trybie `plain` Forge nie dopisuje nic, 64 bajty za `size` zostają skasowane.
-  Obraz podpisany na bootloaderze `plain` też działa, trailer jest ignorowany.
+1. Czyta przez SWD klucz z bootloadera na płytce i odmawia, gdy to nie `PRO_BOOT_KEY`.
+2. Ustawia WRP na stronach bootloadera, bez strony mailboxa, do której pisze aplikacja.
+3. Wyłącza start z bootloadera w ROM (pin `BOOT0`).
+4. Na końcu ustawia RDP1.
 
-Jeden format w obu trybach, podpis to opcjonalne 64B na końcu.
+Wszystko idzie przez openocd, tym samym narzędziem co `make flash`.
+Nasz `openocd-0.12` ma w sterowniku `stm32l4x`, używanym przez G0 i WB, polecenia `lock`, `option_write` i `option_load`.
 
-CRC32 znika z formatu flasha, zostaje w transferze.
-`boot begin <size> <crc>` niesie długość pliku i CRC całego pliku.
-`BOOT_End` liczy CRC nad stage'owanymi bajtami i porównuje.
-Wykrycie przekłamania transportu zostaje tam, gdzie jest tanie i natychmiastowe.
-Mailbox nie potrzebuje już `crc`, tylko `page` i `size` pliku.
+Fabryka robi `opencplc --program <plik z dist> --lock`.
+`boot info` pokazuje `rdp`, a konsola ostrzega, gdy urządzenie z kluczem produktu nie jest zablokowane.
 
-Znika hack „skasowany trailer = OK”.
-Slot jest ważny, gdy nagłówek się zgadza (`plain`) albo nagłówek i podpis się zgadzają (`key`).
-Nic więcej.
+> **Uwaga:** Bez RDP1 podpis zamyka tylko łącze aktualizacji, a ktoś z programatorem obejdzie go bez trudu.
+> W dokumentacji wprost: zamknięte urządzenie to `key` + `--lock`, każde z osobna zostawia otwarte drzwi.
 
-Podpis sprawdza wyłącznie bootloader: nad slotem aplikacji przy starcie i nad stagingiem przed instalacją.
-Aplikacja sprawdza w `BOOT_End` tylko CRC i rozmiar, krypto nie nosi w żadnym trybie.
+### Granice
 
-Zły podpis wychodzi więc na jaw dopiero po resecie, w bootloaderze, cicho.
-Mailbox dostaje pole `result`, aplikacja czyta je po starcie i mówi hostowi, dlaczego dalej jest stara wersja.
-Jedno pole, jeden komunikat, bez drugiego miejsca weryfikacji.
+`key` chroni przed:
 
-## 4. Klucz
+- obcym obrazem przez `UPDATE`,
+- downgradem poniżej epoki,
+- odczytem i zapisem przez SWD i bootloader w ROM, po `--lock`,
+- obrazem deweloperskim na urządzeniu produkcyjnym.
+
+`key` świadomie nie chroni przed:
+
+- exploitem w działającej aplikacji, który przestawi option bytes i nadpisze bootloader.
+  To jedyna furtka i wymaga najpierw dziury w aplikacji,
+- podejrzeniem treści firmware: obraz leci jawnie, chyba że aplikacja szyfruje łącze albo plik,
+- glitchingiem i side-channel.
+
+### Czego celowo nie ma
+
+Żeby `key` nie przeszkadzał:
+
+- pełnego wersjonowania, w którym każdy release działa w jedną stronę,
+- securable area na G0, której WB i tak nie ma,
+- sprzętowego watchdoga w `--lock`, od zawieszenia jest przycisk reset,
+- RDP2, które na zawsze zabija debugger,
+- aktualizacji bootloadera w polu, bo to ryzyko cegły,
+- szyfrowania w bootloaderze: poufność to zadanie aplikacji, która rozszyfrowuje przed zapisem do slotu, a bootloader sprawdza podpis jawnej treści,
+- automatycznej blokady przy pierwszym starcie, bo każdy test pliku z `dist` na płytce deweloperskiej kończyłby się kasowaniem.
+
+## 4. Scenariusze
+
+### Twoja praca
+
+| Czynność | `plain` | `key` |
+| --- | --- | --- |
+| Raz na produkt | nic | `opencplc --keygen ediphor`, hasło, kopia klucza i hasła |
+| Programowanie | `make`, `make flash` | to samo |
+| Debugowanie | F5 | to samo, start dłuższy o weryfikację |
+| Dist | `make dist TAG=1.2.0` | to samo i hasło |
+| Nagrywanie z Cube | jeden `.hex` z dista, Download | to samo, potem `opencplc --lock` |
+| Podpisywanie | nie istnieje | nigdy ręcznie: build kluczem deweloperskim, dist kluczem produktu |
+| Załatana dziura bezpieczeństwa | nic | `PRO_BOOT_EPOCH` o jeden w górę, potem dist |
+| Aktualizacja w polu | konsola wysyła `.bin` | to samo, przy odmowie konsola pokazuje powód |
+
+Dist daje dwa pliki: `.hex` z bootloaderem i aplikacją dla Cube i fabryki, `.bin` z samą aplikacją dla aktualizacji.
+Dziś w Cube wgrywa się dwa pliki `.bin` i ręcznie wpisuje adresy, po zmianie jeden `.hex` niesie adresy sam.
+
+W `key` w Cube:
+
+- płytki z RDP1 nie da się nagrać, a odblokowanie kasuje cały flash,
+- sam `.bin` z dista na płytce deweloperskiej nie wystartuje, bo jej bootloader ma klucz deweloperski.
+  Wgrywaj zawsze `.hex`, który niesie bootloader z pasującym kluczem.
+
+### Codzienna praca
+
+| Sytuacja | `plain` | `key` |
+| --- | --- | --- |
+| F5 na świeżej płytce | bootloader i aplikacja w jednym hexie, startuje | to samo, z kluczem deweloperskim |
+| F5 na płytce z bootloaderem innej wersji Core | hex nadpisuje bootloader zgodnym | to samo |
+| F5 na płytce z cudzym kluczem deweloperskim | nie dotyczy | hex wgrywa bootloader z Twoim kluczem |
+| Deweloper bez klucza produktu | nie dotyczy | build, flash, F5 działają, `dist` odmawia |
+| Debug bootloadera | `opencplc -r boot/stm32g0`, F5 | to samo |
+| Czas od resetu do `main` | jak dziś | dłużej o weryfikację, patrz [pkt 7](#czas) |
+
+### Wydanie i produkcja
+
+| Sytuacja | `plain` | `key` |
+| --- | --- | --- |
+| `make dist` | kopiuje `-flash.hex` i `-update.bin` | pyta o hasło, podpisuje kluczem produktu, kopiuje |
+| `make dist` bez klucza produktu | nie dotyczy | odmawia, głośno |
+| Test pliku z `dist` przed wysyłką | `opencplc --program` | `opencplc --program` na płytce bez blokady |
+| Fabryka | `--program` | `--program --lock` |
+| `--lock` na płytce z kluczem deweloperskim | nie dotyczy | odmawia |
+
+### Aktualizacja w polu
+
+| Sytuacja | `plain` | `key` |
+| --- | --- | --- |
+| Poprawny obraz | instaluje | instaluje |
+| Przekłamanie w transferze | `BOOT_End` odrzuca po CRC, działa stara wersja | to samo |
+| Przerwa zasilania w transferze | brak rekordu w mailboxie, działa stara wersja | to samo |
+| Przerwa zasilania w instalacji | po restarcie instalacja od nowa | to samo |
+| Obraz na inny chip | aplikacja odrzuca przed resetem (`chip`) | to samo |
+| Obraz pod inny slot | aplikacja odrzuca przed resetem (`origin`) | to samo |
+| Obraz bez podpisu albo z obcym kluczem | instaluje | bootloader odrzuca (`signature`), działa stara wersja |
+| Obraz z kluczem deweloperskim | instaluje | bootloader odrzuca (`signature`) |
+| Starsza wersja, ta sama epoka | instaluje | instaluje |
+| Starsza wersja, niższa epoka | instaluje | bootloader odrzuca (`epoch`) |
+
+Po odrzuceniu w bootloaderze aplikacja czyta wynik i mówi hostowi, dlaczego dalej działa stara wersja.
+
+### Awarie
+
+| Sytuacja | `plain` | `key` |
+| --- | --- | --- |
+| Uszkodzony slot, np. przekłamany bit | CRC nie pasuje, bootloader czeka na SWD | podpis nie pasuje, czeka na SWD, przy RDP1 serwis |
+| Zawieszenie przed startem watchdoga aplikacji | przycisk reset | to samo |
+| Surowy bootloader z Core, bez klucza | nie dotyczy | nic nie startuje, czeka na SWD |
+| Utrata klucza produktu albo hasła | nie dotyczy | koniec aktualizacji floty, stąd kopie offline |
+
+### Ataki
+
+W `plain` wszystkie te drogi są otwarte, zgodnie z założeniem.
+W `key` po `--lock`:
+
+| Atak | Wynik |
+| --- | --- |
+| Obcy obraz przez BLE, RS, USB | odrzucony, podpis |
+| Stary, dziurawy obraz | odrzucony, jeśli dziurę zamknął release z wyższą epoką |
+| Odczyt firmware przez SWD | niemożliwy |
+| Wgranie bootloadera `plain` przez SWD | niemożliwe, zejście z RDP1 kasuje flash |
+| Pin `BOOT0` i bootloader w ROM | wyłączony |
+| Podsłuchany plik aktualizacji | daje treść firmware, nic więcej |
+| Skradziony plik klucza | bez hasła bezużyteczny |
+| Exploit w działającej aplikacji | może nadpisać bootloader, świadoma granica |
+
+### Serwis i przejścia
+
+| Sytuacja | `plain` | `key` |
+| --- | --- | --- |
+| Urządzenie z pola do analizy | SWD czyta wszystko | zejście do RDP0 kasuje flash, zostają logi |
+| Błąd w bootloaderze w polu | naprawa tylko programatorem | tylko programatorem, po skasowaniu |
+| Przejście `plain` na `key` | tylko programatorem, nie przez `UPDATE` | nie dotyczy |
+| Stary bootloader w polu, nowa aplikacja | instaluje, bo format to kontrakt | nie dotyczy, urządzenia `key` są nowe |
+| Nowy bootloader, obraz ze starego Core | odrzuca czysto (`origin`) | to samo |
+| Stary firmware, nowe narzędzie hosta | protokół bez zmian, działa | nie dotyczy |
+
+Produkt, który ma być `key`, musi wyjść z fabryki jako `key`.
+
+## 5. Format i kontrakt z polem
+
+**Formaty to kontrakt z urządzeniami, które już są w polu.**
+Nowa aplikacja musi się dać zainstalować przez stary bootloader `plain`, inaczej wysłane urządzenia tracą aktualizacje.
+Stąd trzy zasady:
+
+- nagłówek rośnie tylko na końcu, `magic` zostaje,
+- CRC zostaje pod `[size]`, liczone jak dziś,
+- rekord mailboxa `{magic, size, page, crc}` zostaje bez zmian.
+
+### Nagłówek
+
+Dziś `{magic, size}`, docelowo `{magic, size, origin, chip, epoch}` pod `0x200`.
+
+- `origin`: adres, pod który obraz jest zlinkowany, z linkera.
+  Bootloader odrzuca obraz pod inny slot, zamiast w niego skoczyć.
+- `chip`: identyfikator z `DBGMCU->IDCODE`, obraz G0 nie wyląduje na WB.
+  Bootloader porównuje go z rejestrem w działaniu, bo jeden bootloader obsługuje całą rodzinę.
+- `epoch`: z `PRO_BOOT_EPOCH`, domyślnie `0`, sprawdzana tylko w `key`.
+
+Stary bootloader czyta tylko `{magic, size}`, więc nowe pola go nie obchodzą.
+Nowy bootloader w starym obrazie trafi pod `origin` na kod, który nie zgodzi się z adresem slotu, więc odrzuci go czysto.
+
+### Trailer
+
+`[size]` CRC32, `[size + 8]` podpis Ed25519 64B, linker rezerwuje 72B.
+Flash programuje się podwójnymi słowami, stąd wyrównanie do 8.
+
+- Plik `hex` i `bin`: trailer wypełnia Forge, CRC zawsze, podpis w `key`.
+- `UPDATE`: host wysyła obraz `[0, size)` jak dziś, a CRC i podpis w `begin`.
+  Urządzenie w `BOOT_End` wpisuje trailer tak, jak dziś wpisuje CRC.
+- Host wysyła podpis tylko dla obrazu `key`, a urządzenie `key` jest nowe z definicji.
+  Stare urządzenia widzą protokół bez zmian.
+- Host przed wysłaniem porównuje `origin` obrazu z adresem slotu z `boot info`.
+  To chroni też stare urządzenia, które `origin` nie sprawdzają.
+
+Znika hack „skasowane CRC = OK”, bo każdy obraz z Forge ma CRC.
+Bajty we flashu są te same bez względu na drogę.
+
+### Kto co sprawdza
+
+- Aplikacja w `BOOT_End`: CRC, `chip`, `origin`, czyli to, co tanie, jeszcze przed resetem.
+- Bootloader przy instalacji: to samo, w `key` także podpis i `epoch`.
+- Bootloader przy każdym starcie: nagłówek, `chip`, `origin`, CRC, w `key` także podpis.
+
+Aplikacja nie nosi krypto w żadnym trybie.
+
+### Wynik instalacji
+
+Bootloader zostawia wynik w słowie RAM poza `.bss` i zapisuje je przy każdym starcie, żeby nie zostawała stara wartość.
+`stm32wb.ld` już zostawia 8 bajtów na początku RAM, `stm32g0.ld` dostaje to samo.
+Zero zapisów flash, mailbox bez zmian.
+
+Kody: brak, zainstalowany, odrzucony z powodem `crc`, `chip`, `origin`, `signature` albo `epoch`.
+
+### Układ pamięci
+
+`PRO_FLASH_kB`, `boot_kB` i `boot_key_kB` wyznaczają sloty, a sloty są częścią kontraktu.
+Po wysłaniu produktu nie zmieniają się: ani w projekcie, ani między wersjami Core.
+Zmiana odcina aktualizacje wysłanym urządzeniom, a `origin` sprawia, że odmowa jest czysta zamiast cegły.
+
+## 6. Klucze
 
 Para Ed25519: 32B seed prywatny, 32B klucz publiczny.
 
-**Klucz publiczny mieszka w bootloaderze `key`, w stałym miejscu, wpisywany przez Forge.**
-Core dostarcza bootloader `key` bez klucza, Forge wpisuje klucz użytkownika do hexa przy składaniu obrazu flasha.
-Jeden bootloader `key` dla wszystkich, klucz to dane, nie kod.
-Nikt nie buduje bootloadera sam.
+```c
+#define PRO_BOOT true
+#define PRO_BOOT_KEY "8a1fe3c0...e91d"
+#define PRO_BOOT_EPOCH 0
+```
 
-Miejsce: sekcja `.boot_key` pod stałym offsetem, np. `0x208`, zaraz za nagłówkiem bootloadera.
-Bootloader jako obraz Forge też ma `{magic, size}` pod `0x200`.
-Stały offset, więc Forge wie, co łatać, bez czytania mapy linkera.
+Zawsze w tej kolejności, `PRO_BOOT_KEY` to 64 znaki hex klucza publicznego.
 
-Klucz prywatny:
+- Klucz publiczny nie jest tajny, siedzi w repo razem z projektem.
+- `PRO_BOOT_KEY` wymaga `PRO_BOOT true`, inaczej Forge mówi, czego brakuje.
+- Forge wpisuje klucz do bootloadera `key` przy składaniu obrazu flasha, pod stałym offsetem za nagłówkiem bootloadera.
+  Core dostarcza jeden bootloader `key` bez klucza, nikt nie buduje bootloadera sam.
+- Prywatne klucze leżą w katalogu kluczy, Forge bierze ten, którego publiczny zgadza się z `PRO_BOOT_KEY`.
+  Nazwa pliku jest dla ludzi, dopasowanie idzie po kluczu.
+- `opencplc --keygen <name>` tworzy parę z hasłem i sam wpisuje `PRO_BOOT_KEY` i `PRO_BOOT_EPOCH 0` do `main.h` aktywnego projektu, zaraz pod `PRO_BOOT`, w kolejności jak wyżej.
+  Przy `PRO_BOOT false` ustawia też `PRO_BOOT true`, bo `key` bez bootloadera nie ma sensu.
+- Klucz o tej nazwie już istnieje: `--keygen` podpina go zamiast tworzyć nowy, np. dla drugiego projektu tego samego produktu.
+  Obok prywatnego leży `<name>.pub`, więc podpięcie nie pyta o hasło.
+- Projekt ma już `PRO_BOOT_KEY`: `--keygen` odmawia, bo podmiana klucza odcina urządzenia w polu.
+- Istniejący plik klucza nigdy nie jest nadpisywany.
+- `boot info` raportuje `key: 8a1fe3c0`, `key: none` albo `key: missing`.
 
-- `%LOCALAPPDATA%/OpenCPLC/keys/<name>.key`, nigdy w repo, nigdy w workspace.
-- `opencplc --keygen <name>` tworzy parę i drukuje fingerprint.
-- `opencplc.json` wskazuje `"key": "<name>"` i trzyma klucz publiczny w hex.
-  Klon workspace wie, jakiego bootloadera oczekuje, nawet bez prywatnego.
-- Forge z `"key"` bez pliku prywatnego odmawia buildu z `PRO_BOOT true`, głośno.
-  Nie ma cichego „zbudowałem, ale bez podpisu”.
+### Klucz deweloperski
 
-Praktyka zespołu: płytki deweloperskie `plain`, produkcja `key` z RDP1, klucz na jednej maszynie release.
-Kto nie ma klucza, nie robi produkcji.
+- Per maszyna, bez hasła, tworzony sam przy pierwszym buildzie `key`.
+- Nigdy wspólny i nigdy w repo.
+  MCUboot trzyma klucze testowe w repozytorium i jego dokumentacja musi ostrzegać przed wysłaniem z nimi produktu.
+- Bootloader w `-flash.hex` z builda dostaje klucz deweloperski, więc płytka deweloperska zawsze startuje.
 
-`boot info` raportuje `key: <fingerprint>`, `key: none` albo `key: missing` dla bootloadera `key` bez klucza.
+### Przechowywanie
 
-## 5. Bootloader
+- Windows `%LOCALAPPDATA%/OpenCPLC/keys`, Linux `~/.local/share/OpenCPLC/keys`.
+  `OPENCPLC_KEYS` przenosi katalog, jak `OPENCPLC_TOOLS` narzędzia.
+- Własny prosty format: klucz produktu zaszyfrowany hasłem przez `scrypt`, deweloperski bez hasła.
+  PEM zgodnego z `openssl` nie ma, bo stdlib nie ma AES, a plik czyta tylko Forge.
+- W CI hasło przychodzi ze zmiennej środowiskowej ustawionej jako sekret.
+- Klucz produktu i hasło: dwie kopie offline, np. w menedżerze haseł.
+  Utrata któregokolwiek to koniec aktualizacji dla całej floty, bo bootloadera w polu nie zmienisz.
+- Wyciek klucza nie ma odwołania, klucz per produkt ogranicza szkody do jednego produktu.
 
-### Krypto i rozmiar
+## 7. Bootloader od środka
 
-Ed25519, bo weryfikacja nie potrzebuje RNG, podpis jest deterministyczny i nie ma pułapek z nonce.
-Klucz 32B, podpis 64B, jedna sprawdzona implementacja, jeden plik.
-To samo na M0+ i M4, bez PKA z WB55, żeby była jedna ścieżka kodu.
+### Krypto
 
-Kandydaci: Monocypher (czytelny, ~10-14kB thumb z SHA-512) albo c25519 (~6kB, wolniejszy).
-Do zmierzenia na obu rdzeniach: rozmiar i czas weryfikacji obrazu 100kB.
-Szacunek: 0,1-0,5s przy 16MHz, bootloader może podnieść zegar na czas liczenia.
-Próg akceptacji to „start w pół sekundy”, nie „zero”.
+Ed25519 z RFC 8032, bo weryfikacja nie potrzebuje RNG, podpis jest deterministyczny i nie ma pułapek z nonce.
+Klucz 32B, podpis 64B, jeden plik implementacji, ta sama ścieżka na M0+ i M4.
 
-Region `key` jest większy niż `plain`, więc `FLASH_ORIGIN` i sloty różnią się między trybami.
-Zmiana trybu to relink, Forge robi to sam, jak przy zmianie `PRO_BOOT`.
-Tabela chipów: `boot_kB` zostaje dla `plain`, dochodzi `boot_key_kB`.
+Kandydaci: Monocypher (~10-14kB thumb) albo c25519 (~6kB, wolniejszy).
+Obaj bez zobowiązań licencyjnych: Monocypher do wzięcia na CC0, c25519 w domenie publicznej.
+Z Monocypher tylko moduł opcjonalny `monocypher-ed25519`, bo domyślne EdDSA liczy BLAKE2b i nie zgodzi się z podpisem z Forge.
 
 Symetryczny HMAC odpada: klucz w bootloaderze czytany przez SWD zdradza go na każdym egzemplarzu.
 
+### Czas
+
+Weryfikacja to SHA-512 nad całym obrazem i mnożenia na krzywej, a M0+ nie ma nic, co by je przyspieszało.
+Rząd wielkości: pół sekundy do sekundy na G0 dla obrazu 250kB przy 64MHz, na M4 w WB kilka razy mniej.
+Przy 16MHz cztery razy dłużej, więc 64MHz jest obowiązkowe.
+
+- Przed `BOOT_Jump` bootloader przywraca zegar, latencję flasha i zasilanie do stanu po resecie.
+  Aplikacja konfiguruje zegar od stanu po resecie i PLL zostawiony w biegu by ją wywrócił.
+- Hash liczony w kawałkach z `IWDG_Refresh`, na wypadek gdyby watchdog już biegł.
+- Jeśli M0+ nie zmieści się w czasie: podpis nad SHA-256 obrazu, jak w MCUboot.
+
+Czytnik ediphor wchodzi w ship mode przez reset programowy i budzi się resetem.
+Każde uśpienie i wybudzenie przechodzi więc przez weryfikację, a wybudzenie z przycisku wydłuża się o jej czas.
+
+### Rozmiar
+
+Bootloader dziś: G0 3,7kB w regionie 8kB, WB 6,9kB w regionie 16kB.
+Z Ed25519 szacunkowo G0 ~18-20kB, WB ~24kB, do zmierzenia.
+
+Region `key` jest większy niż `plain`, więc `FLASH_ORIGIN` i sloty różnią się między trybami.
+Zmiana trybu to relink, Forge robi to sam, jak przy zmianie `PRO_BOOT`.
+Tabela chipów: `boot_kB` dla `plain`, `boot_key_kB` dla `key`, oba ustalone raz na zawsze.
+
 ### Hex w Core
 
-- `projects/boot/<hal>` to zwykły projekt z `PRO_BOOT false`, `make dist` daje `boot_<hal>.hex`.
-  Bootloader przestaje być czymś specjalnym.
+- `projects/boot/<hal>` to zwykły projekt z `PRO_BOOT false`, `make dist` daje hex.
 - Jeden projekt, przełącznik `BOOT_KEY` w `main.h`, dwa produkty: `boot_<hal>.hex` i `boot_<hal>_key.hex`.
-- Core `scr/` trzyma oba hexy zamiast `.bin`.
-  Hex niesie adres, `0x08000000` znika z makefile.
-- Stare wersje Core mają tylko `.bin`: Forge robi fallback `bin@FLASH_BASE` dla `plain`, a `key` odmawia.
-  Stała zostaje w resolverze, gdzie już jest.
+  `<hal>` to rodzina z tabeli chipów Forge: `stm32g0` dla G081 i G0C1, `stm32wb` dla WB55.
+  Jeden bootloader na rodzinę, jak dziś `scr/boot_stm32g0.bin`.
+- Core `scr/` trzyma oba hexy zamiast `.bin`, hex niesie adres, `0x08000000` znika z makefile.
+- Forge poznaje nowy format po hexie w `scr/`.
+  Stare Core ma tylko `.bin`: Forge kładzie go pod `FLASH_BASE`, trailera aplikacji nie rusza, a `PRO_BOOT_KEY` odmawia.
 
 ### `boot.c`
 
-- `BOOT_ImageValid`: nagłówek, a z `BOOT_KEY` także podpis nad `[0, size)` kluczem z `.boot_key`.
+- Nagłówek `{magic, size, origin, chip, epoch}`, `size` i `origin` z linkera, `epoch` z `PRO_BOOT_EPOCH`.
+- `BOOT_Begin` przyjmuje opcjonalny podpis, `BOOT_End` wpisuje trailer: CRC jak dziś, podpis albo `0xFF`.
+- `BOOT_ImageValid`: nagłówek, `chip`, `origin`, CRC, a z `BOOT_KEY` także podpis kluczem z bootloadera.
   Klucz `0xFF` znaczy, że nic nie jest ważne.
-  Bez CRC, bez „skasowany trailer = OK”.
-- `BOOT_End`: CRC transferu nad stage'owanymi bajtami jak dziś, bez dopisywania trailera.
-- Mailbox: `{magic, size, page, result}`, `crc` wypada.
-- `BOOT_Install`: weryfikuje staging przed kopią, zapisuje `result` przy odmowie.
-- `BOOT_Status`: `image_crc` wypada, dochodzi fingerprint klucza i ostatni `result`.
-- Krypto kompilowane tylko z `BOOT_KEY`, czyli tylko do bootloadera `key`.
-  Aplikacja i bootloader `plain` nie widzą go wcale.
-- Linker: `.app_trailer` rezerwuje 64B zamiast 8B, `.boot_key` w obrazie bootloadera `key`.
+- `BOOT_Install`: weryfikuje staging przed kopią, w `key` także `epoch` względem slotu, kopiuje `size` + 72B, weryfikuje slot po kopii, zostawia wynik w RAM.
+- `BOOT_Status`: `image_crc` zostaje, dochodzi fingerprint klucza, `rdp` i ostatni wynik.
+- Krypto kompilowane tylko z `BOOT_KEY`, aplikacja i bootloader `plain` nie widzą go wcale.
+- Linker: `.app_trailer` 72B zamiast 8B, 8 bajtów RAM na wynik w `stm32g0.ld`.
 
-Kompatybilność: obraz zbudowany starym Core ma CRC za `size`.
-Bootloader `plain` ignoruje trailer, więc taki obraz startuje.
-Bootloader `key` go odrzuca, słusznie.
+## 8. Forge, makefile i debugger
 
-## 6. Forge
+### Forge
 
 Jeden prymityw: mapa adres → bajt.
 Wczytać hex albo bin pod adres, ustawić bajty, zapisać hex.
-Podpis, klucz, sklejenie z bootloaderem to ta sama operacja.
+CRC, podpis, klucz i sklejenie z bootloaderem to ta sama operacja.
 
-`-m <app.hex> <out>` kończy obraz flasha:
+`-p --pack <app.hex> <out>` kończy obraz flasha.
+To jedno polecenie dla wszystkich trybów: makefile nie wie, który jest w użyciu, Forge czyta go z `main.h`.
 
-1. W trybie `key` podpisuje aplikację, dopisuje 64B za `size`.
-2. Przy `PRO_BOOT true` wczytuje `scr/boot_<hal>.hex` albo `scr/boot_<hal>_key.hex`, w `key` wpisuje klucz publiczny pod `0x208`, dokłada aplikację.
-3. Zapisuje `build/<target>-flash.hex` oraz `.bin` aplikacji dla `UPDATE`, w `key` z podpisem.
+| Tryb | Trailer | Bootloader w hexie | Pliki w `build/` |
+| --- | --- | --- | --- |
+| bez bootloadera | nietknięty | brak | `-flash.hex`, kopia aplikacji |
+| `plain` | CRC | `boot_<hal>.hex` | `-flash.hex`, `-update.bin` |
+| `key` | CRC i podpis | `boot_<hal>_key.hex` z wpisanym kluczem | `-flash.hex`, `-update.bin` |
 
-Pozostałe komendy:
+- W `key` build podpisuje kluczem deweloperskim i ten sam klucz wpisuje do bootloadera.
+- Odmawia, gdy aplikacja wchodzi na region bootloadera albo wychodzi poza slot.
+- Dziury wewnątrz obrazu aplikacji, np. między tablicą wektorów a nagłówkiem pod `0x200`, wypełnia `0xFF`.
+  Hex zostawia je skasowane, a `.bin` z `objcopy` ma tam zera, więc bez tego CRC i podpis zależałyby od drogi.
+- Rekord startu w hexie to adres tego, co rusza po resecie: bootloadera albo aplikacji.
+- Krótkie `-p`, bo `-m` to już `--memory`.
 
-- `--keygen <name>` tworzy parę, `--key` pokazuje fingerprint.
-- `--lock` ustawia RDP1 przez openocd, tylko na wyraźne żądanie, z pytaniem `[YES/NO]`.
+Pozostałe:
 
-Biblioteka: `cryptography`.
-Referencyjna implementacja w czystym Pythonie jest wolna (sekundy na podpis) i jest własnym krypto do utrzymania.
-Zależność nic nie kosztuje, bo Forge jedzie jako exe z PyInstallera.
-Klucze w formacie zgodnym z `openssl` i `ssh-keygen`.
-Krypto siedzi w jednym module `keys.py`, importowanym leniwie tylko w trybie `key`.
-Workspace `plain` nigdy tego kodu nie dotyka.
+- `dist`: w `key` powtarza `--pack` z kluczem produktu po haśle, potem kopiuje `-flash.hex` i `-update.bin` do projektu.
+  Konwencja: ta sama nazwa, `.hex` to pełny obraz dla programatora, `.bin` sam obraz dla aktualizacji.
+  Konsola ediphor bierze obraz z hexa spod adresu slotu z `boot info`, nie nagłówek spod `0x200` od początku pliku.
+  Wtedy każdy hex działa jako aktualizacja: z dista, z builda, pełny albo sam obraz aplikacji.
+  Czytanie od początku wysłałoby bootloader, bo pełny obraz zaczyna się od niego, a on też ma nagłówek `OPEN`.
+  Hex bez bajtów pod adresem slotu konsola odrzuca.
+- `--program <plik>`: wgrywa dowolny hex przez openocd, np. plik z `dist`.
+- `--lock`, `--keygen <name>`: opisane wyżej.
 
-## 7. Makefile i debugger
+Podpis bez zależności: własne ~60 linii Ed25519 według RFC 8032 w jednym module `keys.py`, hasło przez `hashlib.scrypt` ze stdlib.
 
-Makefile ma jedną ścieżkę i zero wiedzy o bootloaderze i trybie:
+- Szybkość wystarcza: podpis obrazu 250kB to kilka milisekund, bo hash liczy `hashlib` w C, a krzywa to kilkaset operacji na dużych liczbach.
+- Poprawność: Ed25519 jest deterministyczny, więc wektory z RFC 8032 sprawdzają podpis co do bajtu.
+  Łapią też złe liczenie nonce, najgroźniejszy cichy błąd, który zdradziłby klucz.
+- Do tego weryfikacja krzyżowa z Monocypherem skompilowanym na host, patrz [Testy](#9-testy).
+- Plik klucza: sól i seed XOR wynik `scrypt` z hasła, obok klucz publiczny.
+  Złe hasło daje inny klucz publiczny, więc Forge rozpozna je od razu.
+- Zero nowych zależności i zero licencji do dołączania, kod na licencji MIT jak Forge.
+
+### `STM32_Programmer_CLI`
+
+Openocd nie obsługuje FUS ani stacku radiowego CPU2 w WB, więc `make stack` potrzebuje CubeProgrammera.
+Dziś `flash_cpu2.sh` szuka go w PATH i kończy się błędem, gdy go tam nie ma.
+
+- Nie dołączamy go do pakietu, bo ST wydaje go po zalogowaniu i akceptacji licencji.
+- Forge szuka zainstalowanego CubeProgrammera w domyślnej lokalizacji i dopisuje jego `bin` do PATH samej reguły `stack`.
+  Skrypt w Core zostaje bez zmian, więc działa to też na starych wersjach Core.
+- Ścieżka trafia do makefile dosłownie, przez `ProgramW6432`.
+  32-bitowy make widzi `%ProgramFiles%` jako `Program Files (x86)`, a uruchomiony z Git Bash jako `PROGRAMFILES`.
+- Nie ma go: Forge mówi wprost, żeby pobrać i zainstalować CubeProgrammer ze strony ST, i daje link.
+- Dotyczy tylko `make stack`, a flash, debug i `--lock` zostają na openocd.
+
+### Makefile
+
+Jedna ścieżka i zero wiedzy o bootloaderze, trybie i kluczu:
 
 ```make
 $(BUILD)/$(TARGET)-flash.hex: $(BUILD)/$(TARGET).hex
-	@cd $(WORKSPACE) && $(FORGE) -m $< $@
+	@cd $(WORKSPACE) && $(FORGE) --pack $< $@
 ```
 
 - `ARTIFACTS += $(BUILD)/$(TARGET)-flash.hex`.
 - `flash` zawsze robi `program $(BUILD)/$(TARGET)-flash.hex verify reset exit`.
   Znika `ifeq ($(BOOT),true)`, `BOOT_BIN` i `0x08000000`.
-- `dist` kopiuje `-flash.hex` jako `<target>-1.2.0.hex` i `.bin` aplikacji jako `<target>-1.2.0.bin`.
-  Dwa produkty, bo są dwie drogi: pierwsza instalacja i aktualizacja.
-- Bez bootloadera flashujemy hex zamiast elf, dla openocd bez różnicy.
+- `dist` woła Forge, bo tylko Forge wie, co wysłać i jakim kluczem podpisać.
+- `-update.bin` powstaje obok jako efekt uboczny, make o nim nie wie.
 
-Forge decyduje o wszystkim z `main.h` i `opencplc.json`, jak dziś o rozmiarze przez `-z`.
+### Debugger
 
-Debugger to nasza przewaga nad Zephyrem z MCUboot: jedno F5, bez osobnego buildu bootloadera, bez `west sign`, bez innego layoutu do debugowania niż do produkcji.
-Dziś [launch.json](opencplc/files/launch.json) ładuje przez gdb sam `.elf`, a bootloader musi już być we flashu.
-W trybie `key` elf jest bez podpisu, bootloader odmawia i F5 kończy w `while(1)`.
+Debugger to nasza przewaga nad Zephyrem z MCUboot: jedno F5, bez osobnego buildu bootloadera, bez `west sign`, bez innego układu do debugowania niż do produkcji.
 
 **`launch.json` ładuje `-flash.hex`, elf zostaje do symboli.**
 Cortex-Debug ma na to `loadFiles` obok `executable`.
-`-flash.hex` jest artefaktem `make`, więc `preLaunchTask` daje zawsze świeży, podpisany, z bootloaderem w środku.
 
 - Świeża płytka debuguje się od pierwszego F5, bez osobnego `make flash`.
-- Bootloader we flashu jest zawsze zgodny z wersją Core projektu.
 - `launch.json`, jak makefile, nie wie nic o trybie ani bootloaderze.
-- To, co debugujesz, to bajt w bajt to, co idzie do produkcji.
-- Weryfikacja przy resecie to 0,1-0,5s czekania na breakpoint w `main`.
-
-Bootloader debuguje się jak każdy projekt: `opencplc -r boot/stm32g0`, F5.
-`symbolFiles` pozwala nieść oba elfy w jednej sesji i przejść krokiem przez `BOOT_Jump` do aplikacji.
-Dodatek, nie wymóg.
-
-RDP1 to koniec debuggera, celowo i tylko na sztukach produkcyjnych.
-Płytka deweloperska zostaje na RDP0 z tym samym bootloaderem `key` i tym samym obrazem.
+- Układ i ścieżka startu są te same co w produkcji, różni się tylko klucz.
+- `symbolFiles` pozwala nieść oba elfy w jednej sesji i przejść krokiem przez `BOOT_Jump` do aplikacji.
 
 > **Uwaga:** `--lock` nigdy nie jest częścią `make flash` ani F5.
 
-## 8. Otwarte
+## 9. Testy
 
-- Anti-rollback: `version` w nagłówku, bootloader `key` odmawia niższej.
-  Osobna polityka, ale format nagłówka zmienia się raz, więc zdecydować przed pkt 3.
-- Tożsamość: `chip` albo `product` w nagłówku, żeby obraz G0 nie wylądował na WB przy jednym kluczu na wiele produktów.
-  Alternatywa bez zmiany formatu: klucz per produkt.
-- Wypełnianie stagingu `0xFF` w `-flash.hex`: stan po produkcji zdefiniowany, ale każde F5 kasuje 60kB więcej, a wypełnienie tylko w `dist` daje dist ≠ flash.
-  Skłaniam się do: nie wypełniać, staging to sprawa bootloadera.
-- Czas startu na G0 przy 16MHz: zmierzyć, zanim cokolwiek się zdecyduje.
-- Reader: jak host dowiaduje się o odrzuceniu, pole `result` w `boot info` i `UPDATE`.
-- Nazwa drugiego hexa: `_key`, `_sig`, `_secure`?
-  Ma mówić „ten trzyma klucz”, nie „ten jest podpisany”.
+Bootloadera nie da się poprawić w polu, więc testy są częścią planu, nie dodatkiem.
 
-## 9. Kolejność
+- `boot.c` na platformie host, `hal/host` ma już `flash.c`.
+  Instalacja z przerwą zasilania wstrzykniętą przed każdym zapisem flash: po restarcie slot jest stary albo nowy, nigdy pół na pół.
+- Epoka: niższa odrzucona, równa i wyższa przyjęte, pusty slot przyjmuje każdą.
+- Forge: wektory z RFC 8032, a podpis z Forge weryfikowany kodem bootloadera skompilowanym na host.
+- Kompatybilność na sprzęcie: stary bootloader i nowy obraz, nowy bootloader i stary obraz, `UPDATE` ze starego firmware nowym narzędziem hosta.
+- Sprzęt: czas startu G0 i WB, WB ze stackiem CPU2 po RDP1, `--lock` i zejście do RDP0.
 
-1. Zmierzyć Ed25519 na G0 i WB: rozmiar i czas, wybrać implementację, ustalić `boot_key_kB`.
-2. Format: nagłówek, `.app_trailer` 64B, mailbox z `result`. Jedna zmiana, jedna wersja Core.
-3. `boot.c`: weryfikacja pod `BOOT_KEY`, `.boot_key`, `boot info`.
+## 10. Otwarte
+
+- Pomiar Ed25519 na G0 i WB: rozmiar, czas, SHA-512 kontra podpis nad SHA-256.
+- STM32WB: czy RDP1 nie psuje FUS, stacku CPU2 i `make stack`.
+- AN2606 i RM0444: potwierdzić, że RDP1 blokuje zapis z bootloadera w ROM i jak wyłączyć `BOOT0`.
+- Wypełnianie stagingu `0xFF` w `-flash.hex`: skłaniam się do nie, staging to sprawa bootloadera.
+- Nazwa drugiego hexa: `_key`, `_sig`, `_secure`? Ma mówić „ten trzyma klucz”.
+
+## 11. Kolejność
+
+1. Zmierzyć Ed25519 na G0 i WB przy 64MHz, ustalić `boot_key_kB` na zawsze.
+2. Format: nagłówek z `origin`, `chip`, `epoch`, trailer 72B, wynik w RAM. Testy na host.
+3. `boot.c`: `chip`, `origin`, podpis i epoka pod `BOOT_KEY`, powrót zegara, `boot info`.
 4. Bootloader jako projekt z `dist`, dwa hexy w `scr/`.
-5. Forge: mapa hex, `-m` z wyborem trybu, `--keygen`, `"key"` w `opencplc.json`, fallback dla starych Core.
-6. Makefile: jedna reguła, `-flash.hex`, `dist` z dwoma plikami; `launch.json` z `loadFiles`.
-7. `--lock` i dokumentacja: „`key` + RDP1, albo nic”.
-8. Reader: `result` z mailboxa do hosta.
+5. **Częściowo.** Forge: mapa hex, `--pack`, podpis RFC 8032 z wektorami, `PRO_BOOT_KEY`, `PRO_BOOT_EPOCH`, oba klucze, `--keygen` z edycją `main.h`, `dist`, `--program`, fallback dla starych Core.
+   Zrobione: mapa hex, `--pack` w `plain`, podpis z wektorami, `dist`, `--program`, bootloader `.bin` z dzisiejszego Core.
+   Brakuje: `PRO_BOOT_KEY`, `PRO_BOOT_EPOCH`, oba klucze, `--keygen`, podpis w `--pack` i `dist`, wybór hexa z nowego Core.
+6. **Zrobione.** Makefile: jedna reguła, `-flash.hex`; `launch.json` z `loadFiles`.
+7. Host: podpis w `begin` i sprawdzenie `origin` w konsoli ediphor, czytnik raportuje wynik instalacji.
+   **Zrobione** w xaeian 0.9.5: `Shell.boot` wycina obraz z hexa spod adresu slotu, dziury `0xFF`.
+8. **Częściowo.** `--lock` i dokumentacja, opis dla ludzi i pod regulacje w [security.md](security.md).
+   Zrobione: `security.md`. Brakuje: `--lock`.
+9. Testy kompatybilności na sprzęcie, zanim pierwszy produkt wyjdzie jako `key`.
+
+## 12. Poza bootloaderem
+
+Dwie rzeczy niezależne od reszty:
+
+- **Zrobione.** `make stack` bierze CubeProgrammera ze ścieżki znalezionej przez Forge, a gdy go nie ma, mówi, skąd go pobrać.
+  Szczegóły w [pkt 8](#stm32_programmer_cli), można to zrobić od razu.
+- `PRO_VERSION` zmienia nazwę na `PRO_FRAMEWORK`.
+  Dziś czyta się jak wersja projektu, a to wersja frameworka.
+  `PRO_FRAMEWORK "0.5.3"` mówi wprost, czym jest, i używa słowa, którym Forge już mówi do użytkownika: `Framework version`, flaga `-f`.
+  Na razie zostaje `PRO_VERSION`.
+  Zmiana wchodzi razem z pomocnikiem do edycji `main.h` z `--keygen`: przy reloadzie sam zmienia nazwę w projektach, a Forge przez jakiś czas przyjmuje starą.

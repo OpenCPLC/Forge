@@ -16,7 +16,10 @@ from .version import (
   git_get_refs, git_clone, git_clone_missing
 )
 from .network import download, fetch, unzip, project_remote
-from .tools import tools_dir, template_paths, ensure_git, ensure_tools, verify_compiler
+from .tools import (
+  tools_dir, template_paths, ensure_git, ensure_tools, verify_compiler,
+  cube_bin, cube_found, CUBE_URL
+)
 from .hash import hash_string, c_code_enum
 from .common import (
   is_yes, color_url, assign_name, validate_project_name
@@ -32,6 +35,7 @@ __all__ = [
   "git_get_refs", "git_clone", "git_clone_missing",
   "download", "fetch", "unzip", "project_remote",
   "tools_dir", "template_paths", "ensure_git", "ensure_tools", "verify_compiler",
+  "cube_bin", "cube_found", "CUBE_URL",
   "hash_string", "c_code_enum",
   "is_yes", "color_url", "assign_name", "validate_project_name",
 ]

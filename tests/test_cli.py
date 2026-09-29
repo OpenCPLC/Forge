@@ -2,6 +2,7 @@
 
 """End-to-end CLI flow in-process: network and toolchain installation stubbed out."""
 
+import subprocess
 import pytest
 from xaeian import file_context
 import opencplc.__main__ as forge
@@ -151,8 +152,6 @@ def size_report_shows_kilobytes_and_percent(monkeypatch, capsys):
   assert "35.0kB" in out and "36kB" in out
 
 def memory_usage_reads_the_size_table(monkeypatch):
-  import subprocess
-  import opencplc.actions as actions
   header = "   text   data    bss    dec    hex filename"
   table = header + "\n" + "  68208   4144  30960 103312  19390 x.elf" + "\n"
   monkeypatch.setattr(subprocess, "run",
@@ -274,3 +273,33 @@ def framework_flag_alone_leaves_a_cloned_version_alone(ws, monkeypatch, capsys):
 def framework_flag_with_a_project_still_builds_it(ws, monkeypatch):
   assert run_cli(monkeypatch, "myapp", "-f", "1.0.0") == 0
   assert "ACTIVE := projects/myapp" in (ws / "makefile").read_text()
+
+def program_sends_a_file_the_way_make_flash_does(ws, monkeypatch, tmp_path):
+  image = tmp_path / "app-1.0.0.hex"
+  image.write_text(":00000001FF\n")
+  cmd = []
+  monkeypatch.setattr(subprocess, "run",
+    lambda c, **kw: cmd.extend(c) or subprocess.CompletedProcess(c, 0))
+  assert run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-s", "066AFF49", "-y") == 0
+  assert run_cli(monkeypatch, "app", "--program", str(image)) == 0
+  assert cmd[:3] == ["openocd", "-f", "interface/stlink.cfg"]
+  assert "adapter serial 066AFF49" in cmd and "target/stm32g0x.cfg" in cmd
+  assert f"program {image.as_posix()} verify reset exit" in cmd
+
+def program_says_which_file_is_missing(ws, monkeypatch, capsys):
+  assert run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-y") == 0
+  assert run_cli(monkeypatch, "app", "--program", "gone.hex") == 1
+  assert "gone.hex" in capsys.readouterr().out
+
+def program_refuses_a_raw_binary(ws, monkeypatch, capsys, tmp_path):
+  """A `.bin` carries no address: openocd would write the update image over the vectors."""
+  image = tmp_path / "app-1.0.0-update.bin"
+  image.write_bytes(bytes(8))
+  assert run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-y") == 0
+  assert run_cli(monkeypatch, "app", "--program", str(image)) == 1
+  assert "no address" in capsys.readouterr().out
+
+def program_needs_a_chip_to_program(ws, monkeypatch, capsys):
+  assert run_cli(monkeypatch, "-n", "sim", "-c", "HOST", "-y") == 0
+  assert run_cli(monkeypatch, "sim", "--program", "app.hex") == 1
+  assert "STM32" in capsys.readouterr().out

@@ -117,6 +117,15 @@ def uno_cfg(name:str="myapp", core:str="1.0.0") -> dict:
     "project_drivers": [], "flash_kB": 492, "ram_kB": 144, "freq_Hz": 59904000,
   }
 
+def wb55_cfg(name:str="myapp", core:str="1.0.0") -> dict:
+  """cfg of a bare-metal STM32WB55 project, the chip with a radio stack."""
+  return parse_chip("STM32WB55") | {
+    "pro_name": name, "pro_ver": core, "fw_ver": core,
+    "opt_level": "Og", "log_level": "LOG_LEVEL_INF",
+    "board": None, "board_title": "", "board_dir": None, "board_drivers": [],
+    "plc": False, "project_drivers": [], "freq_Hz": 16000000,
+  }
+
 def ws_paths(core:str="1.0.0", name:str="myapp") -> dict:
   return {
     "projects": "projects", "framework": "opencplc", "build": "build",
@@ -242,3 +251,21 @@ def frozen_forge(tmp_path, monkeypatch, version="9.9.9"):
   monkeypatch.setattr(actions.utils, "git_get_refs", lambda url, opt="--ref": [version])
   monkeypatch.setattr(actions.utils, "download", lambda url, *a, **k: b"new")
   return exe
+
+def write_app_image(path, origin:int, size:int, header:bool=True):
+  """
+  Application hex laid out as linked.
+
+  Vector table, gap up to the header at 0x200, code up to `size`, erased 8-byte trailer.
+  """
+  from opencplc.utils.hexfile import Memory, save_hex
+  app = Memory()
+  stack, reset = 0x20008000, origin + 0x301
+  vectors = stack.to_bytes(4, "little") + reset.to_bytes(4, "little")
+  app.add(origin, vectors + bytes(0xC0 - len(vectors)))
+  body = b"OPEN" + size.to_bytes(4, "little") if header else bytes(8)
+  code = bytes(range(256))
+  body += code + bytes(size - 0x200 - len(body) - len(code))
+  app.add(origin + 0x200, body + b"\xff" * 8)
+  app.start = reset
+  save_hex(app, path)

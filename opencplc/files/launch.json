@@ -16,6 +16,7 @@
       "name": "Debug",
       "cwd": "${workspaceRoot}",
       "executable": "${BUILD_DIR}/${TARGET}.elf",
+      "loadFiles": ["${BUILD_DIR}/${TARGET}-flash.hex"],
       "request": "launch",
       "type": "cortex-debug",
       "servertype": "openocd",

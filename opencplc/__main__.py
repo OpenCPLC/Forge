@@ -18,7 +18,7 @@ from .args import flag, load_args, check_flags
 from .templates import load_templates
 from .project import prepare_project, generate
 from .resolver import resolve_project
-from .actions import info_actions, info_show
+from .actions import info_actions, info_show, program_image
 from .configure import config_new, config_load, opt_normalize
 from .workspace import (
   enter_workspace, forge_config, persist_config, ensure_refs, paths_setup,
@@ -110,6 +110,8 @@ def main():
   if args.info:
     info_show(resolve_project(CFG, PATHS, forge_cfg))
   ensure_toolchains(CFG["platform"] == "STM32", args.yes)
+  if args.program:
+    program_image(resolve_project(CFG, PATHS, forge_cfg), args.program)
   prepare_project(CFG, PATHS)
   model = resolve_project(CFG, PATHS, forge_cfg)
   generate(model, activate=not scoped)

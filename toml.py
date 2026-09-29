@@ -2,13 +2,14 @@
 
 """
 Auto-generate pyproject.toml from package source analysis.
-Scans Python files, detects modules, reads __extras__ declarations,
-auto-discovers third-party dependencies from imports, and detects
-non-Python files for package-data.
 
-Each module/subpackage declares its own extras via __extras__:
+Scans Python files, detects modules, reads `__extras__` declarations,
+auto-discovers third-party dependencies from imports,
+and detects non-Python files for package-data.
+
+Each module/subpackage declares its own extras via `__extras__`:
   Tuple form: __extras__ = ("group", ["pkg1", "pkg2"])
-  Dict form:  __extras__ = {"group": ["pkg1"], "group-async": ["pkg2"]}
+  Dict form: __extras__ = {"group": ["pkg1"], "group-async": ["pkg2"]}
 
 Example:
   >>> from toml import generate
@@ -103,14 +104,10 @@ def scan_package(pkg_dir:str) -> tuple[set[str], set[str]]:
   return modules, subpackages
 
 def scan_imports(pkg_dir:str, pkg_name:str) -> set[str]:
-  """Scan all `.py` files in package for third-party imports.
+  """
+  Scan all `.py` files in package for third-party imports.
 
-  Args:
-    pkg_dir: Package directory path.
-    pkg_name: Package name (to exclude self-imports).
-
-  Returns:
-    Set of PyPI package names detected from imports.
+  Returns their PyPI names; imports of `pkg_name` itself are left out.
   """
   stdlib = sys.stdlib_module_names
   internal = {pkg_name}
@@ -139,15 +136,15 @@ def scan_imports(pkg_dir:str, pkg_name:str) -> set[str]:
   return third_party
 
 def scan_package_data(pkg_dir:str) -> list[str]:
-  """Detect non-Python files that need `package-data` declaration.
+  """
+  Detect non-Python files that need `package-data` declaration.
 
-  Returns:
-    List of glob patterns like `"files/**"`, `"*.cfg"`.
+  Returns glob patterns like `"files/**"`, `"*.cfg"`.
   """
   skip_exts = {".py", ".pyc", ".pyo", ".md"}
   all_files = DIR.file_list(pkg_dir, shape="rel", blacklist=["__pycache__"])
   top_dirs: set[str] = set()
-  root_exts: set[str] = set()
+  by_ext: dict[str, set[str]] = {}
   for f in all_files:
     if f.startswith("__"): continue
     ext = PATH.ext(f)
@@ -156,11 +153,12 @@ def scan_package_data(pkg_dir:str) -> list[str]:
     if len(parts) > 1:
       top_dirs.add(parts[0])
     else:
-      if ext:
-        root_exts.add(f"*{ext}")
-      else:
-        root_exts.add(f)
-  patterns = sorted(root_exts)
+      by_ext.setdefault(ext, set()).add(f)
+  # a lone file is named outright, a family of them collapses to one glob
+  patterns = sorted(
+    next(iter(names)) if len(names) == 1 or not ext else f"*{ext}"
+    for ext, names in by_ext.items()
+  )
   for d in sorted(top_dirs):
     patterns.append(f"{d}/**")
   return patterns
@@ -225,15 +223,28 @@ def get_meta(pkg_dir:str) -> dict:
 
 #----------------------------------------------------------------------------------------- Generate
 
+def find_license(root:str) -> str|None:
+  """
+  Name of the licence file in the project root, spelled as it is on disk.
+
+  `license-files` has to name it. The default glob `LICEN[CS]E*` goes through
+  `os.path.normcase`, so a lowercase `license` is found on Windows and missed on Linux:
+  the artifacts built there claim a licence whose text they do not carry.
+  """
+  for name in DIR.file_list(root, shape="name", deep=False):
+    if PATH.stem(name).lower() in ("license", "licence", "copying"): return name
+  return None
+
 def generate_toml(
   pkg_name:str, meta:dict,
   extras:dict[str, list[str]],
-  package_data:list[str]|None=None,
+  package_data:list[str]|None = None,
+  license_file:str|None = None,
 ) -> str:
   """Generate pyproject.toml content."""
   lines = [
     '[build-system]',
-    'requires = ["setuptools>=61.0", "wheel"]',
+    'requires = ["setuptools>=77"]',
     'build-backend = "setuptools.build_meta"',
     '',
     '[project]',
@@ -241,46 +252,48 @@ def generate_toml(
     f'version = "{meta["version"]}"',
     f'description = "{meta["description"]}"',
     'readme = "readme.md"',
-    'license = {text = "MIT"}',
-    f'requires-python = "{meta["python"]}"',
+    'license = "MIT"',
   ]
+  if license_file:
+    lines.append(f'license-files = ["{license_file}"]')
+  lines.append(f'requires-python = "{meta["python"]}"')
   if meta["author"]:
     lines.append(f'authors = [{{name = "{meta["author"]}"}}]')
   if meta["keywords"]:
     kw_str = ", ".join(f'"{k}"' for k in meta["keywords"])
-    lines.append(f'keywords = [{kw_str}]')
+    lines.append(f"keywords = [{kw_str}]")
   deps_str = ", ".join(f'"{d}"' for d in meta["dependencies"])
-  lines.append(f'dependencies = [{deps_str}]')
-  lines.append('')
+  lines.append(f"dependencies = [{deps_str}]")
+  lines.append("")
   if extras:
-    lines.append('[project.optional-dependencies]')
+    lines.append("[project.optional-dependencies]")
     for name in sorted(extras.keys(), key=lambda x: (x == "all", x)):
       dep_str = ", ".join(f'"{d}"' for d in extras[name])
-      lines.append(f'{name} = [{dep_str}]')
-    lines.append('')
+      lines.append(f"{name} = [{dep_str}]")
+    lines.append("")
   if meta.get("scripts"):
-    lines.append('[project.scripts]')
+    lines.append("[project.scripts]")
     for cmd, entry in meta["scripts"].items():
       lines.append(f'{cmd} = "{entry}"')
-    lines.append('')
-  lines.append('[project.urls]')
+    lines.append("")
+  lines.append("[project.urls]")
   if meta["repo"]:
     lines.append(f'Repository = "https://github.com/{meta["repo"]}"')
   else:
     lines.append(f'Repository = "https://github.com/.../{pkg_name}"')
-  lines.append('')
-  lines.append('[tool.setuptools.packages.find]')
+  lines.append("")
+  lines.append("[tool.setuptools.packages.find]")
   lines.append(f'include = ["{pkg_name}*"]')
-  lines.append('')
+  lines.append("")
   if package_data:
-    lines.append('[tool.setuptools.package-data]')
+    lines.append("[tool.setuptools.package-data]")
     pat_str = ", ".join(f'"{pat}"' for pat in package_data)
-    lines.append(f'{pkg_name} = [{pat_str}]')
-    lines.append('')
-  lines.append('[tool.pytest.ini_options]')
+    lines.append(f"{pkg_name} = [{pat_str}]")
+    lines.append("")
+  lines.append("[tool.pytest.ini_options]")
   lines.append('testpaths = ["tests"]')
   lines.append('python_functions = ["*"]')
-  lines.append('')
+  lines.append("")
   return "\n".join(lines)
 
 #------------------------------------------------------------------------------------------ Logging
@@ -311,11 +324,11 @@ def _log_summary(
 #------------------------------------------------------------------------------------------- Public
 
 def generate(package:str, output:str|None=None, auto_deps:bool=False):
-  """Generate pyproject.toml for given package directory.
+  """
+  Generate pyproject.toml for given package directory.
 
   Args:
-    package: Package directory path.
-    output: Output file path (default: parent/pyproject.toml).
+    output: Defaults to `pyproject.toml` beside the package directory.
     auto_deps: Scan imports for third-party dependencies.
   """
   pkg_dir = PATH.resolve(package)
@@ -339,8 +352,12 @@ def generate(package:str, output:str|None=None, auto_deps:bool=False):
       p.wrn(f"Auto-detected: {c.TURQUS}{', '.join(sorted(new_deps))}{c.END}")
     meta["dependencies"] = sorted(declared | scanned)
   _log_summary(pkg_name, meta, modules, subpackages, extras, package_data)
-  toml = generate_toml(pkg_name, meta, extras, package_data)
-  out = output or PATH.join(PATH.dirname(pkg_dir), "pyproject.toml")
+  root = PATH.dirname(pkg_dir)
+  license_file = find_license(root)
+  if not license_file:
+    p.wrn(f"No licence file in {c.ORANGE}{root}{c.END}, so the artifacts will ship none")
+  toml = generate_toml(pkg_name, meta, extras, package_data, license_file)
+  out = output or PATH.join(root, "pyproject.toml")
   FILE.save(out, toml)
   p.ok(f"Generated {c.GREY}{PATH.dirname(out)}/{c.END}{c.ORANGE}{PATH.basename(out)}{c.END}")
 
