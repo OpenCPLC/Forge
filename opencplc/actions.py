@@ -161,11 +161,9 @@ def program_image(pro:Project, path:str):
   if not FILE.exists(path):
     p.err(f"File {c.VIOLET}{path}{c.END} not found")
     sys.exit(1)
-  cmd = ["openocd", "-f", "interface/stlink.cfg"]
-  if pro.stlink: cmd += ["-c", f"adapter serial {pro.stlink}"]
-  cmd += ["-f", f"target/{pro.openocd_target}.cfg",
-    "-c", "reset_config srst_only srst_nogate connect_assert_srst",
-    "-c", f"program {PATH.normalize(path)} verify reset exit"]
+  cmd = utils.openocd_command(pro.openocd_target, pro.stlink)
+  # braces keep a path with spaces one word for openocd
+  cmd += ["-c", f"program {{{PATH.normalize(path)}}} verify reset exit"]
   name = PATH.basename(path)
   if subprocess.run(cmd).returncode:
     p.err(f"Programming {c.VIOLET}{name}{c.END} failed")

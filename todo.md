@@ -28,7 +28,7 @@ Przed wydaniem test na Nucleo:
 4. `make dist TAG=…`, potem `--program` z tym plikiem.
 5. Na Nucleo-WB55 jeszcze raz punkt 2, bo bootloader ma tam 16kB i inny układ slotów.
 
-Aktualizacja w polu plikiem `.hex` z dista 0.4.5 wymaga xaeian 0.9.5: `Shell.boot` wycina obraz spod adresu slotu.
+Aktualizacja w polu plikiem `.hex` z dista 0.4.5 wymaga xaeian 1.0.0: `Shell.boot` wycina obraz spod adresu slotu.
 Starszy xaeian czyta nagłówek od początku pliku, a pełny obraz zaczyna się od bootloadera, więc wysłałby bootloader.
 Plik `.bin` z dista działa z każdym.
 
@@ -39,8 +39,8 @@ Czeka na tryb `key`, dziś nic go nie importuje.
 
 ### Do zrobienia
 
-Cały tryb `key` i wszystko po stronie Core, kolejność i stan w [pkt 11](#11-kolejność).
-Opis poziomów bezpieczeństwa dla ludzi i pod regulacje: [security.md](security.md).
+Cały tryb `key` i wszystko po stronie Core, w etapach: [pkt 11](#11-co-zostało).
+Opis poziomów bezpieczeństwa dla ludzi i pod regulacje: [security.md](.r2/security.md).
 
 ---
 
@@ -519,36 +519,58 @@ Bootloadera nie da się poprawić w polu, więc testy są częścią planu, nie 
 
 ## 10. Otwarte
 
-- Pomiar Ed25519 na G0 i WB: rozmiar, czas, SHA-512 kontra podpis nad SHA-256.
-- STM32WB: czy RDP1 nie psuje FUS, stacku CPU2 i `make stack`.
-- AN2606 i RM0444: potwierdzić, że RDP1 blokuje zapis z bootloadera w ROM i jak wyłączyć `BOOT0`.
-- Wypełnianie stagingu `0xFF` w `-flash.hex`: skłaniam się do nie, staging to sprawa bootloadera.
-- Nazwa drugiego hexa: `_key`, `_sig`, `_secure`? Ma mówić „ten trzyma klucz”.
+Rozstrzygnięte, decyzje z uzasadnieniem są w [note.md](note.md).
 
-## 11. Kolejność
+## 11. Co zostało
 
-1. Zmierzyć Ed25519 na G0 i WB przy 64MHz, ustalić `boot_key_kB` na zawsze.
-2. Format: nagłówek z `origin`, `chip`, `epoch`, trailer 72B, wynik w RAM. Testy na host.
-3. `boot.c`: `chip`, `origin`, podpis i epoka pod `BOOT_KEY`, powrót zegara, `boot info`.
-4. Bootloader jako projekt z `dist`, dwa hexy w `scr/`.
-5. **Częściowo.** Forge: mapa hex, `--pack`, podpis RFC 8032 z wektorami, `PRO_BOOT_KEY`, `PRO_BOOT_EPOCH`, oba klucze, `--keygen` z edycją `main.h`, `dist`, `--program`, fallback dla starych Core.
-   Zrobione: mapa hex, `--pack` w `plain`, podpis z wektorami, `dist`, `--program`, bootloader `.bin` z dzisiejszego Core.
-   Brakuje: `PRO_BOOT_KEY`, `PRO_BOOT_EPOCH`, oba klucze, `--keygen`, podpis w `--pack` i `dist`, wybór hexa z nowego Core.
-6. **Zrobione.** Makefile: jedna reguła, `-flash.hex`; `launch.json` z `loadFiles`.
-7. Host: podpis w `begin` i sprawdzenie `origin` w konsoli ediphor, czytnik raportuje wynik instalacji.
-   **Zrobione** w xaeian 0.9.5: `Shell.boot` wycina obraz z hexa spod adresu slotu, dziury `0xFF`.
-8. **Częściowo.** `--lock` i dokumentacja, opis dla ludzi i pod regulacje w [security.md](security.md).
-   Zrobione: `security.md`. Brakuje: `--lock`.
-9. Testy kompatybilności na sprzęcie, zanim pierwszy produkt wyjdzie jako `key`.
+### Wydanie 0.4.6
 
-## 12. Poza bootloaderem
+Gotowe w kodzie, zostaje wydanie:
 
-Dwie rzeczy niezależne od reszty:
+- `--pack` wypełnia region bootloadera `0xFF` do początku slotu, więc każde wgranie kasuje rekord mailboxa,
+- `make flash`, `make erase` i `--program` biorą jedno polecenie openocd z `openocd_command`,
+- `--program` podaje ścieżkę w klamrach, więc spacje nie rozbijają jej na słowa.
 
-- **Zrobione.** `make stack` bierze CubeProgrammera ze ścieżki znalezionej przez Forge, a gdy go nie ma, mówi, skąd go pobrać.
-  Szczegóły w [pkt 8](#stm32_programmer_cli), można to zrobić od razu.
-- `PRO_VERSION` zmienia nazwę na `PRO_FRAMEWORK`.
-  Dziś czyta się jak wersja projektu, a to wersja frameworka.
-  `PRO_FRAMEWORK "0.5.3"` mówi wprost, czym jest, i używa słowa, którym Forge już mówi do użytkownika: `Framework version`, flaga `-f`.
-  Na razie zostaje `PRO_VERSION`.
-  Zmiana wchodzi razem z pomocnikiem do edycji `main.h` z `--keygen`: przy reloadzie sam zmienia nazwę w projektach, a Forge przez jakiś czas przyjmuje starą.
+### Tryb `key` w jednym ciągu
+
+Całość powstaje na osobnej gałęzi Core i wychodzi jednym wydaniem Core i Forge, po testach end-to-end.
+Testy na hoście rosną razem z kodem i biegną przy każdej zmianie.
+Forge podpisuje, bootloader skompilowany na hosta weryfikuje i instaluje, zanik zasilania trafia przed każdy zapis, a każde odrzucenie ma właściwy kod.
+Sprzęt wchodzi dwa razy: wczesna próba na G0 i testy end-to-end na końcu.
+
+1. **Format obrazu**, jednocześnie w Core i Forge:
+   - nagłówek `{magic, size, origin, chip, epoch}` pod `0x200`,
+   - trailer 72B: CRC i miejsce na podpis,
+   - wynik instalacji w słowie RAM, `stm32g0.ld` rezerwuje 8 bajtów jak `stm32wb.ld`,
+   - `--pack` zapisuje nowy trailer.
+2. **`boot.c`**:
+   - oba tryby sprawdzają `chip` i `origin`: bootloader przy starcie, `BOOT_End` w aplikacji przed resetem,
+   - pod `BOOT_KEY` podpis Monocypherem w kawałkach z `IWDG_Refresh` i epoka przy instalacji,
+   - weryfikacja liczy przy 64MHz, a przed skokiem bootloader przywraca zegar do stanu po resecie,
+   - `BOOT_Begin` przyjmuje podpis, `BOOT_End` zapisuje cały trailer,
+   - `boot info` pokazuje odcisk klucza, `rdp` i wynik ostatniej instalacji.
+3. **Wczesna próba na Nucleo-G0**: bootloader `key` z Monocypherem i obraz podpisany skryptem.
+   Sprawdza start, czas weryfikacji i zapas stosu, a wynik zastępuje szacunek w note.md.
+4. **Bootloader jako projekt w Core**: `projects/boot/<hal>` z przełącznikiem `BOOT_KEY`, a `make dist` daje `boot_<hal>.hex` i `boot_<hal>_key.hex` do `scr/`.
+5. **Forge, tryb `key`**:
+   - `PRO_BOOT_KEY` i `PRO_BOOT_EPOCH` w `main.h`,
+   - klucz deweloperski Forge tworzy sam, klucz produktu jest szyfrowany hasłem przez `scrypt`, oba leżą w `%LOCALAPPDATA%/OpenCPLC/keys`,
+   - `--keygen <produkt>` tworzy albo podpina klucz i sam wpisuje go do `main.h`,
+   - ten sam pomocnik zmienia `PRO_VERSION` na `PRO_FRAMEWORK`, bo to wersja frameworka, a nie projektu, i tak nazywa ją Forge: `Framework version`, flaga `-f`.
+     Przy reloadzie zmienia nazwę w projektach, a Forge przez jakiś czas przyjmuje starą,
+   - `--pack` podpisuje kluczem deweloperskim i wpisuje go do bootloadera, a `dist` pyta o hasło i podpisuje kluczem produktu,
+   - hex bootloadera pochodzi z nowego Core, ze starym Core działa tylko `plain`, a `PRO_BOOT_KEY` kończy się odmową,
+   - testy: wektory z RFC 8032 i podpis z Forge sprawdzany kodem bootloadera skompilowanym na hoście.
+6. **Konsola ediphor**: wysyła podpis w `begin`, przed wysłaniem porównuje `origin` obrazu z `boot info` i pokazuje powód, gdy bootloader odrzuci obraz.
+7. **`--lock`**:
+   - przez SWD czyta klucz z bootloadera na płytce i odmawia, gdy to nie `PRO_BOOT_KEY`,
+   - po pytaniu `[YES/NO]` ustawia WRP na stronach bootloadera bez strony mailboxa, a potem jednym zapisem wyłącza `BOOT0` i włącza RDP1,
+   - na WB ostrzega, że potem `make stack` nie zadziała,
+   - konsola ostrzega, gdy urządzenie z kluczem produktu nie jest zablokowane.
+8. **Testy end-to-end na sprzęcie**, skryptem na podłączonych Nucleo G0 i WB:
+   - `make flash`, aktualizacja z konsoli plikiem `.bin` i `.hex`, odrzucenia, reset w trakcie instalacji, `boot info` i czas startu,
+   - `--lock` i zejście do RDP0,
+   - WB ze stackiem po `--lock`: BLE działa, stack przeżywa zejście do RDP0, a option bytes CPU2 zostają nietknięte,
+   - zgodność: stary bootloader `plain` instaluje nowy obraz, a nowy bootloader czysto odrzuca stary,
+   - aktualizacja ze starego firmware nowym narzędziem hosta.
+9. **Wydanie Core i Forge**, potem pierwszy produkt wychodzi jako `key`.

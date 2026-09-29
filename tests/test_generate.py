@@ -90,10 +90,14 @@ def unchanged_regeneration_keeps_bytes_and_mtime(ws):
 
 def stlink_binds_makefile_and_debugger(ws):
   generate(resolve_uno())
-  assert "STLINK := \n" in (ws / "projects" / "myapp" / "makefile").read_text()
+  make = (ws / "projects" / "myapp" / "makefile").read_text()
+  assert "STLINK := \n" in make
+  assert "OPENOCD = openocd -f interface/stlink.cfg -f target/stm32g0x.cfg" in make
   assert "openOCDPreConfigLaunchCommands" not in (ws / ".vscode" / "launch.json").read_text()
   generate(resolve_uno({"stlink": {"projects/myapp": "ABC123"}}))
-  assert "STLINK := ABC123" in (ws / "projects" / "myapp" / "makefile").read_text()
+  make = (ws / "projects" / "myapp" / "makefile").read_text()
+  assert "STLINK := ABC123" in make
+  assert 'stlink.cfg -c "adapter serial ABC123" -f target/stm32g0x.cfg' in make
   launch = (ws / ".vscode" / "launch.json").read_text()
   assert "openOCDPreConfigLaunchCommands" in launch
   assert "ABC123" in launch

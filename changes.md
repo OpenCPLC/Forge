@@ -1,5 +1,10 @@
 # Changes `opencplc`
 
+## `0.4.6` Flash fixes
+
+- `make flash`, F5 and `--program` drop unfinished update, flashed image stays
+- `--program` takes paths with spaces
+
 ## `0.4.5` One flash file
 
 - `make flash` and F5 send one file, bootloader and image, CRC from Forge

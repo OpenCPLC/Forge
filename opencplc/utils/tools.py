@@ -232,6 +232,19 @@ def _broadcast_env_change():
   ctypes.windll.user32.SendMessageTimeoutW(HWND_BROADCAST, WM_SETTINGCHANGE, 0, "Environment",
     SMTO_ABORTIFHUNG, 5000, ctypes.byref(ctypes.c_ulong(0)))
 
+#------------------------------------------------------------------------------------------ openocd
+
+def openocd_command(target:str, serial:str="") -> list[str]:
+  """
+  openocd up to the command it runs: ST-Link, the pinned probe, the chip held in reset.
+
+  `--program` runs it directly, the generated makefile spells it out for `flash` and `erase`.
+  """
+  cmd = ["openocd", "-f", "interface/stlink.cfg"]
+  if serial: cmd += ["-c", f"adapter serial {serial}"]
+  return cmd + ["-f", f"target/{target}.cfg",
+    "-c", "reset_config srst_only srst_nogate connect_assert_srst"]
+
 #----------------------------------------------------------------------------------- CubeProgrammer
 
 # `make stack` alone needs it: FUS and the radio stack of CPU2 are beyond openocd.

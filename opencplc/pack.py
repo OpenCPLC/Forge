@@ -40,6 +40,9 @@ def pack(app_path:str, out_path:str, boot_path:str|None=None):
 
   The trailer CRC covers the image with its gaps erased to `0xFF`, as flash holds them.
   The programmer and the update path then leave the same bytes behind.
+
+  The bootloader region is filled with `0xFF` up to the slot, the mailbox page included.
+  A programmer erases only the pages a file covers, so flashing drops a pending install.
   """
   image = hexfile.load_hex(app_path)
   if not boot_path:
@@ -59,6 +62,7 @@ def pack(app_path:str, out_path:str, boot_path:str|None=None):
   else:
     boot = hexfile.load_hex(boot_path)
   image.merge(boot)
+  image.fill(FLASH_BASE, origin - FLASH_BASE)
   image.start = int.from_bytes(boot.read(FLASH_BASE + 4, 4), "little") # its reset vector
   hexfile.save_hex(image, out_path)
 

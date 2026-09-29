@@ -9,7 +9,7 @@ makefile and flash.ld in the project, workspace dispatcher, VS Code configuratio
 An unchanged file keeps its bytes and its mtime.
 """
 
-import os, shutil, platform
+import os, shutil, platform, subprocess
 from datetime import datetime
 from xaeian import Print, Color as c, FILE, DIR, PATH, replace_end
 from .templates import load_templates
@@ -201,6 +201,7 @@ def generate(pro:Project, activate:bool=True):
     "${DEVICE}": pro.device,
     "${SVD}": pro.svd,
     "${OPENOCD_TARGET}": pro.openocd_target,
+    "${OPENOCD}": subprocess.list2cmdline(utils.openocd_command(pro.openocd_target, pro.stlink)),
     "${ERASE_CMD}": pro.erase_command,
     "${STACK_CMD}": stack_command(pro),
     "${CUBE_PATH}": utils.cube_bin(),

@@ -38,6 +38,14 @@ def flash_image_starts_with_the_bootloader(tmp_path):
   assert flash.read(ORIGIN, SIZE + 8) == (tmp_path / "app-update.bin").read_bytes()
   assert flash.start == 0x08000081
 
+def flash_image_covers_the_whole_bootloader_region(tmp_path):
+  """A programmer erases only the pages a file covers, and the mailbox page lies past the code."""
+  write_app_image(tmp_path / "app.hex", ORIGIN, SIZE)
+  (tmp_path / "boot.bin").write_bytes(BOOT)
+  pack(str(tmp_path / "app.hex"), str(tmp_path / "flash.hex"), str(tmp_path / "boot.bin"))
+  gap = ORIGIN - FLASH_BASE - len(BOOT)
+  assert load_hex(tmp_path / "flash.hex").read(FLASH_BASE + len(BOOT), gap) == b"\xff" * gap
+
 def bootloader_hex_lands_by_its_addresses(tmp_path):
   write_app_image(tmp_path / "app.hex", ORIGIN, SIZE)
   boot = Memory()

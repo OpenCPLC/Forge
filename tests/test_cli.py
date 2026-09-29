@@ -275,7 +275,8 @@ def framework_flag_with_a_project_still_builds_it(ws, monkeypatch):
   assert "ACTIVE := projects/myapp" in (ws / "makefile").read_text()
 
 def program_sends_a_file_the_way_make_flash_does(ws, monkeypatch, tmp_path):
-  image = tmp_path / "app-1.0.0.hex"
+  image = tmp_path / "release 1.0" / "app-1.0.0.hex"
+  image.parent.mkdir()
   image.write_text(":00000001FF\n")
   cmd = []
   monkeypatch.setattr(subprocess, "run",
@@ -284,7 +285,7 @@ def program_sends_a_file_the_way_make_flash_does(ws, monkeypatch, tmp_path):
   assert run_cli(monkeypatch, "app", "--program", str(image)) == 0
   assert cmd[:3] == ["openocd", "-f", "interface/stlink.cfg"]
   assert "adapter serial 066AFF49" in cmd and "target/stm32g0x.cfg" in cmd
-  assert f"program {image.as_posix()} verify reset exit" in cmd
+  assert f"program {{{image.as_posix()}}} verify reset exit" in cmd # one word, space and all
 
 def program_says_which_file_is_missing(ws, monkeypatch, capsys):
   assert run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-y") == 0

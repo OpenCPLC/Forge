@@ -144,12 +144,8 @@ else
 build: $(ARTIFACTS)
 endif
 
-ifneq ($(STLINK),)
-OPENOCD_SERIAL = -c "adapter serial $(STLINK)"
-endif
-UNDER_RESET = -c "reset_config srst_only srst_nogate connect_assert_srst"
-OPENOCD = openocd -f interface/stlink.cfg $(OPENOCD_SERIAL) \
-  -f target/${OPENOCD_TARGET}.cfg $(UNDER_RESET) -c
+# ST-Link, the pinned probe, the chip held in reset: the same openocd `--program` runs
+OPENOCD = ${OPENOCD} -c
 
 # One file with or without a bootloader, `--pack` already put it in front
 flash:
