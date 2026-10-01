@@ -2,10 +2,11 @@
 
 """Framework versions: aliases, ordering, refs and clones from git."""
 
-import sys, subprocess, re
+import sys, re
 from typing import Literal
 import packaging.version
 from xaeian import Print, Color as c, DIR, PATH
+from xaeian.cmd import run, output
 from .common import is_yes, color_url
 
 p = Print()
@@ -47,8 +48,7 @@ def git_clone(url:str, path:str, ref:str|None=None, drop_on_err:bool=False):
   cmd = ["git", "clone"]
   if ref: cmd += ["--branch", ref]
   cmd += [url, path]
-  result = subprocess.run(cmd, capture_output=True, text=True)
-  if result.returncode:
+  if run(cmd).returncode:
     if drop_on_err and DIR.exists(path): DIR.remove(path, force=True)
     p.err(f"Clone failed: {color_url(url)}")
     sys.exit(1)
@@ -57,12 +57,10 @@ def git_get_refs(url:str, option:Literal["--heads", "--tags", "--ref"]="--ref") 
   """Remote refs of a git repository: tags (newest first), branches, or both."""
   if option == "--ref":
     return git_get_refs(url, "--tags") + git_get_refs(url, "--heads")
-  try:
-    result = subprocess.run(["git", "ls-remote", option, url], capture_output=True, text=True)
-  except FileNotFoundError:
-    return [] # git not installed yet - caller decides what to do
+  # `None` without git or network: no refs, the caller decides what to do
+  listing = output(["git", "ls-remote", option, url]) or ""
   rx = r"refs/tags/([^\^{}]+)$" if option == "--tags" else r"refs/heads/(.+)$"
-  refs = [m.group(1) for m in map(lambda ln: re.search(rx, ln), result.stdout.splitlines()) if m]
+  refs = [m.group(1) for m in map(lambda ln: re.search(rx, ln), listing.splitlines()) if m]
   if option == "--tags":
     return sorted(refs, key=version_key, reverse=True)
   return refs

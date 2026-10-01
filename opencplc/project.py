@@ -9,9 +9,10 @@ makefile and flash.ld in the project, workspace dispatcher, VS Code configuratio
 An unchanged file keeps its bytes and its mtime.
 """
 
-import os, shutil, platform, subprocess
+import re, platform, subprocess
 from datetime import datetime
 from xaeian import Print, Color as c, FILE, DIR, PATH, replace_end
+from xaeian.cmd import which
 from .templates import load_templates
 from .resolver import Project, flash_layout
 from . import utils
@@ -24,11 +25,29 @@ def mk_list(items:list[str]) -> str:
 
 def colored_path(path:str, name:str) -> str:
   """Workspace-relative path with the project name picked out of it."""
-  return f"{c.GREY}./{path[:-len(name)]}{c.END}{c.BLUE}{name}{c.END}"
+  return f"{c.GREY}./{replace_end(path, name, '')}{c.END}{c.BLUE}{name}{c.END}"
+
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+def recipe_safe(subs:dict) -> dict:
+  """
+  Color codes fit for the recipe lines of the shell make runs here.
+
+  `/bin/sh` ends a command at each `;` of `ESC[38;5;Nm`, so there every code goes in quotes.
+  `cmd.exe` takes the codes bare and would print the quotes.
+  """
+  if platform.system() == "Windows": return subs
+  quote = lambda m: f"'{m.group()}'"
+  return {key: ANSI.sub(quote, val) if isinstance(val, str) else val for key, val in subs.items()}
 
 def rel_from(items:list[str], base:str) -> list[str]:
-  """Paths stripped of a directory prefix, e.g. core paths relative to the Core dir."""
-  return [item[len(base) + 1:] for item in items if item.startswith(base + "/")]
+  """Paths relative to a directory, e.g. core paths relative to the Core dir."""
+  return [PATH.rel(item, base) for item in items]
+
+def anchored(path:str, base:str, var:str) -> str:
+  """`path` spelled from Make variable `var` holding `base`: `$(PROJECT)` or `$(PROJECT)/src`."""
+  rel = PATH.rel(path, base)
+  return f"$({var})/{rel}" if rel else f"$({var})"
 
 def bash_exe() -> str:
   """
@@ -38,14 +57,13 @@ def bash_exe() -> str:
   Git brings its own, so that one wins when present.
   """
   if platform.system() != "Windows": return "bash"
-  git = shutil.which("git")
+  git = which("git")
   if not git: return "bash"
-  root = os.path.dirname(git) # git.exe sits in cmd, bin or mingw64/bin
+  root = PATH.dirname(git) # git.exe sits in cmd, bin or mingw64/bin
   for _ in range(3):
-    root = os.path.dirname(root)
+    root = PATH.dirname(root)
     for rel in ("bin/bash.exe", "usr/bin/bash.exe"):
-      bash = f"{root}/{rel}".replace("\\", "/")
-      if FILE.exists(bash): return f'"{bash}"'
+      if FILE.exists(f"{root}/{rel}"): return f'"{root}/{rel}"'
   return "bash"
 
 def without(text:str, phrases:list[str]) -> str:
@@ -66,20 +84,16 @@ def stack_command(pro:Project) -> str:
 
 def config_inputs(pro:Project) -> list[str]:
   """Reload inputs of the project makefile, anchored in $(PROJECT)."""
-  dirs = ["$(PROJECT)" if d == pro.pro_dir else "$(PROJECT)/" + d[len(pro.pro_dir) + 1:]
-    for d in pro.project_dirs]
-  return ["$(PROJECT)/main.h"] + dirs
+  return ["$(PROJECT)/main.h"] + [anchored(d, pro.pro_dir, "PROJECT") for d in pro.project_dirs]
 
 def include_flags(pro:Project) -> list[str]:
   """-I flags anchored in $(OPENCPLC)/$(PROJECT), resolved by Make at build time."""
   flags = []
   for d in pro.include_dirs:
-    if d == pro.pro_dir:
-      flags.append("-I$(PROJECT)")
-    elif d.startswith(pro.pro_dir + "/"):
-      flags.append("-I$(PROJECT)/" + d[len(pro.pro_dir) + 1:])
-    elif d.startswith(pro.core_dir + "/"):
-      flags.append("-I$(OPENCPLC)/" + d[len(pro.core_dir) + 1:])
+    if PATH.is_under(d, pro.pro_dir):
+      flags.append("-I" + anchored(d, pro.pro_dir, "PROJECT"))
+    elif PATH.is_under(d, pro.core_dir):
+      flags.append("-I" + anchored(d, pro.core_dir, "OPENCPLC"))
     else:
       flags.append("-I$(WORKSPACE)/" + d)
   return flags
@@ -165,7 +179,7 @@ def generate(pro:Project, activate:bool=True):
   templates = load_templates()
   tpl = templates.get(pro.hal, {})
   is_windows = platform.system() == "Windows"
-  up_path = "/".join([".."] * (pro.pro_dir.count("/") + 1))
+  up_path = PATH.rel(".", pro.pro_dir)
   subs = {
     "${NAME}": pro.name,
     "${TARGET}": pro.target,
@@ -220,17 +234,17 @@ def generate(pro:Project, activate:bool=True):
   makefile = tpl.get("project.mk", templates["project.mk"])
   # CubeProgrammer joins PATH of `make stack` only from its default home, elsewhere PATH has it
   keep_cube = bool(pro.stack_script and subs["${CUBE_PATH}"])
-  utils.create_file("makefile", makefile, pro.pro_dir, subs,
+  utils.create_file("makefile", makefile, pro.pro_dir, recipe_safe(subs),
     remove_line="" if keep_cube else "${CUBE_PATH}")
   if not activate: return
   # Workspace dispatcher - `make` at the root builds the active project
-  utils.create_file("makefile", templates["workspace.mk"], "", {
+  utils.create_file("makefile", templates["workspace.mk"], "", recipe_safe({
     "${ACTIVE}": pro.pro_dir,
     "${ACTIVE_COLORED}": colored_path(pro.pro_dir, pro.name),
     "${GOLD}": c.GOLD, "${CMD}": c.CYAN, "${GREY}": c.GREY,
     "${END}": c.END,
     "${ERR}": f"{c.RED}ERR{c.END}",
-  })
+  }))
   DIR.ensure(".vscode")
   props = tpl.get("properties.json", templates["properties.json"])
   drop = ([] if pro.plc else ["/plc/", '"OpenCPLC"']) + ([] if pro.board else ["/brd/"])

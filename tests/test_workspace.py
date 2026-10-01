@@ -2,17 +2,18 @@
 
 """Workspace root discovery and project recognition from a working directory."""
 
+from xaeian import PATH
 from opencplc.workspace import find_workspace, project_from_path
 
 def root_found_from_nested_dir(tmp_path):
   (tmp_path / "opencplc.json").write_text("{}")
   deep = tmp_path / "projects" / "firm" / "app"
   deep.mkdir(parents=True)
-  assert find_workspace(str(deep)) == str(tmp_path)
+  assert find_workspace(str(deep)) == PATH.normalize(str(tmp_path))
 
 def root_found_at_root(tmp_path):
   (tmp_path / "opencplc.json").write_text("{}")
-  assert find_workspace(str(tmp_path)) == str(tmp_path)
+  assert find_workspace(str(tmp_path)) == PATH.normalize(str(tmp_path))
 
 def missing_marker_walks_past_tmp_tree(tmp_path):
   # the machine may hold a stray opencplc.json above tmp, so assert only
@@ -20,7 +21,7 @@ def missing_marker_walks_past_tmp_tree(tmp_path):
   deep = tmp_path / "a" / "b"
   deep.mkdir(parents=True)
   found = find_workspace(str(deep))
-  assert found is None or not found.startswith(str(tmp_path))
+  assert found is None or not found.startswith(PATH.normalize(str(tmp_path)))
 
 def project_recognized_from_its_dir(tmp_path):
   pro = tmp_path / "projects" / "firm" / "app"

@@ -1,12 +1,10 @@
-# opencplc/templates
+# opencplc/templates.py
 
 """Template files shipped in opencplc/files, loaded as one dict."""
 
-import os
-from xaeian import FILE, JSON, file_context
+from xaeian import FILE, JSON, PATH, file_context
 
-PKG_DIR = os.path.dirname(os.path.abspath(__file__))
-FILES_DIR = os.path.join(PKG_DIR, "files")
+FILES_DIR = PATH.join(PATH.dirname(__file__), "files")
 
 def load_templates() -> dict:
   """Every template under files/ as a dict, read from the PyInstaller bundle when frozen."""

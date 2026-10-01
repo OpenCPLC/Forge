@@ -2,9 +2,9 @@
 
 """File and directory helpers: listing, mtimes, rendering, project discovery."""
 
-import os
 from datetime import datetime
-from xaeian import Print, Color as c, FILE, PATH
+from xaeian import Print, Color as c, FILE, DIR, PATH, replace_map
+from .text import line_remove
 
 p = Print()
 
@@ -16,83 +16,51 @@ def load_lines(path:str) -> list[str]:
 def files_list(path:str="", ext:str="") -> dict[str, list[str]]:
   """folder → files under path, absolute and normalized; only ext when given."""
   result = {}
-  path = PATH.resolve(path) if path else PATH.resolve(".")
-  if not os.path.isdir(path): return result
-  for folder, _, files in os.walk(path):
-    folder = PATH.normalize(folder)
-    matched = [PATH.normalize(f"{folder}/{f}") for f in files if not ext or f.endswith(ext)]
-    if matched:
-      result[folder] = matched
+  for file in DIR.iter_files(path or "."):
+    # `exts=` ignores case, and GCC reads `.S` and `.C` as other languages than `.s` and `.c`
+    if file.endswith(ext): result.setdefault(PATH.dirname(file), []).append(file)
   return result
 
-def files_mdate(path:str="") -> dict[str, datetime]:
-  """All files under path with their modification dates."""
-  result = {}
-  path = PATH.resolve(path) if path else PATH.resolve(".")
-  if not os.path.isdir(path): return result
-  for folder, _, files in os.walk(path):
-    for f in files:
-      fp = PATH.normalize(f"{folder}/{f}")
-      result[fp] = datetime.fromtimestamp(os.path.getmtime(fp))
-  return result
-
-def files_mdate_max(path:str="", ext=None) -> tuple[str, datetime]|None:
-  """Newest file under path, optionally filtered by extensions."""
-  dates = files_mdate(path)
-  if not dates: return None
-  if ext:
-    exts = [ext] if isinstance(ext, str) else list(ext)
-    exts = [e if e.startswith(".") else "." + e for e in exts]
-    dates = {k: v for k, v in dates.items() if os.path.splitext(k)[1] in exts}
-    if not dates: return None
-  max_dt = max(dates.values())
-  return next(k for k, v in dates.items() if v == max_dt), max_dt
-
-def last_modification(path:str="", ext=None) -> str:
-  """Newest file formatted for display."""
-  result = files_mdate_max(path, ext=ext)
-  if not result: return f"{c.GREY}Unknown{c.END}"
-  fp, dt = result
-  rel = PATH.local(fp, path) if path else PATH.basename(fp)
-  return f"{c.BLUE}{rel}{c.END} {c.GREY}({dt:%Y-%m-%d %H:%M:%S}){c.END}"
+def last_modification(path:str="", exts:list[str]|None=None) -> str:
+  """Newest file under path, only `exts` when given, formatted for display."""
+  files = list(DIR.iter_files(path or ".", exts=exts))
+  if not files: return f"{c.GREY}Unknown{c.END}"
+  newest = max(files, key=FILE.mtime)
+  shown = PATH.local(newest, path) if path else PATH.basename(newest)
+  stamp = datetime.fromtimestamp(FILE.mtime(newest))
+  return f"{c.BLUE}{shown}{c.END} {c.GREY}({stamp:%Y-%m-%d %H:%M:%S}){c.END}"
 
 def create_file(
   name: str,
   content: str,
   path: str = "",
-  replacements: dict = None,
+  replacements: dict|None = None,
   remove_line: str = "",
   color: str = "",
 ) -> str:
   """Render and write a file; an unchanged file keeps its bytes and its mtime."""
-  from .text import line_remove
-  replacements = replacements or {}
-  fp = (
-    f"{PATH.resolve(path)}/{name}" if path and path not in (".", "./")
-    else f"{PATH.resolve('.')}/{name}"
-  )
+  fp = PATH.resolve(f"{path or '.'}/{name}")
   content = content.strip()
   if remove_line:
     content = line_remove(content, remove_line)
-  for pattern, value in replacements.items():
-    content = content.replace(pattern, str(value))
+  content = replace_map(content, replacements or {})
   exists = FILE.exists(fp)
   if exists and FILE.load(fp) == content:
     return fp
   FILE.save(fp, content)
   if not color: color = c.ORANGE
-  path_display = PATH.local(path) if path and path not in (".", "./") else ""
-  suffix = f" in {c.GREY}{path_display}{c.END}" if path_display else ""
+  where = PATH.local(path)
+  suffix = f" in {c.GREY}{where}{c.END}" if where else ""
   action = "Overwritten" if exists else "Created"
   p.ok(f"{action} {color}{name}{c.END}{suffix}")
   return fp
 
 def get_project_list(path:str) -> dict[str, str]:
   """Folders containing main.h, keyed by name relative to path."""
-  path = PATH.resolve(path) if path else PATH.resolve(".")
+  path = PATH.resolve(path or ".")
   result = {}
-  for pro_path, files in files_list(path, ".h").items():
-    if not any(PATH.basename(f) == "main.h" for f in files): continue
+  for main_h in DIR.iter_files(path, match="main.h"):
+    pro_path = PATH.dirname(main_h)
     name = PATH.local(pro_path, path)
     if name.lower() not in (n.lower() for n in result):
       result[name] = pro_path
@@ -102,12 +70,10 @@ def get_project_list(path:str) -> dict[str, str]:
 
 def check_write_permission(path:str) -> bool:
   """True when a probe file can be created in path; the directory is created when missing."""
+  probe = f"{path}/.forge_test"
   try:
-    os.makedirs(path, exist_ok=True)
-    test_file = os.path.join(path, ".forge_test")
-    with open(test_file, "w") as f:
-      f.write("test")
-    os.remove(test_file)
+    FILE.save(probe, "")
+    FILE.remove(probe)
     return True
-  except Exception:
+  except OSError:
     return False

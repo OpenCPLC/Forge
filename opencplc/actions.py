@@ -7,8 +7,9 @@ One-shot CLI actions.
 `info_show()` and `program_image()` act on the resolved model, for -i and --program.
 """
 
-import sys, subprocess
+import sys
 from xaeian import Print, Color as c, Ico, FILE, DIR, PATH, replace_end
+from xaeian.cmd import run
 from .config import URL_DL, URL_FORGE, URL_CORE, EXE_NAME, DIR_FRAMEWORK
 from .args import flag
 from .resolver import Project
@@ -22,7 +23,7 @@ FROZEN = getattr(sys, "frozen", False) # a PyInstaller build, not a Python packa
 
 def memory_usage(elf:str) -> tuple[int, int]:
   """FLASH and RAM bytes taken by an .elf: text+data and data+bss from arm-none-eabi-size."""
-  out = subprocess.run(["arm-none-eabi-size", elf], capture_output=True, text=True).stdout
+  out = run(["arm-none-eabi-size", elf]).stdout
   text, data, bss = (int(x) for x in out.strip().splitlines()[-1].split()[:3])
   return text + data, data + bss
 
@@ -165,7 +166,7 @@ def program_image(pro:Project, path:str):
   # braces keep a path with spaces one word for openocd
   cmd += ["-c", f"program {{{PATH.normalize(path)}}} verify reset exit"]
   name = PATH.basename(path)
-  if subprocess.run(cmd).returncode:
+  if run(cmd, capture=False).returncode:
     p.err(f"Programming {c.VIOLET}{name}{c.END} failed")
     sys.exit(1)
   p.ok(f"Programmed {c.VIOLET}{name}{c.END} into {c.PINK}{pro.chip}{c.END}")
@@ -195,5 +196,5 @@ def info_show(pro:Project):
   p.gap(f"Project drivers {flag.D}: {c.BLUE}{', '.join(pro.project_drivers) or 'none'}{c.END}")
   if pro.stlink:
     p.gap(f"ST-Link: {c.GOLD}{pro.stlink}{c.END}")
-  p.gap(f"Last modification: {utils.last_modification(pro.pro_dir, ext=['.c','.h'])}")
+  p.gap(f"Last modification: {utils.last_modification(pro.pro_dir, exts=['.c', '.h'])}")
   sys.exit(0)

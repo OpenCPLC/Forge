@@ -8,8 +8,9 @@ what the console has on PATH plays no part. On Linux the tools come from PATH.
 Git is the exception on both: winget on Windows, the distribution on Linux.
 """
 
-import os, sys, stat, shutil, subprocess, platform
+import os, sys, stat, subprocess, platform
 from xaeian import Print, Color as c, DIR, FILE, JSON, PATH
+from xaeian.cmd import which
 from .common import is_yes, color_url
 from .network import fetch
 from ..config import URL_DL
@@ -46,7 +47,7 @@ def tool_path(name:str) -> str:
 
 def bin_suffix(name:str) -> str:
   """`/bin` when the package ships one, else nothing: the tool runs from the package itself."""
-  return "/bin" if os.path.isdir(f"{tool_path(name)}/bin") else ""
+  return "/bin" if DIR.exists(f"{tool_path(name)}/bin") else ""
 
 def bin_dir(name:str) -> str:
   """Where a tool runs from."""
@@ -99,17 +100,21 @@ def retire(path:str):
         os.remove(file)
       except OSError:
         os.rename(file, f"{file}.{os.getpid()}.old")
-    for name in dirs + ["."]: # emptied folders, then the package itself
+    for name in dirs: # emptied already, the deepest first
       try:
         os.rmdir(os.path.join(root, name))
       except OSError:
         pass
+  try:
+    os.rmdir(path) # by its own name: POSIX refuses `path/.`
+  except OSError:
+    pass
 
 def sweep(root:str):
   """Remove what `retire` had to leave behind, once the system lets go of it."""
   for file in DIR.iter_files(root, match="*.old"):
     try:
-      os.remove(file)
+      FILE.remove(file)
     except OSError:
       pass
 
@@ -145,7 +150,7 @@ def use_installed_git() -> bool:
 
 def ensure_git(yes:bool):
   """Git on PATH or in its known home, else winget puts it there."""
-  if shutil.which("git"): return
+  if which("git"): return
   if not WINDOWS:
     p.err(f"{c.YELLOW}git{c.END} not found, install it with your package manager")
     sys.exit(1)
@@ -174,7 +179,7 @@ def ensure_tools(is_embedded:bool, yes:bool):
   ensure_git(yes)
   names = STM32_TOOLS if is_embedded else HOST_TOOLS
   if not WINDOWS:
-    missing = [COMMANDS[n] for n in names if not shutil.which(COMMANDS[n])]
+    missing = [COMMANDS[n] for n in names if not which(COMMANDS[n])]
     if missing:
       p.err(f"Not found: {', '.join(f'{c.YELLOW}{m}{c.END}' for m in missing)}")
       p.inf("Install them with your package manager and run again")
@@ -184,7 +189,7 @@ def ensure_tools(is_embedded:bool, yes:bool):
   if DIR.exists(root): sweep(root)
   installed = JSON.load(f"{root}/{INSTALLED}", {})
   missing = [n for n in names
-    if installed.get(n) != PACKAGES[n] or not os.path.exists(tool_path(n))]
+    if installed.get(n) != PACKAGES[n] or not DIR.exists(tool_path(n))]
   if missing:
     listed = ", ".join(f"{c.YELLOW}{n}{c.END}" for n in missing)
     if not yes and not is_yes(f"Install OpenCPLC tools {listed} from {color_url(URL_DL)}"):
@@ -269,4 +274,4 @@ def cube_bin() -> str:
 
 def cube_found() -> bool:
   """CubeProgrammer reachable by `make stack`: in its default home or on PATH."""
-  return bool(cube_bin() or shutil.which(CUBE_CLI))
+  return bool(cube_bin() or which(CUBE_CLI))

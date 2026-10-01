@@ -67,7 +67,7 @@ def a_broken_zip_exits_and_leaves_no_half_package(home, monkeypatch):
 def linux_takes_the_tools_from_path(home, monkeypatch, capsys):
   root, fetched = home
   monkeypatch.setattr(tools, "WINDOWS", False)
-  monkeypatch.setattr(tools.shutil, "which", lambda cmd: None if cmd == "openocd" else cmd)
+  monkeypatch.setattr(tools, "which", lambda cmd: None if cmd == "openocd" else cmd)
   with pytest.raises(SystemExit):
     tools.ensure_tools(is_embedded=True, yes=True)
   assert "openocd" in capsys.readouterr().out and fetched == []
@@ -75,7 +75,7 @@ def linux_takes_the_tools_from_path(home, monkeypatch, capsys):
 def git_comes_from_winget_without_a_question(monkeypatch):
   calls = []
   monkeypatch.setattr(tools, "WINDOWS", True)
-  monkeypatch.setattr(tools.shutil, "which", lambda cmd: None)
+  monkeypatch.setattr(tools, "which", lambda cmd: None)
   monkeypatch.setattr(tools.subprocess, "run",
     lambda cmd, **kw: calls.append(cmd) or type("R", (), {"returncode": 0})())
   # git appears in its user home only once winget ran

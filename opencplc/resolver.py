@@ -9,8 +9,8 @@ Paths in it are workspace-relative and sorted, so identical inputs resolve ident
 Absolute paths appear only while scanning.
 """
 
-from dataclasses import dataclass, field
 import sys
+from dataclasses import dataclass, field
 from xaeian import Print, Color as c, DIR, PATH
 from .platforms import get_hal_dirs
 from . import utils
@@ -100,15 +100,15 @@ def other_board(cfg:dict, core_dir:str, folder:str) -> bool:
   Boards sit in brd/ at Core root, and under plc/ in versions that kept them there.
   A project on any Core compiles its own board and no other.
   """
+  # below brd only, brd itself holds the header all boards share
   roots = (f"{core_dir}/brd/", f"{core_dir}/plc/brd/")
   if not any(folder.startswith(root) for root in roots): return False
   board_dir = cfg.get("board_dir") # exact directory, so uno never drags in uno_mini
-  return not (board_dir and (folder == board_dir or folder.startswith(board_dir + "/")))
+  return not (board_dir and PATH.is_under(folder, board_dir))
 
 def in_drivers(core_dir:str, folder:str) -> bool:
   """True for dvr of core_dir and every folder below it."""
-  dvr = f"{core_dir}/dvr"
-  return folder == dvr or folder.startswith(dvr + "/")
+  return PATH.is_under(folder, f"{core_dir}/dvr")
 
 def unused_driver(cfg:dict, core_dir:str, folder:str, file:str) -> bool:
   """
@@ -117,7 +117,7 @@ def unused_driver(cfg:dict, core_dir:str, folder:str, file:str) -> bool:
   A driver is named by its file, whatever folder under dvr it sits in.
   """
   if not in_drivers(core_dir, folder): return False
-  return PATH.basename(file).rsplit(".", 1)[0].lower() not in cfg["drivers"]
+  return PATH.stem(file).lower() not in cfg["drivers"]
 
 def core_sources(cfg:dict, core_dir:str, ext:str) -> list[str]:
   """Core files with ext for this variant, sorted and workspace-relative."""
@@ -134,10 +134,8 @@ def core_includes(cfg:dict, core_dir:str) -> list[str]:
 def available_drivers(core_dir:str) -> list[str]:
   """Core drivers with both .c and .h anywhere under dvr."""
   dvr = f"{core_dir}/dvr"
-  names_c = {PATH.basename(f).rsplit(".", 1)[0].lower()
-    for fs in rel_tree(dvr, ".c").values() for f in fs}
-  names_h = {PATH.basename(f).rsplit(".", 1)[0].lower()
-    for fs in rel_tree(dvr, ".h").values() for f in fs}
+  names_c = {PATH.stem(f).lower() for fs in rel_tree(dvr, ".c").values() for f in fs}
+  names_h = {PATH.stem(f).lower() for fs in rel_tree(dvr, ".h").values() for f in fs}
   return sorted(names_c & names_h)
 
 def validate_drivers(cfg:dict, core_dir:str):
@@ -190,7 +188,7 @@ def project_includes(pro_dir:str) -> list[str]:
 
 def project_dirs(pro_dir:str, sources:list[str], includes:list[str]) -> list[str]:
   """Directories whose content decides the source list - the inputs of a makefile reload."""
-  dirs = {pro_dir, *includes, *(f.rsplit("/", 1)[0] for f in sources)}
+  dirs = {pro_dir, *includes, *(PATH.dirname(f) for f in sources)}
   return sorted(dirs)
 
 def resolve_project(cfg:dict, paths:dict, forge_cfg:dict) -> Project:

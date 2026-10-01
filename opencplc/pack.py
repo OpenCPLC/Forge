@@ -58,7 +58,7 @@ def pack(app_path:str, out_path:str, boot_path:str|None=None):
   crc = crc32_iso.checksum(image.read(origin, size))
   image.write(origin + size, crc.to_bytes(4, "little"))
   hexfile.save_bin(image, update_path(out_path), origin, end - origin)
-  if boot_path.endswith(".bin"):
+  if PATH.ext(boot_path) == ".bin":
     boot = hexfile.load_bin(boot_path, FLASH_BASE)
   else:
     boot = hexfile.load_hex(boot_path)

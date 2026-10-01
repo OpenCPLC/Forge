@@ -77,7 +77,7 @@ def project_remote(url:str, path:str, ref:str|None=None, name:str="") -> str:
     parts = name_line.split()
     if not parts:
       p.err(f"Failed to read project name from {c.BLUE}main.h{c.END}")
-      p.inf(f"Provide project name as a positional argument")
+      p.inf("Provide project name as a positional argument")
       sys.exit(1)
     name = parts[-1]
   # Name comes from the remote main.h, so it is validated before it becomes a path

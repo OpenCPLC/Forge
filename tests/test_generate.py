@@ -4,8 +4,8 @@
 
 import json, re, time
 import pytest
-from xaeian import file_context
-from opencplc import utils
+from xaeian import file_context, Color as c
+from opencplc import utils, project
 from opencplc.project import generate, prepare_project
 from opencplc.resolver import resolve_project
 from conftest import build_workspace, uno_cfg, wb55_cfg, ws_paths, parse_dispatcher, resolve_uno
@@ -58,6 +58,14 @@ def dist_carries_the_programmer_file_and_the_update_one(ws):
   update = "$(BUILD)/$(TARGET)-dist.bin,$(PROJECT)/$(DIST).bin"
   assert dist.index("ifeq ($(BOOT),true)") < dist.index(update) < dist.index("else")
   assert dist.index("Full image") < dist.index("else") < dist.index("Flash image")
+
+def color_codes_stay_whole_under_a_posix_shell(ws, monkeypatch):
+  """`/bin/sh` ends a command at the `;` of a 256-color code, so every code goes in quotes."""
+  monkeypatch.setattr(project.platform, "system", lambda: "Linux")
+  generate(resolve_uno())
+  quoted = f"for '{c.GOLD}'build'{c.END}'"
+  assert quoted in (ws / "projects" / "myapp" / "makefile").read_text()
+  assert quoted in (ws / "makefile").read_text() # the dispatcher too
 
 def vscode_points_at_the_project_build_dir(ws):
   generate(resolve_uno())

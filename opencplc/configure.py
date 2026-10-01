@@ -47,21 +47,20 @@ def reject_existing(args, PRO:dict, PATHS:dict):
     p.run(f"Use a different name or load it without flag {flag.n}")
     sys.exit(1)
   # No nesting: a project cannot live inside another one
-  new_name = args.name.replace("\\", "/").strip("/")
-  for existing_name in PRO:
-    existing = existing_name.replace("\\", "/").strip("/")
-    if new_name.startswith(existing + "/"):
+  for existing in PRO:
+    if PATH.is_under(args.name, existing):
       p.err(f"Cannot create {c.MAGNTA}{args.name}{c.END} inside existing project "
-        f"{c.BLUE}{existing_name}{c.END}")
+        f"{c.BLUE}{existing}{c.END}")
       sys.exit(1)
-    if existing.startswith(new_name + "/"):
+    if PATH.is_under(existing, args.name):
       p.err(f"Cannot create {c.MAGNTA}{args.name}{c.END} - project "
-        f"{c.BLUE}{existing_name}{c.END} already exists inside")
+        f"{c.BLUE}{existing}{c.END} already exists inside")
       sys.exit(1)
   parent_dir = PATH.dirname(PATHS["pro"])
   if not utils.check_write_permission(parent_dir):
     p.err(f"No write permission in {c.CREAM}{parent_dir}{c.END}")
     sys.exit(1)
+
 def hardware_config(args, PATHS:dict) -> dict:
   """Board and chip of a new project, from -b/-c/-P."""
   boards = load_boards(PATHS["fw"])

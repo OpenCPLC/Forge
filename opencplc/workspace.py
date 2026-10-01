@@ -21,21 +21,20 @@ p = Print()
 
 def find_workspace(start:str=".") -> str|None:
   """Nearest directory at or above start holding opencplc.json."""
-  path = os.path.abspath(start)
-  while True:
-    if os.path.isfile(os.path.join(path, "opencplc.json")): return path
-    parent = os.path.dirname(path)
+  path = PATH.normalize(os.path.abspath(start)) # the process cwd: no file root is set yet
+  while not FILE.exists(f"{path}/opencplc.json"):
+    parent = PATH.dirname(path)
     if parent == path: return None
     path = parent
+  return path
 
 def project_from_path(path:str, pro_root:str) -> str|None:
   """Name of the project holding path: the closest dir with main.h under pro_root."""
-  path = os.path.abspath(path)
-  root = os.path.abspath(pro_root)
-  while path.lower().startswith(root.lower()) and path != root:
-    if os.path.isfile(os.path.join(path, "main.h")):
-      return os.path.relpath(path, root).replace("\\", "/")
-    path = os.path.dirname(path)
+  if not PATH.is_under(path, pro_root): return None
+  name = PATH.rel(path, pro_root)
+  while name:
+    if FILE.exists(f"{pro_root}/{name}/main.h"): return name
+    name = PATH.dirname(name)
   return None
 
 def enter_workspace() -> str:
@@ -44,7 +43,7 @@ def enter_workspace() -> str:
   root = find_workspace() or cwd
   if not os.path.samefile(root, cwd):
     os.chdir(root) # subprocesses (git, make) follow the process cwd
-    p.inf(f"Workspace: {c.CREAM}{PATH.normalize(root)}{c.END}")
+    p.inf(f"Workspace: {c.CREAM}{root}{c.END}")
   # xaeian file API follows its own root: import-time cwd, or exe dir when frozen
   set_context(root_path=root)
   return cwd
@@ -142,10 +141,10 @@ def reload_from_makefile(args, PATHS:dict, make_info:dict|None):
   """-r/-i without a name: recover the active project from the dispatcher."""
   active = (make_info or {}).get("ACTIVE", "")
   if active.startswith(DIR_PROJECTS + "/"):
-    args.name = active[len(DIR_PROJECTS) + 1:]
+    args.name = PATH.rel(active, DIR_PROJECTS)
   else:
-    p.err(f"No active project in this workspace")
-    p.inf(f"Provide project name as positional argument")
+    p.err("No active project in this workspace")
+    p.inf("Provide project name as positional argument")
     sys.exit(1)
 
 def stlink_bind(forge_cfg:dict, pro_id:str, serial:str|None):

@@ -26,21 +26,17 @@ def pytest_pycollect_makeitem(collector, name, obj):
     return [] # ignore library functions imported into the test file
 
 import opencplc
-
+from xaeian import FILE, replace_map
 # Templates of the package under test: the source tree, or a wheel installed without it
-FILES_DIR = os.path.join(os.path.dirname(opencplc.__file__), "files")
+from opencplc.templates import FILES_DIR
 
 def load_template(name:str) -> str:
   """Raw template content from opencplc/files."""
-  with open(os.path.join(FILES_DIR, name), encoding="utf-8") as f:
-    return f.read()
+  return FILE.load(f"{FILES_DIR}/{name}")
 
 def render(template:str, subs:dict) -> str:
   """Substitute ${KEY} placeholders the way utils.create_file does."""
-  content = template.strip()
-  for key, val in subs.items():
-    content = content.replace(key, str(val))
-  return content
+  return replace_map(template.strip(), subs)
 
 from opencplc import utils
 
