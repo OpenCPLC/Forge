@@ -49,7 +49,10 @@ def identity_and_flash_fields(ws):
   assert pro.openocd_target == "stm32g0x"
   assert pro.linker == "stm32g0.ld"
   assert pro.stlink == "ABC123"
-  assert pro.defines == ["STM32", "STM32G0", "STM32G0C1xx", "OpenCPLC", "BOOT_PAGES=4"]
+  assert pro.defines == [
+    "STM32", "STM32G0", "STM32G0C1xx", "OpenCPLC",
+    "BOOT_PAGES=4", "BOOT_CHIP=0x467",
+  ]
   assert pro.mcu_flags == "-mcpu=cortex-m0plus -mthumb -mfloat-abi=soft"
 
 def without_boot_the_image_takes_the_whole_region(ws):

@@ -81,8 +81,7 @@ def _scan_extras_from_file(path:str) -> dict[str, list[str]]:
   for node in ast.walk(tree):
     if isinstance(node, ast.Assign):
       for t in node.targets:
-        if isinstance(t, ast.Name) and t.id == "__extras__":
-          return _parse_extras(node.value)
+        if isinstance(t, ast.Name) and t.id == "__extras__": return _parse_extras(node.value)
   return {}
 
 def _top_level(name:str) -> str:
@@ -243,11 +242,11 @@ def generate_toml(
 ) -> str:
   """Generate pyproject.toml content."""
   lines = [
-    '[build-system]',
+    "[build-system]",
     'requires = ["setuptools>=77"]',
     'build-backend = "setuptools.build_meta"',
-    '',
-    '[project]',
+    "",
+    "[project]",
     f'name = "{pkg_name}"',
     f'version = "{meta["version"]}"',
     f'description = "{meta["description"]}"',

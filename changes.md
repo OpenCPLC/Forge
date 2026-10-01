@@ -1,5 +1,11 @@
 # Changes `opencplc`
 
+## `0.4.7` Mailbox fix
+
+- Updates work again after flashing; board flashed with 0.4.6 needs `make erase` once
+- Build gives `-dist.hex` and `-dist.bin` like `make dist`; existing project needs `opencplc -r`
+- `make erase` works on WB
+
 ## `0.4.6` Flash fixes
 
 - `make flash`, F5 and `--program` drop unfinished update, flashed image stays

@@ -97,6 +97,21 @@ def embedded_makefile_parses_in_dry_run(tmp_path):
   assert "myapp/opencplc/hal/arm/core.o" in res.stdout.replace("\\", "/")
   assert "myapp/project/main.o" in res.stdout.replace("\\", "/")
 
+@pytest.mark.skipif(not (HAVE_MAKE and HAVE_ARM_GCC), reason="make and arm-none-eabi-gcc required")
+def flash_without_image_says_so_and_leaves_the_probe_alone(tmp_path):
+  build_workspace(tmp_path)
+  write_forge_config(tmp_path)
+  with file_context(root_path=str(tmp_path)):
+    generate(resolve_uno())
+  res = make_run(tmp_path, "-n", "flash", project="myapp")
+  assert res.returncode == 0, res.stderr
+  assert "No image" in res.stdout and "openocd" not in res.stdout
+  image = tmp_path / "build" / "projects" / "myapp" / "myapp-dist.hex"
+  image.parent.mkdir(parents=True, exist_ok=True)
+  image.write_text(":00000001FF\n")
+  res = make_run(tmp_path, "-n", "flash", project="myapp")
+  assert "openocd" in res.stdout and "No image" not in res.stdout
+
 # The reload rule runs Forge itself, so these tests drive the real CLI through Make.
 # FORGE points Make at this interpreter and PYTHONPATH at the repo, no install needed.
 

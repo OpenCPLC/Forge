@@ -109,11 +109,12 @@ Pełna lista celów:
 - **`make run`**: Wykonuje `make build`, a następnie `make flash`
 - **`make clean`** lub `make clr`: Usuwa zbudowane pliki projektu
 - `make clean_all` lub `make clr_all`: Usuwa zbudowane pliki wszystkich projektów
-- `make dist`: Kopiuje `.hex` do folderu projektu; `make dist TAG=1.2.0` nazwie go `<name>-1.2.0.hex`
-- **`make erase`**: Całkowicie czyści pamięć mikrokontrolera _(**erase** full chip)_
+- `make dist`: Kopiuje `-dist.hex` do folderu projektu, a pod bootloaderem także `-dist.bin`; `make dist TAG=1.2.0` nazywa je `<name>-1.2.0.hex` i `.bin`
+- **`make erase`**: Całkowicie czyści pamięć mikrokontrolera _(**erase** full chip; na STM32WB stack radiowy zostaje)_
 - `make stack`: Wgrywa stos radiowy drugiego rdzenia _(STM32WB)_; `make stack FUS=1` robi też jednorazowy, nieodwracalny provisioning fabrycznej płytki
 
 Zbudowane pliki trafiają do `build/projects/<project_name>/`: `.elf`, `.hex`, `.bin` i `.map` obok katalogu `opencplc/` z obiektami framework'a i `project/` z Twoimi.
+`-dist.hex` wgrywa programator, a pod bootloaderem obok leży `-dist.bin`, obraz do aktualizacji.
 Każdy projekt kompiluje framework na własny użytek, więc przełączanie projektów nigdy nie linkuje obiektów zbudowanych z inną konfiguracją.
 Po linkowaniu Forge raportuje zajętość pamięci:
 
@@ -133,8 +134,8 @@ Strony powyżej `PRO_FLASH_kB` zostają dla projektu, tak jak bez bootloadera.
 make flash    # bootloader z Core + obraz, przez ST-Link
 ```
 
-Obraz ma nagłówek pod stałym offsetem z rozmiarem i za ostatnim bajtem miejsce na trailer CRC32.
-Aplikacja odbiera aktualizację swoim transportem i oddaje bajty do `BOOT_Begin`, `BOOT_Write` i `BOOT_End` _(`hal/stm32/sys/boot.h`)_: obraz ląduje w slocie staging razem z trailerem, aplikacja się resetuje, bootloader kopiuje cały, zweryfikowany obraz do slotu aplikacji i go uruchamia. Obraz z programatora ma trailer skasowany i działa taki, jaki jest.
+Obraz ma nagłówek pod stałym offsetem, a za ostatnim bajtem trailer z CRC32.
+Aplikacja odbiera aktualizację swoim transportem i oddaje bajty do `BOOT_Begin`, `BOOT_Write` i `BOOT_End` _(`hal/stm32/sys/boot.h`)_: obraz ląduje w slocie staging razem z trailerem, aplikacja się resetuje, bootloader kopiuje cały, zweryfikowany obraz do slotu aplikacji i go uruchamia. Obraz z programatora dostaje CRC od Forge, w `-dist.hex`.
 Przerwany transfer albo zanik zasilania w trakcie kopiowania nie szkodzi: działa stary obraz albo kopiowanie powtarza się przy następnym starcie.
 Do testów ten sam transfer można wpisać w konsoli: `#define CMD_BOOT ON` w `main.h` dokłada komendę shella `boot`.
 

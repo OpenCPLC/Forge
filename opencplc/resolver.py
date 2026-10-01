@@ -160,12 +160,13 @@ def flash_layout(cfg:dict) -> tuple[int, int, list[str]]:
   Without PRO_BOOT the image takes the whole region.
   Under the bootloader the region past `boot_kB` splits into two equal slots of whole pages.
   Image is linked into the application slot, an update lands in the staging one first.
-  Every STM32 build carries `BOOT_PAGES`, a chip constant.
+  Every STM32 build carries `BOOT_PAGES` and `BOOT_CHIP`, chip constants.
   `BOOT_SLOT_PAGES` marks the image as one in a slot.
   """
   flash_kB = cfg["flash_kB"]
   boot_kB, page_kB = cfg.get("boot_kB", 0), cfg.get("page_kB", 0)
   defines = [f"BOOT_PAGES={boot_kB // page_kB}"] if boot_kB and page_kB else []
+  if cfg.get("dev_id"): defines.append(f"BOOT_CHIP=0x{cfg['dev_id']:03X}")
   if not cfg.get("boot"):
     return FLASH_BASE, flash_kB, defines
   if not boot_kB:

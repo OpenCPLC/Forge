@@ -123,11 +123,11 @@ $(BUILD)/%.bin: $(BUILD)/%.elf
 
 # Whole flash in one file for the programmer
 # Under the bootloader: bootloader in front, CRC in the trailer, update binary beside
-$(BUILD)/$(TARGET)-flash.hex: $(BUILD)/$(TARGET).hex
+$(BUILD)/$(TARGET)-dist.hex: $(BUILD)/$(TARGET).hex
 	@cd $(WORKSPACE) && $(FORGE) --pack $< $@ $(BOOT_IMAGE)
 
 ARTIFACTS := $(BUILD)/$(TARGET).elf $(BUILD)/$(TARGET).hex $(BUILD)/$(TARGET).bin \
-  $(BUILD)/$(TARGET)-flash.hex
+  $(BUILD)/$(TARGET)-dist.hex
 
 # Only top make with build as its goal says it
 # Run in the project that is this one, under the dispatcher that one, behind dist nobody
@@ -148,8 +148,9 @@ endif
 OPENOCD = ${OPENOCD} -c
 
 # One file with or without a bootloader, `--pack` already put it in front
+# Looked for when flash runs, so `make run` finds the image its build just made
 flash:
-	@$(OPENOCD) "program $(BUILD)/$(TARGET)-flash.hex verify reset exit" && echo Flashed ${VIOLET}$(TARGET)-flash.hex${END}|| (echo Flashing ${RED}failed${END}&& exit 1)
+	@$(if $(wildcard $(BUILD)/$(TARGET)-dist.hex),$(OPENOCD) "program $(BUILD)/$(TARGET)-dist.hex verify reset exit" && echo Flashed ${VIOLET}$(TARGET)-dist.hex${END}|| (echo Flashing ${RED}failed${END}&& exit 1),echo No image ${YELLOW}$(TARGET)-dist.hex${END} to flash)
 
 run: build flash
 
@@ -167,10 +168,10 @@ stack:
 DIST := $(TARGET)$(if $(TAG),-$(TAG))
 
 dist: build
-	@$(call COPY,$(BUILD)/$(TARGET)-flash.hex,$(PROJECT)/$(DIST).hex)
+	@$(call COPY,$(BUILD)/$(TARGET)-dist.hex,$(PROJECT)/$(DIST).hex)
 ifeq ($(BOOT),true)
 	@echo Full image ${LIME}$(DIST).hex${END} to ${PROJECT_COLORED}
-	@$(call COPY,$(BUILD)/$(TARGET)-update.bin,$(PROJECT)/$(DIST).bin)
+	@$(call COPY,$(BUILD)/$(TARGET)-dist.bin,$(PROJECT)/$(DIST).bin)
 	@echo Update image ${SKY}$(DIST).bin${END} to ${PROJECT_COLORED}
 else
 	@echo Flash image ${LIME}$(DIST).hex${END} to ${PROJECT_COLORED}

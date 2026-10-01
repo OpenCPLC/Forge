@@ -25,7 +25,10 @@ def pytest_pycollect_makeitem(collector, name, obj):
   if inspect.isfunction(obj) and obj.__module__ != collector.obj.__name__:
     return [] # ignore library functions imported into the test file
 
-FILES_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "opencplc", "files"))
+import opencplc
+
+# Templates of the package under test: the source tree, or a wheel installed without it
+FILES_DIR = os.path.join(os.path.dirname(opencplc.__file__), "files")
 
 def load_template(name:str) -> str:
   """Raw template content from opencplc/files."""
@@ -212,9 +215,10 @@ def forge_env(ws):
   """Environment and FORGE override that let Make run this interpreter's opencplc."""
   import os, sys, xaeian
   env = os.environ.copy()
-  # the same xaeian these tests import, wherever it comes from
+  # the same opencplc and xaeian these tests import, wherever they come from
+  forge_home = os.path.dirname(os.path.dirname(opencplc.__file__))
   xaeian_home = os.path.dirname(os.path.dirname(xaeian.__file__))
-  env["PYTHONPATH"] = os.pathsep.join([REPO_ROOT, xaeian_home])
+  env["PYTHONPATH"] = os.pathsep.join([forge_home, xaeian_home])
   env["OPENCPLC_TOOLS"] = fake_tools(ws)
   return env, f"FORGE={sys.executable} -m opencplc"
 
@@ -252,11 +256,12 @@ def frozen_forge(tmp_path, monkeypatch, version="9.9.9"):
   monkeypatch.setattr(actions.utils, "download", lambda url, *a, **k: b"new")
   return exe
 
-def write_app_image(path, origin:int, size:int, header:bool=True):
+def write_app_image(path, origin:int, size:int, header:bool=True, trailer:int=72):
   """
   Application hex laid out as linked.
 
-  Vector table, gap up to the header at 0x200, code up to `size`, erased 8-byte trailer.
+  Vector table, gap up to the header at 0x200, code up to `size`, erased trailer.
+  `trailer=8` is the layout of a Core older than the signature.
   """
   from opencplc.utils.hexfile import Memory, save_hex
   app = Memory()
@@ -266,6 +271,6 @@ def write_app_image(path, origin:int, size:int, header:bool=True):
   body = b"OPEN" + size.to_bytes(4, "little") if header else bytes(8)
   code = bytes(range(256))
   body += code + bytes(size - 0x200 - len(body) - len(code))
-  app.add(origin + 0x200, body + b"\xff" * 8)
+  app.add(origin + 0x200, body + b"\xff" * trailer)
   app.start = reset
   save_hex(app, path)

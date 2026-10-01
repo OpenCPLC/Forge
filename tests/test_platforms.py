@@ -38,3 +38,8 @@ def wb55_flash_stops_below_the_wireless_stack():
   stack_start = 0xD0 * 4 # SFSA 0xD0, pages of 4kB
   assert 0x08000000 + stack_start * 1024 == 0x080D0000
   assert CHIPS["STM32WB55"]["flash_kB"] == stack_start
+
+def wb55_erase_clears_cpu1_flash_alone():
+  """`mass_erase` fails beside the wireless stack, so pages go one by one up to CPU2 flash."""
+  wb = CHIPS["STM32WB55"]
+  assert wb["erase"] == f"flash erase_address 0x08000000 0x{wb['flash_kB'] * 1024:X}"

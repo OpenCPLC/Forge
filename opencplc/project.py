@@ -208,8 +208,9 @@ def generate(pro:Project, activate:bool=True):
     "${EXE_EXT}": ".exe" if is_windows else "",
     "${PROJECT_COLORED}": colored_path(pro.pro_dir, pro.name),
     "${BUILD_COLORED}": colored_path(pro.build_dir, pro.name),
-    "${GOLD}": c.GOLD, "${GREEN}": c.GREEN, "${PINK}": c.PINK, "${VIOLET}": c.VIOLET,
-    "${LIME}": c.LIME, "${SKY}": c.SKY, "${RED}": c.RED, "${BLUE}": c.BLUE, "${GREY}": c.GREY,
+    "${GOLD}": c.GOLD, "${YELLOW}": c.YELLOW, "${GREEN}": c.GREEN, "${PINK}": c.PINK,
+    "${VIOLET}": c.VIOLET, "${LIME}": c.LIME, "${SKY}": c.SKY, "${RED}": c.RED,
+    "${BLUE}": c.BLUE, "${GREY}": c.GREY,
     "${END}": c.END,
   } | utils.template_paths(pro.platform == "STM32")
   # Linker script and makefile live inside the project - parallel builds stay disjoint

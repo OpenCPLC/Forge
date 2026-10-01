@@ -25,6 +25,7 @@ def get_hal_dirs(hal:str) -> list:
 
 # Bootloader owns `boot_kB` at the start of flash: its code and one page as the mailbox
 # One image per family in Core as `scr/boot_<hal>.bin`
+# `dev_id` is `DEV_ID` of the chip, the bootloader matches it against the image header
 # `PRO_BOOT true` halves the rest of `PRO_FLASH_kB` into application and staging slots
 CHIPS = {
   "STM32G081": {
@@ -37,7 +38,7 @@ CHIPS = {
     "svd": "stm32g081.svd", "hal": "stm32g0",
     "ld": "stm32g0.ld", "openocd": "stm32g0x",
     "erase": "stm32g0x mass_erase 0",
-    "page_kB": 2, "boot_kB": 8
+    "page_kB": 2, "boot_kB": 8, "dev_id": 0x460,
   },
   "STM32G0C1": {
     "platform": "STM32", "family": "G0",
@@ -49,7 +50,7 @@ CHIPS = {
     "svd": "stm32g0c1.svd", "hal": "stm32g0",
     "ld": "stm32g0.ld", "openocd": "stm32g0x",
     "erase": "stm32g0x mass_erase 0",
-    "page_kB": 2, "boot_kB": 8
+    "page_kB": 2, "boot_kB": 8, "dev_id": 0x467,
   },
   "STM32WB55": {
     "platform": "STM32", "family": "WB",
@@ -62,8 +63,9 @@ CHIPS = {
     "define": "STM32WB55xx", "device": "STM32WB55RG",
     "svd": "stm32wb55.svd", "hal": "stm32wb",
     "ld": "stm32wb.ld", "openocd": "stm32wbx",
-    "erase": "stm32wbx mass_erase 0", "stack": "flash_cpu2.sh",
-    "page_kB": 4, "boot_kB": 16
+    # `mass_erase` fails beside the wireless stack, so `make erase` clears CPU1 pages one by one
+    "erase": "flash erase_address 0x08000000 0xD0000", "stack": "flash_cpu2.sh",
+    "page_kB": 4, "boot_kB": 16, "dev_id": 0x495,
   },
   "HOST": {
     "platform": "Host", "family": "",
@@ -74,8 +76,8 @@ CHIPS = {
     "define": host_define(), "device": "Desktop",
     "svd": "", "hal": "host",
     "ld": "", "openocd": "", "erase": "",
-    "page_kB": 0, "boot_kB": 0
-  }
+    "page_kB": 0, "boot_kB": 0, "dev_id": 0,
+  },
 }
 
 def parse_chip(name:str) -> dict:

@@ -40,22 +40,22 @@ def dispatcher_points_at_the_active_project(ws):
 
 def one_flash_rule_and_the_debugger_load_the_packed_image(ws):
   """Neither the makefile nor the debugger knows whether a bootloader sits in front."""
-  rule = "program $(BUILD)/$(TARGET)-flash.hex verify reset exit"
+  rule = "program $(BUILD)/$(TARGET)-dist.hex verify reset exit"
   for cfg in (uno_cfg(), uno_cfg() | {"boot": True}):
     generate(resolve_project(cfg, ws_paths(), {}))
     make = (ws / "projects" / "myapp" / "makefile").read_text()
     assert make.count(rule) == 1 and "$(TARGET).elf verify" not in make
     launch = json.loads((ws / ".vscode" / "launch.json").read_text())["configurations"][0]
-    assert launch["loadFiles"] == ["build/projects/myapp/myapp-flash.hex"]
+    assert launch["loadFiles"] == ["build/projects/myapp/myapp-dist.hex"]
     assert launch["executable"].endswith("myapp.elf") # symbols stay with the elf
 
 def dist_carries_the_programmer_file_and_the_update_one(ws):
   """`plain` ships two files: the full image for a bare chip, the image alone for `UPDATE`."""
   generate(resolve_uno())
   make = (ws / "projects" / "myapp" / "makefile").read_text()
-  assert "$(BUILD)/$(TARGET)-flash.hex,$(PROJECT)/$(DIST).hex" in make
+  assert "$(BUILD)/$(TARGET)-dist.hex,$(PROJECT)/$(DIST).hex" in make
   dist = make[make.index("\ndist:"):]
-  update = "$(BUILD)/$(TARGET)-update.bin,$(PROJECT)/$(DIST).bin"
+  update = "$(BUILD)/$(TARGET)-dist.bin,$(PROJECT)/$(DIST).bin"
   assert dist.index("ifeq ($(BOOT),true)") < dist.index(update) < dist.index("else")
   assert dist.index("Full image") < dist.index("else") < dist.index("Flash image")
 
@@ -129,6 +129,7 @@ def plain_project_links_at_the_start_of_flash(ws):
   assert ".app_header ORIGIN(FLASH) + 0x200" in ld and ".app_trailer" in ld
   make = (ws / "projects" / "myapp" / "makefile").read_text()
   assert "BOOT := false" in make and "FLASH_kB := 492" in make
+  assert "-DBOOT_CHIP=0x467" in make # every build, the bootloader one too
   assert "BOOT_IMAGE := \n" in make
   assert "$(FORGE) --pack $< $@ $(BOOT_IMAGE)" in make
 

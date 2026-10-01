@@ -1,17 +1,18 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "opencplc"
-version = "0.4.6"
+version = "0.4.7"
 description = "Project configuration and build tool for OpenCPLC"
 readme = "readme.md"
-license = {text = "MIT"}
+license = "MIT"
+license-files = ["license"]
 requires-python = ">=3.12"
 authors = [{name = "Xaeian"}]
 keywords = ["embedded", "stm32", "opencplc", "build", "forge"]
-dependencies = ["xaeian>=0.9.3", "packaging"]
+dependencies = ["xaeian>=1.0.0", "packaging"]
 
 [project.scripts]
 opencplc = "opencplc.__main__:main"

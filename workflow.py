@@ -136,8 +136,7 @@ def verify_block(project:Project) -> str:
   the tests are copied away from the source tree, so `import` can only answer site-packages.
   Without one, installing it still catches a wheel nobody could install.
   """
-  if not project.tests:
-    return f'      - run: pip install "$(echo dist/*.whl){project.extra}"\n'
+  if not project.tests: return f'      - run: pip install "$(echo dist/*.whl){project.extra}"\n'
   typing = " mypy" if project.typed else "" # the published annotations, checked once
   return (
     f'      - run: pip install pytest{typing} "$(echo dist/*.whl){project.extra}"\n'

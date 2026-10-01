@@ -5,6 +5,7 @@ _estack = ORIGIN(RAM) + LENGTH(RAM);
 _Min_Heap_Size = 0x200;
 _Min_Stack_Size = 0x400;
 
+/* RAM opens with 8 bytes no image owns: the bootloader leaves its install result there */
 MEMORY
 {
   RAM(xrw)        : ORIGIN = 0x20000008, LENGTH = ${RAM}K - 8
@@ -128,13 +129,14 @@ SECTIONS
     _eMB_MEM2 = . ;
   } >RAM_SHARED AT> FLASH
 
-  /* End of the image, the value of its header; the erased bytes behind it take the CRC32
-     trailer the device writes when it stages an update. A symbol set inside a section is
-     section-relative unless made ABSOLUTE */
+  /* End of the image, the value of its header. Behind it 72 erased bytes of trailer:
+     the CRC32 at their start, the Ed25519 signature a doubleword further.
+     A symbol set inside a section is section-relative unless made ABSOLUTE */
   .app_trailer : {
     . = ALIGN(8);
     _image_size = ABSOLUTE(. - ORIGIN(FLASH));
+    FILL(0xFFFFFFFF);
     LONG(0xFFFFFFFF);
-    LONG(0xFFFFFFFF);
+    . += 72 - 4;
   } >FLASH
 }

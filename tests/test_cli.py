@@ -294,7 +294,7 @@ def program_says_which_file_is_missing(ws, monkeypatch, capsys):
 
 def program_refuses_a_raw_binary(ws, monkeypatch, capsys, tmp_path):
   """A `.bin` carries no address: openocd would write the update image over the vectors."""
-  image = tmp_path / "app-1.0.0-update.bin"
+  image = tmp_path / "app-1.0.0.bin"
   image.write_bytes(bytes(8))
   assert run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-y") == 0
   assert run_cli(monkeypatch, "app", "--program", str(image)) == 1
