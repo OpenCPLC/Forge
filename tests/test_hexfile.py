@@ -3,7 +3,7 @@
 """Intel HEX and binary images: round trips, joins, patches and what gets refused."""
 
 import pytest
-from opencplc.utils.hexfile import Memory, load_hex, load_bin, save_hex, save_bin
+from opencplc.utils.hexfile import Memory, load_hex, save_hex, save_bin
 
 def round_trip_keeps_bytes_and_entry(tmp_path):
   memory = Memory()
@@ -59,14 +59,13 @@ def patch_stays_inside_the_image():
   memory.write(0x104, b"\x01\x02")
   assert memory.read(0x100, 8) == b"\x00\x00\x00\x00\x01\x02\x00\x00"
   with pytest.raises(ValueError):
-    memory.write(0x106, bytes(4)) # would grow the image
+    memory.write(0x106, bytes(4))  # would grow the image
   with pytest.raises(ValueError):
-    memory.read(0x100, 0x108) # spans the gap
+    memory.read(0x100, 0x108)      # spans the gap
 
-def bin_lands_at_its_address(tmp_path):
-  (tmp_path / "boot.bin").write_bytes(b"\x11\x22\x33")
-  memory = load_bin(tmp_path / "boot.bin", 0x08000000)
-  assert memory.read(0x08000000, 3) == b"\x11\x22\x33"
+def bin_holds_its_range_alone(tmp_path):
+  memory = Memory()
+  memory.add(0x08000000, b"\x11\x22\x33")
   save_bin(memory, tmp_path / "copy.bin", 0x08000001, 2)
   assert (tmp_path / "copy.bin").read_bytes() == b"\x22\x33"
 

@@ -16,7 +16,7 @@ def version_real(ver:str, latest:str) -> str:
   return latest if ver == "latest" else ver
 
 def version_is_release(ver:str) -> bool:
-  """True for a pinned release tag, False for a moving branch like develop or main."""
+  """`True` for a pinned release tag, `False` for a moving branch like develop or main."""
   try:
     packaging.version.Version(ver)
     return True
@@ -33,18 +33,18 @@ def version_key(ver:str):
   except packaging.version.InvalidVersion: return (0, ver)
 
 def version_older_than(a:str, b:str) -> bool:
-  """True when a < b as semantic versions."""
+  """`True` when `a < b` as semantic versions."""
   return packaging.version.Version(a) < packaging.version.Version(b)
 
 def version_check(ver:str, available:list[str], err_msg:str):
-  """Exit with err_msg when ver is not among the available refs."""
+  """Exit with `err_msg` when `ver` is not among the available refs."""
   if ver not in available:
     p.err(f"Framework version {c.MAGNTA}{ver}{c.END} does not exist")
-    print(err_msg)
+    p(err_msg)
     sys.exit(1)
 
 def git_clone(url:str, path:str, ref:str|None=None, drop_on_err:bool=False):
-  """git clone url into path at ref; a failure exits, dropping the partial directory when asked."""
+  """Clone `url` into `path` at `ref`; failure exits, dropping the partial directory when asked."""
   cmd = ["git", "clone"]
   if ref: cmd += ["--branch", ref]
   cmd += [url, path]
@@ -55,18 +55,16 @@ def git_clone(url:str, path:str, ref:str|None=None, drop_on_err:bool=False):
 
 def git_get_refs(url:str, option:Literal["--heads", "--tags", "--ref"]="--ref") -> list[str]:
   """Remote refs of a git repository: tags (newest first), branches, or both."""
-  if option == "--ref":
-    return git_get_refs(url, "--tags") + git_get_refs(url, "--heads")
+  if option == "--ref": return git_get_refs(url, "--tags") + git_get_refs(url, "--heads")
   # `None` without git or network: no refs, the caller decides what to do
   listing = output(["git", "ls-remote", option, url]) or ""
   rx = r"refs/tags/([^\^{}]+)$" if option == "--tags" else r"refs/heads/(.+)$"
   refs = [m.group(1) for m in map(lambda ln: re.search(rx, ln), listing.splitlines()) if m]
-  if option == "--tags":
-    return sorted(refs, key=version_key, reverse=True)
+  if option == "--tags": return sorted(refs, key=version_key, reverse=True)
   return refs
 
 def git_clone_missing(url:str, path:str, ref:str, yes:bool=False, required:bool=True) -> bool:
-  """Clone when path is missing, after confirmation; False when declined and not required."""
+  """Clone when `path` is missing, after confirmation; `False` when declined and not required."""
   full_path = PATH.resolve(path, read=False)
   if DIR.exists(full_path): return True
   p.wrn(f"Missing {c.CREAM}{PATH.local(full_path)}{c.END}, "

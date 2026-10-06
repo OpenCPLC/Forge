@@ -7,7 +7,7 @@ from xaeian import FILE, JSON, PATH, file_context
 FILES_DIR = PATH.join(PATH.dirname(__file__), "files")
 
 def load_templates() -> dict:
-  """Every template under files/ as a dict, read from the PyInstaller bundle when frozen."""
+  """Every template under files/, read from the PyInstaller bundle when frozen."""
   with file_context(root_path=FILES_DIR, bundle=True):
     return {
       "opencplc.json": JSON.load("opencplc.json", {}),
@@ -31,5 +31,5 @@ def load_templates() -> dict:
         "launch.json": FILE.load("host/launch.json"),
         "main.h": FILE.load("host/main.h"),
         "main.c": FILE.load("host/main.c"),
-      }
+      },
     }

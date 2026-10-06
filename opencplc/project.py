@@ -13,6 +13,7 @@ import re, platform, subprocess
 from datetime import datetime
 from xaeian import Print, Color as c, FILE, DIR, PATH, replace_end
 from xaeian.cmd import which
+from .config import OPT_DEFAULT, LOG_LEVEL_DEFAULT
 from .templates import load_templates
 from .resolver import Project, flash_layout
 from . import utils
@@ -39,6 +40,16 @@ def recipe_safe(subs:dict) -> dict:
   if platform.system() == "Windows": return subs
   quote = lambda m: f"'{m.group()}'"
   return {key: ANSI.sub(quote, val) if isinstance(val, str) else val for key, val in subs.items()}
+
+def write_dispatcher(active:str, colored:str=""):
+  """Workspace `makefile`: `make` at the root builds `active`, or names none when it is ""."""
+  utils.create_file("makefile", load_templates()["workspace.mk"], "", recipe_safe({
+    "${ACTIVE}": active,
+    "${ACTIVE_COLORED}": colored,
+    "${GOLD}": c.GOLD, "${CMD}": c.CYAN, "${GREY}": c.GREY,
+    "${END}": c.END,
+    "${ERR}": f"{c.RED}ERR{c.END}",
+  }))
 
 def rel_from(items:list[str], base:str) -> list[str]:
   """Paths relative to a directory, e.g. core paths relative to the Core dir."""
@@ -83,11 +94,11 @@ def stack_command(pro:Project) -> str:
   return f"{script} $(if $(STLINK),--sn=$(STLINK)) $(if $(FUS),--fus) $(if $(FAST),--fast)"
 
 def config_inputs(pro:Project) -> list[str]:
-  """Reload inputs of the project makefile, anchored in $(PROJECT)."""
+  """Reload inputs of the project makefile, anchored in `$(PROJECT)`."""
   return ["$(PROJECT)/main.h"] + [anchored(d, pro.pro_dir, "PROJECT") for d in pro.project_dirs]
 
 def include_flags(pro:Project) -> list[str]:
-  """-I flags anchored in $(OPENCPLC)/$(PROJECT), resolved by Make at build time."""
+  """-I flags anchored in `$(OPENCPLC)`/`$(PROJECT)`, resolved by Make at build time."""
   flags = []
   for d in pro.include_dirs:
     if PATH.is_under(d, pro.pro_dir):
@@ -120,8 +131,8 @@ def project_header(cfg:dict, paths:dict, new:bool=False):
   p.gap(f"using framework version {c.VIOLET}{cfg['fw_ver']}{c.END} configured for {chip_msg}")
   if new and cfg.get("boot"):
     origin, slot_kB, _ = flash_layout(cfg)
-    p.gap(f"bootloader takes {c.GOLD}{cfg['boot_kB']}{c.END}kB, image at "
-      f"{c.GOLD}0x{origin:08X}{c.END} in one of two {c.GOLD}{slot_kB}{c.END}kB slots")
+    p.gap(f"bootloader takes {c.GOLD}{cfg['boot_kB']}{c.END}kB, "
+      f"image at {c.GOLD}0x{origin:08X}{c.END} in one of two {c.GOLD}{slot_kB}{c.END}kB slots")
 
 def prepare_project(cfg:dict, paths:dict):
   """Create the project skeleton: its directory plus main.c/main.h when missing."""
@@ -135,9 +146,9 @@ def prepare_project(cfg:dict, paths:dict):
   subs = {
     "${NAME}": cfg["pro_name"],
     "${DATE}": datetime.now().strftime("%Y-%m-%d"),
-    "${PRO_VERSION}": cfg["pro_ver"],
-    "${OPT_LEVEL}": cfg.get("opt_level", "Og" if is_embedded else "O2"),
-    "${LOG_LEVEL}": cfg.get("log_level", "LOG_LEVEL_INF"),
+    "${PRO_FRAMEWORK}": cfg["pro_ver"],
+    "${OPT_LEVEL}": cfg.get("opt_level", OPT_DEFAULT if is_embedded else "O2"),
+    "${LOG_LEVEL}": cfg.get("log_level", LOG_LEVEL_DEFAULT),
     "${BOARD}": cfg["board_title"] or "None",
     "${PLC}": "true" if cfg.get("plc") else "false",
     "${BOOT}": "true" if cfg.get("boot") else "false",
@@ -157,7 +168,7 @@ def prepare_project(cfg:dict, paths:dict):
   }
   if not FILE.exists(f"{paths['pro']}/main.c"):
     if is_embedded:
-      # A board on the PLC layer ships PLC_Main; the rest starts from the plain skeleton
+      # A board on the PLC layer ships `PLC_Main`; the rest starts from the plain skeleton
       on_plc = cfg.get("board") and cfg.get("plc")
       main_c = templates["main.c"] if on_plc else templates["main-none.c"]
     else:
@@ -204,7 +215,14 @@ def generate(pro:Project, activate:bool=True):
     "${FLASH}": pro.image_kB,
     "${FLASH_ORIGIN}": f"0x{pro.flash_origin:08X}",
     "${BOOT}": "true" if pro.boot else "false",
-    "${BOOT_IMAGE}": f"$(OPENCPLC)/scr/boot_{pro.hal}.bin" if pro.boot else "",
+    "${BOOT_IMAGE}": f"$(OPENCPLC)/{pro.boot_image}" if pro.boot_image else "",
+    "${BOOT_ELF}": pro.boot_elf,
+    # the bootloader project hands its hex and elf to Core, an application to the project
+    "${DIST_HEX}": f"$(OPENCPLC)/{pro.bootloader}.hex" if pro.bootloader
+      else "$(PROJECT)/$(DIST).hex",
+    "${DIST_ELF}": f"$(OPENCPLC)/{pro.bootloader}.elf" if pro.bootloader else "",
+    "${BOOT_KEY}": pro.boot_key,
+    "${BOOT_KEY_AT}": f"0x{pro.boot_key_at:08X}" if pro.boot_key_at else "",
     "${RAM}": pro.ram_kB,
     "${FREQ}": pro.freq_Hz,
     "${HAL}": pro.hal,
@@ -237,14 +255,7 @@ def generate(pro:Project, activate:bool=True):
   utils.create_file("makefile", makefile, pro.pro_dir, recipe_safe(subs),
     remove_line="" if keep_cube else "${CUBE_PATH}")
   if not activate: return
-  # Workspace dispatcher - `make` at the root builds the active project
-  utils.create_file("makefile", templates["workspace.mk"], "", recipe_safe({
-    "${ACTIVE}": pro.pro_dir,
-    "${ACTIVE_COLORED}": colored_path(pro.pro_dir, pro.name),
-    "${GOLD}": c.GOLD, "${CMD}": c.CYAN, "${GREY}": c.GREY,
-    "${END}": c.END,
-    "${ERR}": f"{c.RED}ERR{c.END}",
-  }))
+  write_dispatcher(pro.pro_dir, colored_path(pro.pro_dir, pro.name))
   DIR.ensure(".vscode")
   props = tpl.get("properties.json", templates["properties.json"])
   drop = ([] if pro.plc else ["/plc/", '"OpenCPLC"']) + ([] if pro.board else ["/brd/"])
@@ -252,6 +263,7 @@ def generate(pro:Project, activate:bool=True):
   # cortex-debug takes its tools from PATH where Forge has no packages to point at
   launch = tpl.get("launch.json", templates["launch.json"])
   drop = [] if pro.stlink else ["openOCDPreConfigLaunchCommands"]
+  drop += [] if pro.boot_elf else ["symbolFiles"]
   drop += [] if is_windows else ["TOOLS_ARM_DIR", "TOOLS_OPENOCD_EXE"]
   utils.create_file("launch.json", without(launch, drop), ".vscode", subs)
   utils.create_file("tasks.json", templates["tasks.json"], ".vscode", subs)

@@ -7,23 +7,25 @@ from xaeian import file_context
 from opencplc.args import Args
 from opencplc.configure import config_load, flags_reject, opt_normalize
 from conftest import build_workspace, load_template, render, ws_paths, refs_cfg, pro_map
+from conftest import KEY, add_define, load_myapp
 
 MAIN_H = {
   "${NAME}": "myapp", "${DATE}": "2026-01-01", "${BOARD}": "Uno", "${PLC}": "true",
-  "${DRIVERS}": "", "${CHIP}": "STM32G0C1", "${PRO_VERSION}": "1.0.0", "${FLASH}": 480,
+  "${DRIVERS}": "", "${CHIP}": "STM32G0C1", "${PRO_FRAMEWORK}": "1.0.0", "${FLASH}": 480,
   "${RAM}": 140, "${BOOT}": "true", "${OPT_LEVEL}": "O1", "${LOG_LEVEL}": "LOG_LEVEL_DBG",
   "${FREQ}": 48000000,
 }
 
 @pytest.fixture()
 def ws(tmp_path):
+  """Synthetic workspace as file root, myapp with a main.h rendered from `MAIN_H`."""
   build_workspace(tmp_path)
   (tmp_path / "projects" / "myapp" / "main.h").write_text(render(load_template("main.h"), MAIN_H))
   with file_context(root_path=str(tmp_path)):
     yield tmp_path
 
 def existing_project_reads_main_h(ws):
-  cfg = config_load(Args(name="myapp"), pro_map(ws), ws_paths(), "1.0.0", refs_cfg())
+  cfg = load_myapp(ws)
   assert cfg["board"] == "uno"
   assert cfg["chip"] == "STM32G0C1"
   assert cfg["pro_ver"] == "1.0.0"
@@ -37,15 +39,38 @@ def existing_project_reads_main_h(ws):
 def a_main_h_without_pro_boot_runs_from_the_start_of_flash(ws):
   main_h = (ws / "projects" / "myapp" / "main.h")
   main_h.write_text("\n".join(l for l in main_h.read_text().splitlines() if "PRO_BOOT" not in l))
-  cfg = config_load(Args(name="myapp"), pro_map(ws), ws_paths(), "1.0.0", refs_cfg())
+  cfg = load_myapp(ws)
   assert cfg["boot"] is False
 
+def main_h_without_pro_framework_exits(ws):
+  """No Core version stands in for the one a project names."""
+  main_h = ws / "projects" / "myapp" / "main.h"
+  lines = main_h.read_text().splitlines()
+  main_h.write_text("\n".join(line for line in lines if "PRO_FRAMEWORK" not in line))
+  with pytest.raises(SystemExit):
+    load_myapp(ws)
+
+def pro_boot_key_puts_the_image_under_the_key_bootloader(ws):
+  add_define(ws, f'#define PRO_BOOT_KEY "{KEY.upper()}"')
+  cfg = load_myapp(ws)
+  assert cfg["boot_key"] == KEY and cfg["boot_key_build"] is False
+
+def pro_boot_key_short_of_64_hex_digits_exits(ws):
+  add_define(ws, '#define PRO_BOOT_KEY "8a1fe3c0"')
+  with pytest.raises(SystemExit):
+    load_myapp(ws)
+
+def boot_key_on_marks_the_key_bootloader_build(ws):
+  add_define(ws, "#define BOOT_KEY ON")
+  cfg = load_myapp(ws)
+  assert cfg["boot_key_build"] is True and cfg["boot_key"] == ""
+
 def config_flags_are_rejected_for_existing_project(ws):
-  for kwargs in ({"board": "uno"}, {"chip": "STM32G081"}, {"memory": [128, 36]},
-      {"opt_level": "O2"}):
+  for kwargs in (
+    {"board": "uno"}, {"chip": "STM32G081"}, {"memory": [128, 36]}, {"opt_level": "O2"},
+  ):
     with pytest.raises(SystemExit):
-      config_load(Args(name="myapp", **kwargs), pro_map(ws), ws_paths(),
-        "1.0.0", refs_cfg())
+      config_load(Args(name="myapp", **kwargs), pro_map(ws), ws_paths(), "1.0.0", refs_cfg())
 
 def no_flags_pass_the_policy():
   flags_reject(Args(name="x"))
@@ -70,7 +95,6 @@ def opt_o2_builds_as_written_on_stm32():
   assert cfg["opt_level"] == "O2"
 
 def framework_flag_builds_an_existing_project_on_another_core(ws):
-  from conftest import build_workspace
   build_workspace(ws, core="2.0.0", project="other")
   paths = ws_paths(core="2.0.0")
   cfg = config_load(Args(name="myapp", framework="2.0.0"), pro_map(ws), paths, "2.0.0",

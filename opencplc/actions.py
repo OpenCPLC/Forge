@@ -35,8 +35,8 @@ def usage_line(name:str, used:int, total_kB:int, color:str) -> str:
 def size_report(elf:str, flash_kB:int, ram_kB:int):
   """Two plain lines for the build log, no level prefix: Make speaks here, not Forge."""
   flash, ram = memory_usage(elf)
-  print(usage_line("FLASH", flash, flash_kB, c.VIOLET))
-  print(usage_line("RAM", ram, ram_kB, c.GREEN))
+  p(usage_line("FLASH", flash, flash_kB, c.VIOLET))
+  p(usage_line("RAM", ram, ram_kB, c.GREEN))
 
 def update_forge(args):
   """
@@ -63,8 +63,7 @@ def update_forge(args):
     return
   p.inf(f"Installed: {c.GREY}{__version__}{c.END}")
   p.inf(f"{'Latest' if latest else 'Target'}: {c.VIOLET}{target}{c.END}")
-  if not args.yes and not utils.is_yes(f"{'Update' if latest else 'Replace'} Forge"):
-    sys.exit(1)
+  if not args.yes and not utils.is_yes(f"{'Update' if latest else 'Replace'} Forge"): sys.exit(1)
   exe = PATH.resolve(f"{PATH.script_dir()}/{EXE_NAME}", read=False)
   old = f"{exe}.old"
   try:
@@ -79,14 +78,14 @@ def update_forge(args):
 
 # Flags of a project run, where -f is an override, not a download
 PROJECT_FLAGS = ("name", "new", "demo", "reload", "delete", "get", "board", "chip", "plc",
-  "dvr", "boot", "memory", "opt_level", "project_list", "info", "version",
-  "framework_versions", "size", "pack", "program", "hash_list", "update", "assets")
+  "dvr", "boot", "memory", "opt_level", "project_list", "info", "version", "framework_versions",
+  "size", "pack", "program", "lock", "keygen", "hash_list", "update", "assets")
 
 def framework_fetch(args, forge_cfg:dict) -> bool:
   """
   -f VER alone: clone that Core version, no project involved.
 
-  A way to read a version before `PRO_VERSION` points at it.
+  A way to read a version before `PRO_FRAMEWORK` points at it.
   Already cloned stays as it is.
   """
   if not args.framework or args.stlink is not None: return False
@@ -103,7 +102,7 @@ def framework_fetch(args, forge_cfg:dict) -> bool:
   return True
 
 def info_actions(args, forge_cfg:dict) -> bool:
-  """One-shot actions: -v, -F, -f, -hl, -u, -a, -z, -p. True when any of them ran."""
+  """Run each one-shot action the flags ask for; `True` when any of them ran."""
   if FROZEN:
     FILE.remove(f"{PATH.script_dir()}/{EXE_NAME}.old") # what an earlier -u replaced
   ran = False
@@ -127,12 +126,12 @@ def info_actions(args, forge_cfg:dict) -> bool:
       suffix = f" {c.GREY}({', '.join(tags)}){c.END}" if tags else ""
       color = c.VIOLET if ver == active else c.CYAN
       parts.append(f"{color}{ver}{c.END}{suffix}")
-    print("Framework Versions: " + ", ".join(parts))
+    p("Framework Versions: " + ", ".join(parts))
     ran = True
   if framework_fetch(args, forge_cfg):
     ran = True
   if args.hash_list:
-    print(utils.c_code_enum(args.hash_list, args.hash_title, args.hash_define))
+    p(utils.c_code_enum(args.hash_list, args.hash_title, args.hash_define))
     ran = True
   if args.update:
     update_forge(args)
@@ -152,7 +151,7 @@ def info_actions(args, forge_cfg:dict) -> bool:
   return ran
 
 def program_image(pro:Project, path:str):
-  """--program: send a file to the board the way `make flash` does, and exit."""
+  """--program: send a file to the board the way `make flash` does."""
   if pro.platform != "STM32":
     p.err(f"Flag {flag.program} needs an STM32 project")
     sys.exit(1)
@@ -170,7 +169,6 @@ def program_image(pro:Project, path:str):
     p.err(f"Programming {c.VIOLET}{name}{c.END} failed")
     sys.exit(1)
   p.ok(f"Programmed {c.VIOLET}{name}{c.END} into {c.PINK}{pro.chip}{c.END}")
-  sys.exit(0)
 
 def info_show(pro:Project):
   """-i: print the resolved project configuration and exit."""
@@ -185,8 +183,8 @@ def info_show(pro:Project):
   if pro.platform == "STM32":
     p.gap(f"FLASH{c.GREY}/{c.END}RAM {flag.m}: {c.GOLD}{pro.flash_kB}{c.END}kB"
       f"{c.GREY}/{c.END}{c.GOLD}{pro.ram_kB}{c.END}kB")
-    slot = (f", image at {c.GOLD}0x{pro.flash_origin:08X}{c.END} in a "
-      f"{c.GOLD}{pro.image_kB}{c.END}kB slot") if pro.boot else ""
+    slot = (f", image at {c.GOLD}0x{pro.flash_origin:08X}{c.END}"
+      f" in a {c.GOLD}{pro.image_kB}{c.END}kB slot") if pro.boot else ""
     p.gap(f"Bootloader {flag.B}: {c.TURQUS}{'yes' if pro.boot else 'no'}{c.END}{slot}")
     p.gap(f"System frequency clock: {c.GOLD}{pro.freq_Hz}{c.END}Hz")
   p.gap(f"Optimization level {flag.o}: {c.CYAN}{pro.opt_level}{c.END}")

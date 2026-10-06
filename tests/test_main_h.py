@@ -12,7 +12,7 @@ UNO_SUBS = {
   "${PLC}": "true",
   "${DRIVERS}": "max31865",
   "${CHIP}": "STM32G0C1",
-  "${PRO_VERSION}": "1.0.2",
+  "${PRO_FRAMEWORK}": "1.0.2",
   "${FLASH}": 492,
   "${RAM}": 144,
   "${BOOT}": "false",
@@ -27,7 +27,7 @@ def embedded_main_h_roundtrip():
   assert info["PRO_CHIP"] == "STM32G0C1"
   assert info["PRO_PLC"] == "true"
   assert info["PRO_DRIVERS"] == "max31865"
-  assert info["PRO_VERSION"] == "1.0.2"
+  assert info["PRO_FRAMEWORK"] == "1.0.2"
   assert info["PRO_FLASH_kB"] == "492"
   assert info["PRO_RAM_kB"] == "144"
   assert info["PRO_BOOT"] == "false"
@@ -48,13 +48,13 @@ def host_main_h_roundtrip():
     "${NAME}": "myapp",
     "${DATE}": "2026-01-01",
     "${CHIP}": "HOST",
-    "${PRO_VERSION}": "develop",
+    "${PRO_FRAMEWORK}": "develop",
     "${OPT_LEVEL}": "O2",
     "${LOG_LEVEL}": "LOG_LEVEL_DBG",
   }
   info = parse_main_h(render(load_template("host/main.h"), subs))
   assert info["PRO_CHIP"] == "HOST"
-  assert info["PRO_VERSION"] == "develop"
+  assert info["PRO_FRAMEWORK"] == "develop"
   assert info["PRO_OPT_LEVEL"] == "O2"
   assert info["LOG_LEVEL"] == "LOG_LEVEL_DBG"
   assert "PRO_BOARD" not in info

@@ -1,7 +1,9 @@
+// ${NAME}/main.h
+
 /**
  * @name  Project: ${NAME}
  * @brief Project configuration, read by Forge on every load and by the framework at build.
- *        Edit the values, keep the definitions; make reloads the project after a change.
+ *        Edit values, keep definitions; `make` reloads the project after a change.
  * @date  ${DATE}
  */
 #ifndef MAIN_H_
@@ -12,7 +14,7 @@
 #define PRO_BOARD_${BOARD}
 #define PRO_CHIP_${CHIP}
 #define PRO_PLC ${PLC}
-#define PRO_VERSION "${PRO_VERSION}"
+#define PRO_FRAMEWORK "${PRO_FRAMEWORK}"
 #define PRO_FLASH_kB ${FLASH}
 #define PRO_RAM_kB ${RAM}
 #define PRO_BOOT ${BOOT}

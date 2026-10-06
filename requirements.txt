@@ -1,2 +1,2 @@
 packaging==26.2
-xaeian==1.0.0
+xaeian==1.0.1

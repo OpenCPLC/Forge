@@ -1,7 +1,7 @@
 # opencplc/utils/hexfile.py
 
 """
-Flash contents as bytes by address, read from and written to Intel HEX or raw binary.
+Flash contents as bytes by address, read from Intel HEX, written to Intel HEX or raw binary.
 
 The one primitive behind `--pack`: load images, patch bytes in place, merge, save.
 Only the record types `objcopy` writes for 32-bit targets are read:
@@ -17,9 +17,9 @@ from xaeian import FILE
 
 RECORD_DATA = 0x00
 RECORD_EOF = 0x01
-RECORD_LINEAR = 0x04 # upper 16 bits of the address for the records that follow
-RECORD_START = 0x05 # entry point
-LINE_BYTES = 16 # data bytes per record, as `objcopy` writes them
+RECORD_LINEAR = 0x04  # upper 16 bits of the address for the records that follow
+RECORD_START = 0x05   # entry point
+LINE_BYTES = 16       # data bytes per record, as `objcopy` writes them
 
 class Memory:
   """Bytes by address in contiguous segments; a gap is flash the image leaves untouched."""
@@ -52,8 +52,7 @@ class Memory:
   def _find(self, addr:int, size:int) -> tuple[int, bytearray]:
     """Segment holding all of `addr..addr + size`."""
     for seg_addr, seg in self.segments.items():
-      if seg_addr <= addr and addr + size <= seg_addr + len(seg):
-        return seg_addr, seg
+      if seg_addr <= addr and addr + size <= seg_addr + len(seg): return seg_addr, seg
     raise ValueError(f"0x{addr:08X}..0x{addr + size:08X} is not in the image")
 
   def read(self, addr:int, size:int) -> bytes:
@@ -126,12 +125,6 @@ def load_hex(path:str) -> Memory:
     else:
       raise ValueError(f"{path}:{number}: record type {kind:02X} is not supported")
   if run: memory.add(run_addr, run)
-  return memory
-
-def load_bin(path:str, addr:int) -> Memory:
-  """Memory from a raw binary placed at `addr`."""
-  memory = Memory()
-  memory.add(addr, FILE.load(path, binary=True))
   return memory
 
 def save_hex(memory:Memory, path:str):

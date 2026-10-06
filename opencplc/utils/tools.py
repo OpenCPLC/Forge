@@ -4,13 +4,14 @@
 Tools a build runs on: which, where, installed when missing.
 
 On Windows every build uses the packages Forge keeps under `%LOCALAPPDATA%/OpenCPLC`,
-what the console has on PATH plays no part. On Linux the tools come from PATH.
+what the console has on PATH plays no part.
+On Linux the tools come from PATH.
 Git is the exception on both: winget on Windows, the distribution on Linux.
 """
 
 import os, sys, stat, subprocess, platform
 from xaeian import Print, Color as c, DIR, FILE, JSON, PATH
-from xaeian.cmd import which
+from xaeian.cmd import which, run
 from .common import is_yes, color_url
 from .network import fetch
 from ..config import URL_DL
@@ -57,6 +58,7 @@ def template_paths(is_embedded:bool) -> dict[str, str]:
   """
   Tool paths for generated files, spelled through the environment, never as text:
   `$(LOCALAPPDATA)` for Make, `${env:LOCALAPPDATA}` for VS Code.
+
   Make reads a makefile as ANSI, so a profile named `Łukasz` written out would never be found,
   and a `#` or `$` in it would cut the line; a variable carries neither problem.
 
@@ -88,8 +90,9 @@ def retire(path:str):
   """
   Empty a package for the new one, file by file.
 
-  Windows lets a running image be renamed but not removed, and the reload that installs a new
-  `make` runs inside the old one; gdb or openocd may be up in VS Code just the same.
+  Windows lets a running image be renamed but not removed,
+  and the reload that installs a new `make` runs inside the old one;
+  gdb or openocd may be up in VS Code just the same.
   Such a file is renamed aside as `.old` and swept by a later run.
   """
   for root, dirs, files in os.walk(path, topdown=False):
@@ -160,8 +163,10 @@ def ensure_git(yes:bool):
     sys.exit(1)
   cmd = ["winget", "install", "--id", "Git.Git", "-e", "--silent",
     "--accept-package-agreements", "--accept-source-agreements"]
+  # user scope needs no admin rights, machine scope is the fallback
   try:
-    if subprocess.run(cmd + ["--scope", "user"]).returncode: subprocess.run(cmd, check=True)
+    if run(cmd + ["--scope", "user"], capture=False).returncode:
+      run(cmd, capture=False, check=True)
   except (OSError, subprocess.CalledProcessError):
     p.err(f"winget failed, install Git from {color_url('https://git-scm.com')}")
     sys.exit(1)
@@ -173,8 +178,11 @@ def ensure_git(yes:bool):
 
 def ensure_tools(is_embedded:bool, yes:bool):
   """
-  Everything a build needs. Windows: packages present and first on PATH of this process.
-  Linux: commands on PATH, or a list of what is missing. `yes` answers every install prompt.
+  Everything a build needs.
+
+  Windows: packages present and first on PATH of this process.
+  Linux: commands on PATH, or a list of what is missing.
+  `yes` answers every install prompt.
   """
   ensure_git(yes)
   names = STM32_TOOLS if is_embedded else HOST_TOOLS
@@ -202,9 +210,10 @@ def ensure_tools(is_embedded:bool, yes:bool):
 def verify_compiler(is_embedded:bool) -> bool:
   """Compiler answers `--version`, not just sits on PATH."""
   compiler = "arm-none-eabi-gcc" if is_embedded else "gcc"
+  # bytes, never decoded: a localized compiler answers in the code page of its console
   try:
     return subprocess.run([compiler, "--version"], capture_output=True, timeout=5).returncode == 0
-  except Exception:
+  except (OSError, subprocess.TimeoutExpired):
     return False
 
 #---------------------------------------------------------------------------------------- User PATH
@@ -272,6 +281,11 @@ def cube_bin() -> str:
   path = f"{home}/{CUBE_BIN}"
   return PATH.normalize(path) if FILE.exists(f"{path}/{CUBE_CLI}.exe") else ""
 
+def cube_cli() -> str:
+  """CubeProgrammer CLI to run: its default home first, then PATH; "" when neither has it."""
+  if cube_bin(): return f"{cube_bin()}/{CUBE_CLI}"
+  return which(CUBE_CLI) or ""
+
 def cube_found() -> bool:
   """CubeProgrammer reachable by `make stack`: in its default home or on PATH."""
-  return bool(cube_bin() or which(CUBE_CLI))
+  return bool(cube_cli())

@@ -1,10 +1,17 @@
 # Changes `opencplc`
 
+## `0.4.8` Key bootloader
+
+Breaking: `PRO_VERSION` becomes `PRO_FRAMEWORK`, required in `main.h`.
+
+- `PRO_BOOT_KEY` puts image under `key` bootloader, every build signed
+- `--keygen NAME` makes product key, `make dist` signs with it
+- `--lock` locks board for production, `--lock 0` unlocks
+- Core refuses build from older Forge
+
 ## `0.4.7` Mailbox fix
 
-- Updates work again after flashing; board flashed with 0.4.6 needs `make erase` once
-- Build gives `-dist.hex` and `-dist.bin` like `make dist`; existing project needs `opencplc -r`
-- `make erase` works on WB
+- Fix: update refused after flashing with 0.4.6
 
 ## `0.4.6` Flash fixes
 

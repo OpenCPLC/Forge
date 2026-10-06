@@ -10,8 +10,9 @@ from opencplc.templates import load_templates
 
 @pytest.fixture()
 def workspace(tmp_path, monkeypatch):
+  """Empty directory as cwd and file root, with refs not yet fetched in this run."""
   monkeypatch.chdir(tmp_path)
-  monkeypatch.setattr(forge, "REFS_FRESH", False)
+  monkeypatch.setattr(forge, "_refs_fresh", False)
   monkeypatch.setattr(forge.utils, "ensure_git", lambda yes: None)
   with file_context(root_path=str(tmp_path)):
     yield tmp_path
@@ -73,6 +74,7 @@ def saved_config_keeps_lists_inline_and_maps_open(workspace):
 def unknown_keys_are_dropped_on_load(workspace):
   (workspace / "opencplc.json").write_text(
     '{"version": "latest", "paths": {"projects": "./x"},'
-    ' "default": {"chip": "X", "optLevel": "Og"}, "windows": true, "stlink": {}}')
+    ' "default": {"chip": "X", "optLevel": "Og"}, "windows": true, "stlink": {}}',
+  )
   cfg = forge.forge_config(load_templates())
   assert "windows" not in cfg and "paths" not in cfg and "default" not in cfg

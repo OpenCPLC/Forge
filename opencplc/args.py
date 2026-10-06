@@ -1,6 +1,6 @@
 # opencplc/args.py
 
-"""Command line: flags, their colored names for messages and the parsed Args."""
+"""Command line: flags, their colored names for messages and the parsed `Args`."""
 
 import argparse, sys
 from dataclasses import dataclass
@@ -25,6 +25,8 @@ class Flag:
   i = f"{Color.GREY}-i --info{Color.END}"
   F = f"{Color.GREY}-F --framework-versions{Color.END}"
   program = f"{Color.GREY}--program{Color.END}"
+  lock = f"{Color.GREY}--lock{Color.END}"
+  keygen = f"{Color.GREY}--keygen{Color.END}"
   p = f"{Color.GREY}-p --pack{Color.END}"
 
 flag = Flag()
@@ -37,13 +39,13 @@ class Args:
   demo: bool = False
   reload: bool = False
   delete: str|bool = False
-  get: list[str] = None
+  get: list[str]|None = None
   board: str = ""
   plc: bool = False
   dvr: str = ""
   boot: bool = False
   chip: str = ""
-  memory: list[int] = None
+  memory: list[int]|None = None
   framework: str = ""
   opt_level: str = ""
   project_list: bool = False
@@ -51,13 +53,15 @@ class Args:
   framework_versions: bool = False
   version: bool = False
   stlink: str|None = None
-  size: list[str] = None
+  size: list[str]|None = None
   program: str|None = None
-  pack: list[str] = None
+  lock: int|None = None
+  keygen: str|None = None
+  pack: list[str]|None = None
   assets: str|None = None
   update: str|None = None
   yes: bool = False
-  hash_list: list[str] = None
+  hash_list: list[str]|None = None
   hash_title: str = ""
   hash_define: bool = False
 
@@ -75,20 +79,20 @@ example used:
   opencplc 3                      Load project #3 from list
 """
 
-class MyParser(argparse.ArgumentParser):
+class Parser(argparse.ArgumentParser):
   """argparse parser with a blank line around the help text."""
   def format_help(self):
     return "\n" + super().format_help().rstrip() + "\n\n"
 
 def load_args() -> Args:
-  """Parse sys.argv into Args."""
-  parser = MyParser(
+  """Parse `sys.argv` into `Args`."""
+  parser = Parser(
     description=f"{Color.TEAL}OpenCPLC Forge{Color.GREY}:{Color.END} "
       "Project configuration and build tool",
     formatter_class=fmt,
     add_help=False,
     usage=argparse.SUPPRESS,
-    epilog=EXAMPLE_USED
+    epilog=EXAMPLE_USED,
   )
   # Project selection
   parser.add_argument("name", type=str, nargs="?", default="",
@@ -102,7 +106,7 @@ def load_args() -> Args:
     help="Reload the active project, or the one in the current directory")
   parser.add_argument("-d", "--delete", type=str, nargs="?", const=True, metavar="NAME",
     help="Delete project and its files")
-  parser.add_argument("-g", "--get", nargs='+', metavar=("URL", "REF"),
+  parser.add_argument("-g", "--get", nargs="+", metavar=("URL", "REF"),
     help="Clone project from Git repository or download ZIP", default=[])
   # Hardware configuration
   parser.add_argument("-b", "--board", type=str, metavar="BOARD",
@@ -138,9 +142,13 @@ def load_args() -> Args:
   parser.add_argument("-z", "--size", nargs=3, metavar=("ELF", "FLASH_kB", "RAM_kB"),
     help="Report FLASH and RAM usage of an .elf against the chip memory")
   parser.add_argument("-p", "--pack", nargs="+", metavar="FILE",
-    help="Pack the flash image: APP.hex OUT.hex [BOOT], a makefile step")
+    help="Pack the flash image: APP.hex OUT.hex [BOOT [KEY_AT [KEY]]], a makefile step")
   parser.add_argument("--program", type=str, metavar="FILE",
     help="Send a .hex to the board through the programmer, e.g. the one from dist")
+  parser.add_argument("--lock", type=int, nargs="?", const=1, choices=(0, 1, 2), metavar="LEVEL",
+    help="Lock board for production: 1 RDP1, 2 for good, 0 unlocks, erasing flash")
+  parser.add_argument("--keygen", type=str, metavar="NAME",
+    help="Make or take product key NAME and write it into main.h of the project")
   parser.add_argument("-a", "--assets", type=str, nargs="?", const="assets", metavar="DIR",
     help="Download datasheets and reference manuals to DIR")
   parser.add_argument("-u", "--update", type=str, nargs="?", const="latest", metavar="VER",
@@ -183,6 +191,8 @@ def load_args() -> Args:
     stlink=ns.stlink,
     size=ns.size,
     program=ns.program,
+    lock=ns.lock,
+    keygen=ns.keygen,
     pack=ns.pack,
     assets=ns.assets,
     update=ns.update,

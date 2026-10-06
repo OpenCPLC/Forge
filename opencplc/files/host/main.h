@@ -1,7 +1,9 @@
+// ${NAME}/main.h
+
 /**
  * @name  Project: ${NAME}
  * @brief Project configuration for the host platform, read by Forge on every load.
- *        Edit the values, keep the definitions; make reloads the project after a change.
+ *        Edit values, keep definitions; `make` reloads the project after a change.
  * @date  ${DATE}
  */
 #ifndef MAIN_H_
@@ -10,7 +12,7 @@
 #include <xdef.h>
 
 #define PRO_CHIP_${CHIP}
-#define PRO_VERSION "${PRO_VERSION}"
+#define PRO_FRAMEWORK "${PRO_FRAMEWORK}"
 #define PRO_OPT_LEVEL "${OPT_LEVEL}"
 
 #endif

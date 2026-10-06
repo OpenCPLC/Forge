@@ -12,7 +12,7 @@ import os, sys, json
 from xaeian import Print, Color as c, Ico, FILE, DIR, JSON, PATH, replace_end, set_context
 from .config import URL_CORE, DIR_PROJECTS, DIR_FRAMEWORK, DIR_BUILD
 from .args import flag
-from .templates import load_templates
+from .project import write_dispatcher
 from . import utils
 
 p = Print()
@@ -20,7 +20,7 @@ p = Print()
 #----------------------------------------------------------------------------------- Root discovery
 
 def find_workspace(start:str=".") -> str|None:
-  """Nearest directory at or above start holding opencplc.json."""
+  """Nearest directory at or above `start` holding opencplc.json."""
   path = PATH.normalize(os.path.abspath(start)) # the process cwd: no file root is set yet
   while not FILE.exists(f"{path}/opencplc.json"):
     parent = PATH.dirname(path)
@@ -29,7 +29,7 @@ def find_workspace(start:str=".") -> str|None:
   return path
 
 def project_from_path(path:str, pro_root:str) -> str|None:
-  """Name of the project holding path: the closest dir with main.h under pro_root."""
+  """Name of the project holding `path`: the closest dir with main.h under `pro_root`."""
   if not PATH.is_under(path, pro_root): return None
   name = PATH.rel(path, pro_root)
   while name:
@@ -81,17 +81,17 @@ def persist_config(forge_cfg:dict, create:bool=False):
   if exists and JSON.load("opencplc.json", None) == forge_cfg: return
   FILE.save("opencplc.json", config_text(forge_cfg))
 
-REFS_FRESH = False
+_refs_fresh = False
 
 def ensure_refs(forge_cfg:dict, yes:bool) -> list[str]:
   """Framework refs from GitHub, fetched once per run and cached in opencplc.json."""
-  global REFS_FRESH
-  if REFS_FRESH: return forge_cfg["available-versions"]
+  global _refs_fresh
+  if _refs_fresh: return forge_cfg["available-versions"]
   utils.ensure_git(yes)
   versions = utils.git_get_refs(URL_CORE, "--ref")
   if versions:
     forge_cfg["available-versions"] = versions
-    REFS_FRESH = True
+    _refs_fresh = True
     persist_config(forge_cfg)
   else:
     p.wrn(f"No internet access or {c.TEAL}GitHub{c.END} is not responding")
@@ -108,18 +108,18 @@ def paths_setup(args, forge_cfg:dict) -> tuple[dict, str]:
   paths["pro"] = DIR_PROJECTS
   return paths, fw_ver
 
-def ensure_framework(fw_ver:str, PATHS:dict, forge_cfg:dict, yes:bool):
+def ensure_framework(fw_ver:str, paths:dict, forge_cfg:dict, yes:bool):
   """Clone the framework when missing and sanity-check its layout."""
   # Already cloned versions work offline, even when gone from remote
-  if not DIR.exists(PATHS["fw"]):
+  if not DIR.exists(paths["fw"]):
     utils.version_check(fw_ver, ensure_refs(forge_cfg, yes),
       f"{Ico.RUN} Check version list: {flag.F}")
-    utils.git_clone_missing(URL_CORE, PATHS["fw"], fw_ver, yes)
-  fw_hal = PATH.resolve(f"{PATHS['fw']}/hal", read=False)
-  fw_lib = PATH.resolve(f"{PATHS['fw']}/lib", read=False)
+    utils.git_clone_missing(URL_CORE, paths["fw"], fw_ver, yes)
+  fw_hal = PATH.resolve(f"{paths['fw']}/hal", read=False)
+  fw_lib = PATH.resolve(f"{paths['fw']}/lib", read=False)
   if not DIR.exists(fw_hal) or not DIR.exists(fw_lib):
     p.err(f"Framework {c.VIOLET}{fw_ver}{c.END} is incomplete or corrupted")
-    p.inf(f"Try removing {c.CREAM}{PATHS['fw']}{c.END} and run again")
+    p.inf(f"Try removing {c.CREAM}{paths['fw']}{c.END} and run again")
     sys.exit(1)
 
 #----------------------------------------------------------------------------------- Active project
@@ -130,14 +130,14 @@ def makefile_info() -> dict|None:
   lines = utils.lines_clear(utils.load_lines("makefile"), "#")
   return utils.get_vars(lines, ["ACTIVE"], ":=", required=False) or None
 
-def reload_from_cwd(args, PATHS:dict, cwd:str) -> bool:
+def reload_from_cwd(args, paths:dict, cwd:str) -> bool:
   """-r/-i run inside a project directory: that project is the target."""
-  name = project_from_path(cwd, PATHS["projects"])
+  name = project_from_path(cwd, paths["projects"])
   if name is None: return False
   args.name = name
   return True
 
-def reload_from_makefile(args, PATHS:dict, make_info:dict|None):
+def reload_from_makefile(args, make_info:dict|None):
   """-r/-i without a name: recover the active project from the dispatcher."""
   active = (make_info or {}).get("ACTIVE", "")
   if active.startswith(DIR_PROJECTS + "/"):
@@ -148,7 +148,7 @@ def reload_from_makefile(args, PATHS:dict, make_info:dict|None):
     sys.exit(1)
 
 def stlink_bind(forge_cfg:dict, pro_id:str, serial:str|None):
-  """Bind (serial) or clear (empty) the ST-Link of a project in opencplc.json."""
+  """Bind (serial) or clear (empty) the ST-Link of a project in opencplc.json; `None` leaves it."""
   if serial is None: return
   if serial:
     forge_cfg["stlink"][pro_id] = serial
@@ -159,38 +159,36 @@ def stlink_bind(forge_cfg:dict, pro_id:str, serial:str|None):
 
 #-------------------------------------------------------------------------------- Project inventory
 
-def project_select(args, PRO:dict):
+def project_select(args, projects:dict):
   """-l listing and picking a project by its number on that list."""
   if not (args.project_list or (args.name and args.name.isdigit())): return
-  if not PRO:
+  if not projects:
     p.wrn("No projects found")
     p.inf(f"Create new with flag {flag.n}")
     sys.exit(1)
-  for i, (name, path) in enumerate(PRO.items(), 1):
+  for i, (name, path) in enumerate(projects.items(), 1):
     if args.project_list:
       path = replace_end(PATH.local(path), name, "")
       nbr = f"{c.GOLD}{str(i).ljust(3)}{c.END}"
-      print(f"{nbr} {c.GREY}{path}{c.END}{c.BLUE}{name}{c.END}")
+      p(f"{nbr} {c.GREY}{path}{c.END}{c.BLUE}{name}{c.END}")
     elif int(args.name) == i:
       args.name = name
       break
   if args.project_list: sys.exit(0)
 
-def project_delete(args, PRO:dict, make_info:dict|None, forge_cfg:dict):
+def project_delete(args, projects:dict, make_info:dict|None, forge_cfg:dict):
   """Remove the project folder, its ST-Link binding and, when active, the dispatcher target."""
-  key = next((k for k in PRO if k.lower() == args.name.lower()), None)
+  key = utils.project_key(projects, args.name)
   if key is None:
     p.err(f"Project {c.MAGNTA}{args.name}{c.END} does not exist")
     sys.exit(1)
   try:
-    active = PATH.local(PRO[key])
+    active = PATH.local(projects[key])
     if forge_cfg["stlink"].pop(f"{DIR_PROJECTS}/{key}", None) is not None:
       persist_config(forge_cfg)
-    DIR.remove(PRO[key], force=True)
+    DIR.remove(projects[key], force=True)
     if make_info and make_info.get("ACTIVE") == active:
-      utils.create_file("makefile", load_templates()["workspace.mk"], "",
-        {"${ACTIVE}": "", "${ACTIVE_COLORED}": "", "${GOLD}": c.GOLD, "${CMD}": c.CYAN,
-         "${GREY}": c.GREY, "${END}": c.END, "${ERR}": f"{c.RED}ERR{c.END}"})
+      write_dispatcher("")
       p.inf(f"Active project removed - select another with {c.CYAN}opencplc <name>{c.END}")
     p.ok(f"Project {c.BLUE}{args.name}{c.END} deleted")
     sys.exit(0)

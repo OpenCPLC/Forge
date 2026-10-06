@@ -2,8 +2,7 @@
 
 """Downloads, ZIP extraction and fetching a remote project."""
 
-import sys, re
-import urllib.request, urllib.error, http.client
+import sys, re, urllib.request, urllib.error, http.client
 from xaeian import Print, Color as c, FILE, DIR, PATH
 from xaeian.net import download as download_file
 from .version import git_clone
@@ -27,10 +26,10 @@ def _unreachable(url:str, e:Exception):
     p.err(f"Connection failed on {color_url(url)} | {e}")
   sys.exit(1)
 
-def download(url:str, save_path:str="", timeout:float=10) -> bytes:
+def download(url:str, save_path:str="", timeout_s:float=10) -> bytes:
   """Fetch `url` into memory, saving to `save_path` when given; a network or HTTP error exits."""
   try:
-    data = urllib.request.urlopen(url, timeout=timeout).read()
+    data = urllib.request.urlopen(url, timeout=timeout_s).read()
   except (OSError, http.client.HTTPException) as e: # `URLError` and a mid-transfer cut alike
     _unreachable(url, e)
   if save_path:
@@ -45,7 +44,7 @@ def fetch(url:str, path:str):
     _unreachable(url, e)
 
 def unzip(data:bytes, path:str, drop_on_err:bool=True):
-  """Unpack ZIP bytes into path; a bad archive exits and drops the partial directory."""
+  """Unpack ZIP bytes into `path`; a bad archive exits and drops the partial directory."""
   try:
     DIR.unzip_bytes(data, path)
   except Exception:
@@ -55,7 +54,7 @@ def unzip(data:bytes, path:str, drop_on_err:bool=True):
     sys.exit(1)
 
 def project_remote(url:str, path:str, ref:str|None=None, name:str="") -> str:
-  """Fetch a project from a ZIP url or git repository; name falls back to @name in its main.h."""
+  """Fetch a project from a ZIP url or git repository; name falls back to `@name` in its main.h."""
   tmp = ".remote"
   DIR.ensure(tmp)
   if url.endswith(".zip"):

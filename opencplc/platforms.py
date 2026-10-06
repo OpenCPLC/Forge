@@ -8,9 +8,8 @@ from xaeian import Print, Color as c
 p = Print()
 
 def host_define() -> str:
-  """Compiler define of the host platform: _WIN64/_WIN32 or _GNU_SOURCE."""
-  if os.name == "nt":
-    return "_WIN64" if struct.calcsize("P") * 8 == 64 else "_WIN32"
+  """Compiler define of the host platform: `_WIN64`/`_WIN32` or `_GNU_SOURCE`."""
+  if os.name == "nt": return "_WIN64" if struct.calcsize("P") * 8 == 64 else "_WIN32"
   return "_GNU_SOURCE"
 
 HAL_DIRS = {
@@ -24,7 +23,9 @@ def get_hal_dirs(hal:str) -> list:
   return HAL_DIRS.get(hal, [hal])
 
 # Bootloader owns `boot_kB` at the start of flash: its code and one page as the mailbox
-# One image per family in Core as `scr/boot_<hal>.bin`
+# The `key` bootloader owns `boot_key_kB`, its key in the last 32B of the code
+# Both sizes place the slots of shipped devices, so they never change
+# Bootloaders of each family in Core `scr/`, see `boot_stem`
 # `dev_id` is `DEV_ID` of the chip, the bootloader matches it against the image header
 # `PRO_BOOT true` halves the rest of `PRO_FLASH_kB` into application and staging slots
 CHIPS = {
@@ -38,7 +39,7 @@ CHIPS = {
     "svd": "stm32g081.svd", "hal": "stm32g0",
     "ld": "stm32g0.ld", "openocd": "stm32g0x",
     "erase": "stm32g0x mass_erase 0",
-    "page_kB": 2, "boot_kB": 8, "dev_id": 0x460,
+    "page_kB": 2, "boot_kB": 8, "boot_key_kB": 32, "dev_id": 0x460,
   },
   "STM32G0C1": {
     "platform": "STM32", "family": "G0",
@@ -50,7 +51,7 @@ CHIPS = {
     "svd": "stm32g0c1.svd", "hal": "stm32g0",
     "ld": "stm32g0.ld", "openocd": "stm32g0x",
     "erase": "stm32g0x mass_erase 0",
-    "page_kB": 2, "boot_kB": 8, "dev_id": 0x467,
+    "page_kB": 2, "boot_kB": 8, "boot_key_kB": 32, "dev_id": 0x467,
   },
   "STM32WB55": {
     "platform": "STM32", "family": "WB",
@@ -65,7 +66,7 @@ CHIPS = {
     "ld": "stm32wb.ld", "openocd": "stm32wbx",
     # `mass_erase` fails beside the wireless stack, so `make erase` clears CPU1 pages one by one
     "erase": "flash erase_address 0x08000000 0xD0000", "stack": "flash_cpu2.sh",
-    "page_kB": 4, "boot_kB": 16, "dev_id": 0x495,
+    "page_kB": 4, "boot_kB": 16, "boot_key_kB": 32, "dev_id": 0x495,
   },
   "HOST": {
     "platform": "Host", "family": "",
@@ -76,9 +77,13 @@ CHIPS = {
     "define": host_define(), "device": "Desktop",
     "svd": "", "hal": "host",
     "ld": "", "openocd": "", "erase": "",
-    "page_kB": 0, "boot_kB": 0, "dev_id": 0,
+    "page_kB": 0, "boot_kB": 0, "boot_key_kB": 0, "dev_id": 0,
   },
 }
+
+def boot_stem(hal:str, key:bool) -> str:
+  """Bootloader files of a family in Core, Core-relative and without extension."""
+  return f"scr/boot_{hal}{'_key' if key else ''}"
 
 def parse_chip(name:str) -> dict:
   """Chip table entry with its compiler defines; an unknown chip exits."""

@@ -16,6 +16,7 @@
       "name": "Debug",
       "cwd": "${workspaceRoot}",
       "executable": "${BUILD_DIR}/${TARGET}.elf",
+      "symbolFiles": [{"file": "${BUILD_DIR}/${TARGET}.elf"}, {"file": "${BOOT_ELF}"}],
       "loadFiles": ["${BUILD_DIR}/${TARGET}-dist.hex"],
       "request": "launch",
       "type": "cortex-debug",

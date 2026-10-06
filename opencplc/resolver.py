@@ -11,9 +11,10 @@ Absolute paths appear only while scanning.
 
 import sys
 from dataclasses import dataclass, field
-from xaeian import Print, Color as c, DIR, PATH
-from .platforms import get_hal_dirs
-from . import utils
+from xaeian import Print, Color as c, DIR, FILE, PATH
+from .config import OPT_DEFAULT, LOG_LEVEL_DEFAULT
+from .platforms import get_hal_dirs, boot_stem
+from . import utils, __version__
 
 p = Print()
 
@@ -21,17 +22,17 @@ p = Print()
 class Project:
   """Fully resolved project model."""
   # Identity
-  name: str      # "firm/app"
-  pro_dir: str   # workspace-relative source directory
-  target: str    # artifact base name
+  name: str     # "firm/app"
+  pro_dir: str  # workspace-relative source directory
+  target: str   # artifact base name
   # Core
   pro_ver: str   # Core version pinned in main.h
   core_ref: str  # Core version used for this build
   core_dir: str  # workspace-relative Core directory
   # Hardware
-  platform: str  # "STM32" | "Host"
+  platform: str     # "STM32" | "Host"
   chip: str
-  board: str|None   # board directory name, None without a board
+  board: str|None   # board directory name, `None` without a board
   board_title: str  # board name for generated code and messages, "" without a board
   plc: bool         # PLC layer compiled in
   family: str
@@ -41,8 +42,8 @@ class Project:
   device: str
   svd: str
   # Build configuration
-  flash_kB: int # PRO_FLASH_kB, the flash region of the project
-  image_kB: int # what the image may take: the region, or its slot under the bootloader
+  flash_kB: int  # `PRO_FLASH_kB`, the flash region of the project
+  image_kB: int  # what the image may take: the region, or its slot under the bootloader
   ram_kB: int
   freq_Hz: int
   opt_level: str
@@ -57,20 +58,25 @@ class Project:
   include_dirs: list[str]
   project_dirs: list[str] # project root and every dir holding project sources or headers
   # Flash and debug
-  linker: str # linker template key, "" for HOST
+  linker: str        # linker template key, "" for HOST
   openocd_target: str
   erase_command: str
-  stack_script: str # Core script that flashes the radio stack, "" when the chip has none
-  boot: bool        # image runs under the bootloader, linked into the application slot
-  flash_origin: int # address the image is linked at
+  stack_script: str  # Core script that flashes the radio stack, "" when the chip has none
+  boot: bool         # image runs under the bootloader, linked into the application slot
+  flash_origin: int  # address the image is linked at
+  boot_key: str      # `PRO_BOOT_KEY`, the key `dist` signs with, "" without the `key` bootloader
+  boot_key_at: int   # where the key goes into the `key` bootloader, 0 without one
+  boot_image: str    # bootloader packed in front, Core-relative, "" without one
+  boot_elf: str      # its symbols for the debugger, workspace-relative, "" when Core has none
+  bootloader: str    # Core files the bootloader project dists into, "" for any other
   stlink: str
   build_dir: str
-  # Device drivers selected by the board and by PRO_DRIVERS
+  # Device drivers selected by the board and by `PRO_DRIVERS`
   board_drivers: list[str] = field(default_factory=list)
   project_drivers: list[str] = field(default_factory=list)
 
 def rel_tree(root:str, ext:str) -> dict[str, list[str]]:
-  """folder → files under root, both workspace-relative."""
+  """folder → files under `root`, both workspace-relative."""
   found = utils.files_list(root, ext)
   return {PATH.local(folder): [PATH.local(f) for f in files] for folder, files in found.items()}
 
@@ -107,12 +113,12 @@ def other_board(cfg:dict, core_dir:str, folder:str) -> bool:
   return not (board_dir and PATH.is_under(folder, board_dir))
 
 def in_drivers(core_dir:str, folder:str) -> bool:
-  """True for dvr of core_dir and every folder below it."""
+  """`True` for dvr of `core_dir` and every folder below it."""
   return PATH.is_under(folder, f"{core_dir}/dvr")
 
 def unused_driver(cfg:dict, core_dir:str, folder:str, file:str) -> bool:
   """
-  Core drivers compile only when selected by the board or by PRO_DRIVERS.
+  Core drivers compile only when selected by the board or by `PRO_DRIVERS`.
 
   A driver is named by its file, whatever folder under dvr it sits in.
   """
@@ -120,7 +126,7 @@ def unused_driver(cfg:dict, core_dir:str, folder:str, file:str) -> bool:
   return PATH.stem(file).lower() not in cfg["drivers"]
 
 def core_sources(cfg:dict, core_dir:str, ext:str) -> list[str]:
-  """Core files with ext for this variant, sorted and workspace-relative."""
+  """Core files with `ext` for this variant, sorted and workspace-relative."""
   tree = core_tree(cfg, core_dir, ext)
   return sorted(f for folder, fs in tree.items() if not other_board(cfg, core_dir, folder)
     for f in fs if not unused_driver(cfg, core_dir, folder, f))
@@ -139,7 +145,7 @@ def available_drivers(core_dir:str) -> list[str]:
   return sorted(names_c & names_h)
 
 def validate_drivers(cfg:dict, core_dir:str):
-  """Fail early when a board or PRO_DRIVERS names a driver this Core does not ship."""
+  """Fail early when a board or `PRO_DRIVERS` names a driver this Core does not ship."""
   if not cfg["drivers"] or not DIR.exists(f"{core_dir}/dvr"): return
   available = available_drivers(core_dir)
   unknown = [n for n in cfg["drivers"] if n not in available]
@@ -150,36 +156,81 @@ def validate_drivers(cfg:dict, core_dir:str):
   sys.exit(1)
 
 FLASH_BASE = 0x08000000
+BOOT_KEY_SIZE = 32 # Ed25519 public key, `BOOT_KEY_SIZE` in Core
+
+def forge_version() -> int:
+  """Forge version as one number Core compares in `#if`: 0.4.8 → 408, 1.2.10 → 10210."""
+  major, minor, patch = (int(n) for n in __version__.split("."))
+  return major * 10000 + minor * 100 + patch
+
+def boot_region_kB(cfg:dict) -> int:
+  """
+  Bootloader region [kB]: `boot_key_kB` where the `key` bootloader is involved, else `boot_kB`.
+
+  `PRO_BOOT_KEY` links an image under the `key` bootloader, `BOOT_KEY ON` builds that bootloader.
+  """
+  under_key, key_build = bool(cfg.get("boot_key")), bool(cfg.get("boot_key_build"))
+  if under_key and not cfg.get("boot"):
+    p.err(f"{c.SKY}PRO_BOOT_KEY{c.END} needs {c.SKY}PRO_BOOT true{c.END}")
+    p.run(f"Set {c.SKY}PRO_BOOT true{c.END} in {c.BLUE}main.h{c.END}")
+    sys.exit(1)
+  # `BOOT_KEY` marks the bootloader project, `OFF` as much as `ON`
+  if (cfg.get("bootloader") or key_build) and cfg.get("boot"):
+    p.err(f"{c.SKY}BOOT_KEY{c.END} builds bootloader itself, "
+      f"image under it takes {c.SKY}PRO_BOOT_KEY{c.END}")
+    sys.exit(1)
+  if not under_key and not key_build: return cfg.get("boot_kB", 0)
+  if not cfg.get("boot_key_kB"):
+    p.err(f"Chip {c.PINK}{cfg['chip']}{c.END} has no {c.SKY}key{c.END} bootloader")
+    sys.exit(1)
+  return cfg["boot_key_kB"]
+
+def boot_key_at(cfg:dict) -> int:
+  """Where Forge writes the key: the last bytes of the `key` bootloader code, below its mailbox."""
+  return FLASH_BASE + (cfg["boot_key_kB"] - cfg["page_kB"]) * 1024 - BOOT_KEY_SIZE
 
 def flash_layout(cfg:dict) -> tuple[int, int, list[str]]:
   """
   Link origin, link length [kB] and `BOOT_*` defines of the image.
 
-  Without PRO_BOOT the image takes the whole region.
-  Under the bootloader the region past `boot_kB` splits into two equal slots of whole pages.
+  Without `PRO_BOOT` the image takes the whole region, the bootloader its code region.
+  Under the bootloader the flash past its region splits into two equal slots of whole pages.
   Image is linked into the application slot, an update lands in the staging one first.
   Every STM32 build carries `BOOT_PAGES` and `BOOT_CHIP`, chip constants.
   `BOOT_SLOT_PAGES` marks the image as one in a slot.
   """
   flash_kB = cfg["flash_kB"]
-  boot_kB, page_kB = cfg.get("boot_kB", 0), cfg.get("page_kB", 0)
+  boot_kB, page_kB = boot_region_kB(cfg), cfg.get("page_kB", 0)
   defines = [f"BOOT_PAGES={boot_kB // page_kB}"] if boot_kB and page_kB else []
   if cfg.get("dev_id"): defines.append(f"BOOT_CHIP=0x{cfg['dev_id']:03X}")
-  if not cfg.get("boot"):
-    return FLASH_BASE, flash_kB, defines
+  if cfg.get("bootloader") and not cfg.get("boot"):
+    return FLASH_BASE, boot_kB - page_kB, defines # the last page is the mailbox
+  if not cfg.get("boot"): return FLASH_BASE, flash_kB, defines
   if not boot_kB:
     p.err(f"Chip {c.PINK}{cfg['chip']}{c.END} has no bootloader")
     p.run(f"Set {c.SKY}PRO_BOOT false{c.END} in {c.BLUE}main.h{c.END}")
     sys.exit(1)
   slot_kB = (flash_kB - boot_kB) // 2 // page_kB * page_kB
   if slot_kB < page_kB:
-    p.err(f"{c.SKY}PRO_FLASH_kB{c.END} {c.GOLD}{flash_kB}{c.END}kB leaves no room for "
-      f"two slots behind the {c.GOLD}{boot_kB}{c.END}kB bootloader")
+    p.err(f"{c.SKY}PRO_FLASH_kB{c.END} {c.GOLD}{flash_kB}{c.END}kB leaves no room "
+      f"for two slots behind the {c.GOLD}{boot_kB}{c.END}kB bootloader")
     sys.exit(1)
   return FLASH_BASE + boot_kB * 1024, slot_kB, defines + [f"BOOT_SLOT_PAGES={slot_kB // page_kB}"]
 
+def boot_image(cfg:dict, core_dir:str) -> str:
+  """
+  Bootloader packed in front of the image, Core-relative; a Core without it exits.
+
+  Core ships it as hex, which leaves the gap below the key of the `key` one erased.
+  """
+  stem = boot_stem(cfg["hal"], bool(cfg.get("boot_key")))
+  if FILE.exists(f"{core_dir}/{stem}.hex"): return f"{stem}.hex"
+  p.err(f"Core {c.VIOLET}{cfg['fw_ver']}{c.END} has no bootloader {c.BLUE}{stem}.hex{c.END}")
+  p.inf(f"{c.SKY}PRO_BOOT{c.END} needs a newer Core")
+  sys.exit(1)
+
 def project_sources(pro_dir:str, ext:str) -> list[str]:
-  """Project files with ext, sorted and workspace-relative."""
+  """Project files with `ext`, sorted and workspace-relative."""
   return sorted(f for fs in rel_tree(pro_dir, ext).values() for f in fs)
 
 def project_includes(pro_dir:str) -> list[str]:
@@ -192,7 +243,7 @@ def project_dirs(pro_dir:str, sources:list[str], includes:list[str]) -> list[str
   return sorted(dirs)
 
 def resolve_project(cfg:dict, paths:dict, forge_cfg:dict) -> Project:
-  """Resolve the full project model from its configuration and workspace paths."""
+  """Project model; sets `cfg["drivers"]`, and a config the Core cannot build exits."""
   is_embedded = cfg["platform"] == "STM32"
   name = cfg["pro_name"]
   core_dir = PATH.local(paths["fw"])
@@ -205,11 +256,17 @@ def resolve_project(cfg:dict, paths:dict, forge_cfg:dict) -> Project:
     mcu_flags = f"{cpu_flags} -mthumb -mfloat-abi=soft"
   else:
     mcu_flags = ""
-  defines = list(cfg["defines"])
+  # Core refuses a Forge older than its linker script and makefile need
+  defines = list(cfg["defines"]) + [f"FORGE_VERSION={forge_version()}"]
   if cfg.get("plc"):
     defines.append("OpenCPLC")
   flash_origin, image_kB, boot_defines = flash_layout(cfg) if is_embedded else (0, 0, [])
   defines += boot_defines
+  boot = bool(cfg.get("boot")) and is_embedded
+  boot_key = cfg.get("boot_key", "") if is_embedded else ""
+  image = boot_image(cfg, core_dir) if boot else ""
+  elf = f"{core_dir}/{boot_stem(cfg['hal'], bool(boot_key))}.elf"
+  is_bootloader = cfg.get("bootloader") and is_embedded and not boot
   board_drivers = list(cfg.get("board_drivers", []))
   project_drivers = list(cfg.get("project_drivers", []))
   cfg["drivers"] = list(dict.fromkeys(board_drivers + project_drivers))
@@ -239,8 +296,8 @@ def resolve_project(cfg:dict, paths:dict, forge_cfg:dict) -> Project:
     image_kB=image_kB,
     ram_kB=cfg["ram_kB"],
     freq_Hz=cfg.get("freq_Hz", 0),
-    opt_level=cfg.get("opt_level", "Og"),
-    log_level=cfg.get("log_level", "LOG_LEVEL_INF"),
+    opt_level=cfg.get("opt_level", OPT_DEFAULT),
+    log_level=cfg.get("log_level", LOG_LEVEL_DEFAULT),
     defines=defines,
     mcu_flags=mcu_flags,
     core_c_sources=core_sources(cfg, core_dir, ".c"),
@@ -253,8 +310,13 @@ def resolve_project(cfg:dict, paths:dict, forge_cfg:dict) -> Project:
     openocd_target=cfg.get("openocd", ""),
     erase_command=cfg.get("erase", ""),
     stack_script=cfg.get("stack", ""),
-    boot=bool(cfg.get("boot")) and is_embedded,
+    boot=boot,
     flash_origin=flash_origin,
+    boot_key=boot_key,
+    boot_key_at=boot_key_at(cfg) if boot_key else 0,
+    boot_image=image,
+    boot_elf=elf if boot and FILE.exists(elf) else "",
+    bootloader=boot_stem(cfg["hal"], bool(cfg.get("boot_key_build"))) if is_bootloader else "",
     stlink=(forge_cfg.get("stlink") or {}).get(f"projects/{name}", ""),
     build_dir=f"{PATH.local(paths['build'])}/projects/{name}",
     board_drivers=board_drivers,

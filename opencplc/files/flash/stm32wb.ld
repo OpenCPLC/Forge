@@ -5,13 +5,15 @@ _estack = ORIGIN(RAM) + LENGTH(RAM);
 _Min_Heap_Size = 0x200;
 _Min_Stack_Size = 0x400;
 
-/* RAM opens with 8 bytes no image owns: the bootloader leaves its install result there */
+/* RAM opens with 8 bytes no image owns: the bootloader leaves its report there */
 MEMORY
 {
   RAM(xrw)        : ORIGIN = 0x20000008, LENGTH = ${RAM}K - 8
   FLASH(rx)       : ORIGIN = ${FLASH_ORIGIN}, LENGTH = ${FLASH}K
   RAM_SHARED(xrw) : ORIGIN = 0x20030000, LENGTH = 10K
 }
+
+_boot_report = ORIGIN(RAM) - 8;
 
 SECTIONS
 {
@@ -131,12 +133,18 @@ SECTIONS
 
   /* End of the image, the value of its header. Behind it 72 erased bytes of trailer:
      the CRC32 at their start, the Ed25519 signature a doubleword further.
-     A symbol set inside a section is section-relative unless made ABSOLUTE */
+     Symbols set inside a section are section-relative unless made `ABSOLUTE`. */
   .app_trailer : {
     . = ALIGN(8);
     _image_size = ABSOLUTE(. - ORIGIN(FLASH));
     FILL(0xFFFFFFFF);
     LONG(0xFFFFFFFF);
     . += 72 - 4;
+  } >FLASH
+
+  /* Key of a `key` bootloader, the last bytes of its code region where Forge writes it.
+     Any other image has no such section, so nothing moves. */
+  .boot_key ORIGIN(FLASH) + LENGTH(FLASH) - 32 : {
+    KEEP(*(.boot_key))
   } >FLASH
 }

@@ -4,11 +4,15 @@
 
 import pytest
 from xaeian import file_context
-from opencplc.resolver import resolve_project, available_drivers
-from conftest import build_workspace, uno_cfg, ws_paths, resolve_uno
+from opencplc import resolver
+from opencplc.resolver import resolve_project, available_drivers, forge_version
+from opencplc.platforms import parse_chip
+from conftest import build_workspace, uno_cfg, ws_paths, resolve_uno, KEY, ship_key_bootloader
+from conftest import resolve_key_uno
 
 @pytest.fixture()
 def ws(tmp_path):
+  """Synthetic workspace as file root."""
   build_workspace(tmp_path)
   with file_context(root_path=str(tmp_path)):
     yield tmp_path
@@ -50,10 +54,16 @@ def identity_and_flash_fields(ws):
   assert pro.linker == "stm32g0.ld"
   assert pro.stlink == "ABC123"
   assert pro.defines == [
-    "STM32", "STM32G0", "STM32G0C1xx", "OpenCPLC",
+    "STM32", "STM32G0", "STM32G0C1xx", f"FORGE_VERSION={forge_version()}", "OpenCPLC",
     "BOOT_PAGES=4", "BOOT_CHIP=0x467",
   ]
   assert pro.mcu_flags == "-mcpu=cortex-m0plus -mthumb -mfloat-abi=soft"
+
+def forge_version_is_one_number_for_core_to_compare(monkeypatch):
+  """`#if` in Core compares integers alone."""
+  for version, number in (("0.4.8", 408), ("1.2.10", 10210)):
+    monkeypatch.setattr(resolver, "__version__", version)
+    assert forge_version() == number
 
 def without_boot_the_image_takes_the_whole_region(ws):
   pro = resolve_uno()
@@ -65,11 +75,10 @@ def boot_links_the_image_into_the_application_slot(ws):
   """492kB minus the 8kB bootloader, halved into whole 2kB pages: 242kB per slot."""
   pro = resolve_project(uno_cfg() | {"boot": True}, ws_paths(), {})
   assert pro.boot and pro.flash_origin == 0x08002000
-  assert pro.flash_kB == 492 and pro.image_kB == 242 # PRO_FLASH_kB stays, the slot is derived
+  assert pro.flash_kB == 492 and pro.image_kB == 242 # `PRO_FLASH_kB` stays, the slot is derived
   assert "BOOT_PAGES=4" in pro.defines and "BOOT_SLOT_PAGES=121" in pro.defines
 
 def wb55_slots_are_whole_pages_of_4k(ws):
-  from opencplc.platforms import parse_chip
   cfg = uno_cfg() | parse_chip("STM32WB55") | {"boot": True, "flash_kB": 818}
   pro = resolve_project(cfg, ws_paths(), {})
   assert pro.flash_origin == 0x08004000 and pro.image_kB == 400
@@ -78,6 +87,47 @@ def wb55_slots_are_whole_pages_of_4k(ws):
 def boot_needs_room_for_two_slots(ws):
   with pytest.raises(SystemExit):
     resolve_project(uno_cfg() | {"boot": True, "flash_kB": 10}, ws_paths(), {})
+
+def key_image_links_behind_the_32k_bootloader(ws):
+  """492kB minus the 32kB `key` bootloader, halved: 230kB per slot, its key below the mailbox."""
+  ship_key_bootloader(ws)
+  pro = resolve_key_uno()
+  assert pro.flash_origin == 0x08008000 and pro.image_kB == 230
+  assert "BOOT_PAGES=16" in pro.defines and "BOOT_SLOT_PAGES=115" in pro.defines
+  assert pro.boot_key == KEY and pro.boot_key_at == 0x080077E0
+
+def wb55_key_sits_below_its_4k_mailbox_page(ws):
+  ship_key_bootloader(ws, "stm32wb")
+  cfg = uno_cfg() | parse_chip("STM32WB55") | {"boot": True, "flash_kB": 818, "boot_key": KEY}
+  pro = resolve_project(cfg, ws_paths(), {})
+  assert pro.flash_origin == 0x08008000 and pro.image_kB == 392
+  assert pro.boot_key_at == 0x08006FE0
+
+def key_bootloader_build_takes_the_key_region(ws):
+  """`BOOT_KEY ON` is the bootloader itself: more pages of its own, nothing to pack or sign."""
+  pro = resolve_project(uno_cfg() | {"flash_kB": 30, "boot_key_build": True}, ws_paths(), {})
+  assert pro.flash_origin == 0x08000000 and pro.image_kB == 30
+  assert "BOOT_PAGES=16" in pro.defines
+  assert not any(d.startswith("BOOT_SLOT_PAGES") for d in pro.defines)
+  assert pro.boot_key == "" and pro.boot_key_at == 0
+
+def boot_key_without_boot_exits(ws):
+  with pytest.raises(SystemExit):
+    resolve_project(uno_cfg() | {"boot_key": KEY}, ws_paths(), {})
+
+def key_bootloader_switch_under_a_bootloader_exits(ws):
+  with pytest.raises(SystemExit):
+    resolve_project(uno_cfg() | {"boot": True, "boot_key_build": True}, ws_paths(), {})
+
+def bootloader_project_with_its_switch_off_under_a_bootloader_exits(ws):
+  """`BOOT_KEY OFF` marks the bootloader project as much as `ON`."""
+  with pytest.raises(SystemExit):
+    resolve_project(uno_cfg() | {"boot": True, "bootloader": True}, ws_paths(), {})
+
+def core_without_the_key_bootloader_refuses_boot_key(ws):
+  """A Core with the `plain` bootloader alone has none to go with a `key` image."""
+  with pytest.raises(SystemExit):
+    resolve_key_uno()
 
 def host_carries_no_flash_layout(ws):
   from conftest import host_model
@@ -111,7 +161,7 @@ def unknown_driver_exits(ws):
     resolve_project(cfg, ws_paths(), {})
 
 def plc_layer_without_any_board(ws):
-  """-P on your own hardware: the PLC layer compiles, no board directory does."""
+  """`-P` on your own hardware: the PLC layer compiles, no board directory does."""
   cfg = uno_cfg() | {"board": None, "board_dir": None, "board_drivers": []}
   pro = resolve_project(cfg, ws_paths(), {})
   assert "opencplc/1.0.0/plc/plc.c" in pro.core_c_sources

@@ -4,7 +4,7 @@
 
 from opencplc.utils.text import (
   line_remove, lines_clear,
-  get_vars, find_missing_keys, last_line_len,
+  get_vars, find_missing_keys,
 )
 
 def lines_clear_strips_comments_and_blanks():
@@ -13,7 +13,7 @@ def lines_clear_strips_comments_and_blanks():
 
 def lines_clear_joins_continuations_gluing_fragments():
   # each fragment is rstripped before the join, so the space at the joint is lost;
-  # production reads only single-line vars (NAME/LIB/PRO) through this path
+  # production reads only single-line vars (`NAME`/`LIB`/`PRO`) through this path
   lines = ["C_SOURCES = a.c \\", "b.c"]
   assert lines_clear(lines, "#") == ["C_SOURCES = a.cb.c"]
 
@@ -28,9 +28,9 @@ def get_vars_makefile_form():
   }
 
 def get_vars_define_space_form_strips_quotes():
-  lines = ['PRO_VERSION "1.0.2"', "PRO_FLASH_kB 492"]
-  got = get_vars(lines, ["PRO_VERSION", "PRO_FLASH_kB"], " ", required=False)
-  assert got == {"PRO_VERSION": "1.0.2", "PRO_FLASH_kB": "492"}
+  lines = ['PRO_FRAMEWORK "1.0.2"', "PRO_FLASH_kB 492"]
+  got = get_vars(lines, ["PRO_FRAMEWORK", "PRO_FLASH_kB"], " ", required=False)
+  assert got == {"PRO_FRAMEWORK": "1.0.2", "PRO_FLASH_kB": "492"}
 
 def get_vars_define_underscore_form():
   lines = ["#define PRO_BOARD_UNO", "#define PRO_CHIP_STM32G0C1"]
@@ -52,7 +52,3 @@ def find_missing_keys_nested():
   template = {"a": 1, "sub": {"x": 1, "y": 2}}
   assert find_missing_keys(template, {"a": 1, "sub": {"x": 1}}) == ["sub.y"]
   assert find_missing_keys(template, {"a": 1, "sub": {"x": 1, "y": 0}}) == []
-
-def last_line_len_measures_final_line():
-  assert last_line_len("abc") == 3
-  assert last_line_len("abcdef\nxy ") == 2

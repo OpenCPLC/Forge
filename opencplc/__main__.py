@@ -3,12 +3,9 @@
 """
 CLI entry point: parses arguments and orchestrates the run.
 
-Moving parts live in their own modules:
-`workspace` root, config, refs, project inventory
-`configure` project configuration
-`actions` one-shot answers
-`resolver` project model
-`project` generators
+`workspace` settles root, config, refs and project inventory,
+`configure` reads a project, `resolver` builds its model and `project` writes its files.
+`actions` answers one-shot flags, `keygen` makes product keys, `lock` writes option bytes.
 """
 
 import os, signal, sys
@@ -19,6 +16,8 @@ from .templates import load_templates
 from .project import prepare_project, generate
 from .resolver import resolve_project
 from .actions import info_actions, info_show, program_image
+from .keygen import keygen
+from .lock import lock_board
 from .configure import config_new, config_load, opt_normalize
 from .workspace import (
   enter_workspace, forge_config, persist_config, ensure_refs, paths_setup,
@@ -55,38 +54,41 @@ def main():
   if info_actions(args, forge_cfg): sys.exit(0)
   # Mutually exclusive modes; mode flags may also carry the project name
   check_flags(args, ("reload", flag.r), ("info", flag.i))
-  check_flags(args, ("new", flag.n), ("delete", flag.d), ("get", flag.g))
+  # --keygen writes into main.h of a project that exists already
+  check_flags(args, ("new", flag.n), ("delete", flag.d), ("get", flag.g), ("keygen", flag.keygen))
   args.name, args.new = utils.assign_name(args.name, args.new, flag.n)
   args.name, args.reload = utils.assign_name(args.name, args.reload, flag.r)
   args.name, args.delete = utils.assign_name(args.name, args.delete, flag.d)
   persist_config(forge_cfg, create=bool(args.new or args.demo)) # a workspace starts here
   if not forge_cfg.get("available-versions"):
     ensure_refs(forge_cfg, args.yes) # first run: the version list must exist
-  PATHS, fw_ver = paths_setup(args, forge_cfg)
+  paths, fw_ver = paths_setup(args, forge_cfg)
   make_info = makefile_info()
   # -r <name> and -r inside a project directory touch that project only, never the workspace
   scoped = bool(args.reload and args.name)
-  if not args.name and (args.reload or args.info):
-    scoped = reload_from_cwd(args, PATHS, cwd)
+  # these act on the active project when no name is given
+  acting = args.program or args.keygen or args.lock is not None
+  if not args.name and (args.reload or args.info or acting):
+    scoped = reload_from_cwd(args, paths, cwd)
     if not scoped:
-      reload_from_makefile(args, PATHS, make_info)
+      reload_from_makefile(args, make_info)
   # A new project takes the workspace default Core, an existing one the version it pins
   if args.new:
-    ensure_framework(fw_ver, PATHS, forge_cfg, args.yes)
+    ensure_framework(fw_ver, paths, forge_cfg, args.yes)
   # Remote project - name read from its main.h when not given
   if args.get:
     if not args.get[0].endswith(".zip"):
       utils.ensure_git(args.yes)
     ref = args.get[1] if len(args.get) > 1 else None
-    args.name = utils.project_remote(args.get[0], PATHS["pro"], ref, args.name)
+    args.name = utils.project_remote(args.get[0], paths["pro"], ref, args.name)
   if args.demo:
     utils.ensure_git(args.yes)
     utils.git_clone_missing(URL_DEMO, DIR_DEMO, "main", args.yes)
     p.inf(f"Demo in {c.GREY}{DIR_DEMO}{c.END}, "
       f"load one with {c.CYAN}opencplc demo/<name>{c.END}")
     sys.exit(0)
-  PRO = utils.get_project_list(PATHS["pro"])
-  project_select(args, PRO)
+  projects = utils.get_project_list(paths["pro"])
+  project_select(args, projects)
   if not args.name and not args.reload and not args.info:
     p.err(f"Name {c.GREY}name{c.END} not provided")
     p.inf(f"Provide project name or use flag {flag.r}")
@@ -98,22 +100,30 @@ def main():
       p.err(f"Invalid project name: {c.MAGNTA}{reason}{c.END}")
       sys.exit(1)
   if args.delete:
-    project_delete(args, PRO, make_info, forge_cfg)
-  PATHS["pro"] = PATH.resolve(f"{PATHS['pro']}/{args.name}", read=False)
+    project_delete(args, projects, make_info, forge_cfg)
+  paths["pro"] = PATH.resolve(f"{paths['pro']}/{args.name}", read=False)
+  # the key goes into main.h first, so this very run builds the project under it
+  named = utils.project_key(projects, args.name)
+  if args.keygen and named:
+    keygen(args.keygen, PATH.resolve(f"{projects[named]}/main.h", read=False))
   if args.new:
-    CFG = config_new(args, PRO, PATHS, fw_ver, forge_cfg)
+    cfg = config_new(args, projects, paths, fw_ver, forge_cfg)
   else:
-    CFG = config_load(args, PRO, PATHS, fw_ver, forge_cfg)
-  ensure_framework(CFG["fw_ver"], PATHS, forge_cfg, args.yes)
-  opt_normalize(CFG)
+    cfg = config_load(args, projects, paths, fw_ver, forge_cfg)
+  ensure_framework(cfg["fw_ver"], paths, forge_cfg, args.yes)
+  opt_normalize(cfg)
   stlink_bind(forge_cfg, f"projects/{args.name}", args.stlink)
   if args.info:
-    info_show(resolve_project(CFG, PATHS, forge_cfg))
-  ensure_toolchains(CFG["platform"] == "STM32", args.yes)
-  if args.program:
-    program_image(resolve_project(CFG, PATHS, forge_cfg), args.program)
-  prepare_project(CFG, PATHS)
-  model = resolve_project(CFG, PATHS, forge_cfg)
+    info_show(resolve_project(cfg, paths, forge_cfg))
+  ensure_toolchains(cfg["platform"] == "STM32", args.yes)
+  # the factory programs the full image of `dist`, then locks the board
+  if args.program or args.lock is not None:
+    model = resolve_project(cfg, paths, forge_cfg)
+    if args.program: program_image(model, args.program)
+    if args.lock is not None: lock_board(model, args.lock, args.yes)
+    sys.exit(0)
+  prepare_project(cfg, paths)
+  model = resolve_project(cfg, paths, forge_cfg)
   generate(model, activate=not scoped)
 
 if __name__ == "__main__":

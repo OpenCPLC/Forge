@@ -1,7 +1,8 @@
 ## OpenCPLC ⚒️ Forge
 
-**Forge** jest aplikacją konsolową usprawniającą pracę z **OpenCPLC**, którego zadaniem jest dostosowanie środowiska pracy tak, aby 👨‍💻programista-automatyk mógł skupić się na tworzeniu aplikacji, a nie walce z konfiguracją ekosystemu i kompilacją programu.
-Dostępny jest jako pakiet **Python [`pip`](https://pypi.org/project/opencplc)** lub jako samodzielny plik wykonywalny **`opencplc.exe`** z 🚀[Releases](https://github.com/OpenCPLC/Forge/releases) _(w tym przypadku należy ręcznie dodać jego lokalizację do zmiennych systemowych **PATH**)_
+**Forge** jest aplikacją konsolową usprawniającą pracę z **OpenCPLC**.
+Jego zadaniem jest dostosowanie środowiska pracy tak, aby 👨‍💻programista-automatyk mógł skupić się na tworzeniu aplikacji, a nie walce z konfiguracją ekosystemu i kompilacją programu.
+Dostępny jest jako pakiet **Python [`pip`](https://pypi.org/project/opencplc)** lub jako samodzielny plik wykonywalny **`opencplc.exe`** z 🚀[Releases](https://github.com/OpenCPLC/Forge/releases) _(w tym przypadku należy ręcznie dodać jego lokalizację do zmiennych systemowych `PATH`)_.
 
 ```sh
 pip install opencplc
@@ -18,7 +19,7 @@ Wówczas tworzony jest katalog _(lub drzewo katalogów)_ `projects/<project_name
 Powstają w nim dwa pliki: `main.c` i `main.h`, które stanowią minimalny zestaw plików projektu.
 Nie można ich usuwać ani przenosić do podkatalogów.
 
-Gdy będziemy mieli więcej projektów, będziemy mogli swobodnie przełączać się między nimi.
+Gdy będziemy mieli więcej projektów, będziemy mogli swobodnie przełączać się między nimi:
 
 ```sh
 opencplc <project_name>
@@ -72,10 +73,10 @@ stack(stack_loop, 1024);
 
 int main(void)
 {
-  thread(PLC_Main, stack_plc); // wątek sterownika
-  thread(DBG_Loop, stack_dbg); // logi i konsola
-  thread(loop, stack_loop);    // Twoja aplikacja
-  vrts_init();                 // start przełączania wątków
+  thread(PLC_Main, stack_plc);  // wątek sterownika
+  thread(DBG_Loop, stack_dbg);  // logi i konsola
+  thread(loop, stack_loop);     // Twoja aplikacja
+  vrts_init();                  // start przełączania wątków
   while(1);
 }
 ```
@@ -110,7 +111,7 @@ Pełna lista celów:
 - **`make clean`** lub `make clr`: Usuwa zbudowane pliki projektu
 - `make clean_all` lub `make clr_all`: Usuwa zbudowane pliki wszystkich projektów
 - `make dist`: Kopiuje `-dist.hex` do folderu projektu, a pod bootloaderem także `-dist.bin`; `make dist TAG=1.2.0` nazywa je `<name>-1.2.0.hex` i `.bin`
-- **`make erase`**: Całkowicie czyści pamięć mikrokontrolera _(**erase** full chip; na STM32WB stack radiowy zostaje)_
+- **`make erase`**: Całkowicie czyści pamięć mikrokontrolera _(**erase** full chip; na STM32WB stos radiowy zostaje)_
 - `make stack`: Wgrywa stos radiowy drugiego rdzenia _(STM32WB)_; `make stack FUS=1` robi też jednorazowy, nieodwracalny provisioning fabrycznej płytki
 
 Zbudowane pliki trafiają do `build/projects/<project_name>/`: `.elf`, `.hex`, `.bin` i `.map` obok katalogu `opencplc/` z obiektami framework'a i `project/` z Twoimi.
@@ -118,28 +119,17 @@ Zbudowane pliki trafiają do `build/projects/<project_name>/`: `.elf`, `.hex`, `
 Każdy projekt kompiluje framework na własny użytek, więc przełączanie projektów nigdy nie linkuje obiektów zbudowanych z inną konfiguracją.
 Po linkowaniu Forge raportuje zajętość pamięci:
 
-```
+```text
 FLASH 70.7kB / 72kB (98%)
 RAM 34.3kB / 36kB (95%)
 ```
 
 ## 🥾 Bootloader
 
-Projekt z `#define PRO_BOOT true` w `main.h` działa za bootloaderem z Core i daje się aktualizować bez programatora; `-B` ustawia to nowemu projektowi.
-Ta jedna linia jest całym przełącznikiem: `PRO_FLASH_kB` znaczy to samo, a układ liczy Forge.
-Bootloader zajmuje pierwsze strony flasha _(8kB na STM32G0, 16kB na STM32WB55)_, a reszta `PRO_FLASH_kB` dzieli się na dwa równe sloty: slot aplikacji, w który linkowany jest obraz, i slot staging, do którego najpierw trafia aktualizacja.
-Strony powyżej `PRO_FLASH_kB` zostają dla projektu, tak jak bez bootloadera.
-
-```bash
-make flash    # bootloader z Core + obraz, przez ST-Link
-```
-
-Obraz ma nagłówek pod stałym offsetem, a za ostatnim bajtem trailer z CRC32.
-Aplikacja odbiera aktualizację swoim transportem i oddaje bajty do `BOOT_Begin`, `BOOT_Write` i `BOOT_End` _(`hal/stm32/sys/boot.h`)_: obraz ląduje w slocie staging razem z trailerem, aplikacja się resetuje, bootloader kopiuje cały, zweryfikowany obraz do slotu aplikacji i go uruchamia. Obraz z programatora dostaje CRC od Forge, w `-dist.hex`.
-Przerwany transfer albo zanik zasilania w trakcie kopiowania nie szkodzi: działa stary obraz albo kopiowanie powtarza się przy następnym starcie.
-Do testów ten sam transfer można wpisać w konsoli: `#define CMD_BOOT ON` w `main.h` dokłada komendę shella `boot`.
-
-Bootloader przychodzi z Core w `scr/`, po jednej binarce na rodzinę _(`boot_stm32g0.bin`, `boot_stm32wb.bin`)_.
+Projekt z `#define PRO_BOOT true` w `main.h` działa za bootloaderem z Core i przyjmuje aktualizacje bez programatora; `-B` ustawia to nowemu projektowi.
+Po `--keygen` uruchamia tylko obrazy podpisane kluczem produktu.
+`--lock` zamyka płytkę przed programatorem w produkcji, z bootloaderem albo bez niego.
+Oba mechanizmy i ich bezpieczeństwo: [🥾 Bootloader i 🔒 blokada](boot-lock.pl.md).
 
 ## ⚙️ Config
 
@@ -169,7 +159,8 @@ flowchart LR
 ```
 
 Na Windows ⚒️**Forge** przynosi własne **Make**, **GNU Arm Embedded Toolchain**, **OpenOCD** i **MinGW** do `%LOCALAPPDATA%\OpenCPLC`, bez uprawnień administratora, a **Git** przez `winget`.
-Po pierwszym uruchomieniu otwórz nową konsolę, żeby `make` był widoczny. Na Linuksie narzędzia pochodzą z dystrybucji.
+Po pierwszym uruchomieniu otwórz nową konsolę, żeby `make` był widoczny.
+Na Linuksie narzędzia pochodzą z dystrybucji.
 
 Następnie, w razie konieczności, sklonuje framework OpenCPLC z [repozytorium](https://github.com/OpenCPLC/Core) do katalogu `opencplc/<wersja>`.
 Nowy projekt dostaje wersję z pliku `opencplc.json` albo wskazaną za pomocą `-f --framework`:
@@ -187,7 +178,7 @@ opencplc -f develop
 
 ### 📌 Wersjonowanie projektu
 
-Każdy projekt przechowuje w pliku `main.h` wersję framework'a, na której został utworzony _(definicja `PRO_VERSION`)_.
+Każdy projekt przechowuje w pliku `main.h` wersję framework'a, na której został utworzony _(definicja `PRO_FRAMEWORK`)_.
 Na tej wersji jest budowany, a gdy jej brakuje, Forge ją klonuje, więc starsze projekty kompilują się nawet po aktualizacji framework'a.
 Jeśli klonowanie się nie powiedzie, Forge ostrzega i buduje na domyślnej wersji workspace.
 
@@ -209,8 +200,7 @@ reserve_kB = 20
 drivers = max31865
 ```
 
-`reserve_kB` jest opcjonalne: to flash, który płytka zostawia dla siebie, odejmowany od góry
-dokładnie jak trzecia wartość `-m`, więc projekt startuje z tym, co zostaje.
+`reserve_kB` jest opcjonalne: to flash, który płytka zostawia dla siebie, odejmowany od góry dokładnie jak trzecia wartość `-m`, więc projekt startuje z tym, co zostaje.
 
 `name` to nazwa płytki w `main.h` i w komunikatach, `PRO_BOARD_Uno`, a katalog zostaje w ścieżkach; porównują się bez wielkości liter i podkreślników, więc `CardG0` i `card_g0` to ta sama płytka, a `None` jest zarezerwowane dla jej braku.
 
@@ -241,23 +231,23 @@ Istnieje także całkiem sporo funkcji pomocniczych, do których dostęp uzyskuj
 
 ### 🗂️ Struktura workspace
 
-```
+```text
 workspace/
-├─ opencplc.json  # konfiguracja workspace
-├─ makefile       # aktywny projekt (generowany przez Forge)
-├─ .vscode/       # konfiguracja VSCode (generowana przez Forge)
-├─ opencplc/      # framework (pobierany automatycznie)
+├─ opencplc.json   # konfiguracja workspace
+├─ makefile        # aktywny projekt (generowany przez Forge)
+├─ .vscode/        # konfiguracja VSCode (generowana przez Forge)
+├─ opencplc/       # framework (pobierany automatycznie)
 │  ├─ 0.4.3/
 │  └─ develop/
-├─ projects/      # projekty użytkownika
+├─ projects/       # projekty użytkownika
 │  ├─ myapp/
 │  │  ├─ main.c
 │  │  ├─ main.h
-│  │  ├─ makefile   # generowany przez Forge
-│  │  └─ flash.ld   # generowany przez Forge, tylko STM32
-│  ├─ firm/app/     # projekty mogą być zagnieżdżone
-│  └─ demo/         # projekty z repozytorium Demo, `opencplc -e`
-└─ build/         # skompilowane pliki wsadowe
+│  │  ├─ makefile  # generowany przez Forge
+│  │  └─ flash.ld  # generowany przez Forge, tylko STM32
+│  ├─ firm/app/    # projekty mogą być zagnieżdżone
+│  └─ demo/        # projekty z repozytorium Demo, `opencplc -e`
+└─ build/          # skompilowane pliki wsadowe
    └─ projects/myapp/
 ```
 
@@ -268,7 +258,7 @@ Jeśli IntelliSense przestanie działać poprawnie, użyj `F1` → _C/C++: Reset
 Forge wspiera platformę **Host** do rozwijania i testowania kodu na PC _(Windows/Linux)_ bez sprzętu embedded:
 
 ```sh
-opencplc -n myapp -c host  # projekt desktopowy
+opencplc -n myapp -c host # projekt desktopowy
 ```
 
 Tworzy to projekt kompilowany natywnym GCC _(MinGW na Windows)_ zamiast toolchain'a ARM, a `make run` uruchamia program.
@@ -303,7 +293,7 @@ Platforma HOST dostarcza stub'y dla modułów zależnych od sprzętu _(GPIO, tim
 
 #### Konfiguracja kompilacji
 
-- `-f --framework`: Wersja frameworka: `latest`, `develop`, `0.4.3`. Dla nowego projektu staje się `PRO_VERSION`, dla istniejącego buduje z nią jednorazowo, sama klonuje wersję do `opencplc/`.
+- `-f --framework`: Wersja frameworka: `latest`, `develop`, `0.4.3`. Dla nowego projektu staje się `PRO_FRAMEWORK`, dla istniejącego buduje z nią jednorazowo, sama klonuje wersję do `opencplc/`.
 - `-o --opt-level`: Poziom optymalizacji: `O0`, `Og` _(domyślny)_, `O1`, `O2`, `O3`, `Os`. Poziomy `O2`/`O3` wyświetlają ostrzeżenie dla STM32 _(timing, debugowanie)_.
 - `-s --stlink`: Przypisuje numer seryjny ST-Linka do projektu; samo `-s` czyści przypisanie.
 
@@ -319,6 +309,8 @@ Platforma HOST dostarcza stub'y dla modułów zależnych od sprzętu _(GPIO, tim
 - `-a --assets`: Pobiera materiały pomocnicze _(dokumentacja, diagramy)_. Opcjonalnie przyjmuje nazwę folderu docelowego.
 - `-u --update`: Podmienia plik wykonywalny Forge na wskazaną wersję _(domyślnie `latest`)_; instalację z `pip` aktualizuje się przez `pip`.
 - `--program`: Wysyła `.hex` na płytkę przez programator, np. ten z `make dist`.
+- `--keygen`: Tworzy albo podpina klucz produktu **`NAZWA`** i wpisuje go do `main.h`, patrz [Bootloader](boot-lock.pl.md).
+- `--lock`: Blokuje płytkę na produkcję: domyślnie RDP1, `2` na zawsze, `0` zdejmuje blokadę, kasując flash, patrz [Blokada](boot-lock.pl.md).
 - `-z --size`: Raportuje zajętość FLASH i RAM pliku `.elf`; `make` używa tego po linkowaniu.
 - `-y --yes`: Automatycznie potwierdza wszystkie pytania _(tryb nieinteraktywny)_.
 
@@ -336,7 +328,7 @@ Każdy projekt przechowuje wszystkie niezbędne informacje w pliku `main.h`, a j
 Programy ⚒️Forge oraz ✨Make są programami uruchamianymi z konsoli CMD.
 Stanowią niezbędnik do pracy z OpenCPLC.
 
-Konsola systemowa jest dostępna w wielu aplikacjach, takich jak **Command Prompt**, **PowerShell**, [**GIT Bash**](https://git-scm.com/downloads), a nawet terminal w [**VSCode**](https://code.visualstudio.com/).
+Konsola systemowa jest dostępna w wielu aplikacjach, takich jak **Command Prompt**, **PowerShell**, [**Git Bash**](https://git-scm.com/downloads), a nawet terminal w [**VSCode**](https://code.visualstudio.com/).
 Forge znajduje workspace z dowolnego katalogu w jego wnętrzu, więc konsolę można otworzyć także w katalogu projektu.
 
 Gdy coś nie działa:
@@ -367,8 +359,8 @@ opencplc -i                 # informacje o aktywnym projekcie
 opencplc myapp -s 066AFF49  # przypisz ST-Link do 'myapp'
 
 # Przykłady demonstracyjne
-opencplc -e                 # pobierz Demo do projects/demo
-opencplc demo/blinky        # załaduj projekt 'blinky'
+opencplc -e           # pobierz Demo do projects/demo
+opencplc demo/blinky  # załaduj projekt 'blinky'
 
 # Pobieranie projektów
 opencplc -g https://github.com/user/repo

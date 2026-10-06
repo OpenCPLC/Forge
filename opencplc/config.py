@@ -3,10 +3,10 @@
 """
 URLs and console conventions of Forge.
 
-Console color conventions (xaeian.Color) - one meaning per color, grouped in families:
+Console color conventions (`xaeian.Color`) - one meaning per color, grouped in families:
 
   yours    BLUE   → project: its name and its own sources (main.c, main.h)
-           SKY    → what is set inside them: PRO_VERSION, PRO_CHIP, LOG_LEVEL, config keys, PATH
+           SKY    → what is set in them: PRO_FRAMEWORK, PRO_CHIP, LOG_LEVEL, config keys, PATH
   hardware PINK   → platform and chip (STM32, STM32G0C1)
            TURQUS → board from Core (Uno) and the PLC layer
   build    ORANGE → what Forge generates: makefile, flash.ld, opencplc.json, .vscode
@@ -25,7 +25,7 @@ Generated C code (-hl) is syntax-highlighted instead, and every message closes i
 Framework version rules:
   version → a folder in the framework dir: when present it builds as-is, never touched
   git     → used only to clone a missing version (tag or branch)
-  active  → PRO_VERSION (main.h); a new project takes -f or the opencplc.json "version"
+  active  → PRO_FRAMEWORK (main.h); a new project takes -f or the opencplc.json "version"
 """
 
 # Workspace layout, fixed by Forge; Demo holds ordinary projects, cloned as a whole
@@ -33,6 +33,10 @@ DIR_PROJECTS = "projects"
 DIR_DEMO = "projects/demo"
 DIR_FRAMEWORK = "opencplc"
 DIR_BUILD = "build"
+
+# Build settings of a project whose `main.h` names none
+OPT_DEFAULT = "Og"
+LOG_LEVEL_DEFAULT = "LOG_LEVEL_INF"
 
 # Remote homes: GitHub for code, dl.opencplc.com for tool packages and assets
 URL_GIT = "https://github.com/OpenCPLC"

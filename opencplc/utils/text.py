@@ -7,12 +7,8 @@ from xaeian import Print, Color as c
 
 p = Print()
 
-def last_line_len(text:str) -> int:
-  """Length of last line in multiline string."""
-  return len(text.split('\n')[-1].strip())
-
 def line_remove(text:str, phrase:str, limit:int=1) -> str:
-  """Drop up to limit lines containing phrase."""
+  """Drop up to `limit` lines containing `phrase`."""
   lines = text.splitlines()
   out, count = [], 0
   for ln in lines:
@@ -40,17 +36,17 @@ def lines_clear(lines:list[str], comment:str="#") -> list[str]:
   return result
 
 def get_vars(
-  lines: list[str],
-  prefixes: list[str],
-  sep: str = "=",
-  trim_start: str = "",
-  required: bool = True,
+  lines:list[str],
+  prefixes:list[str],
+  sep:str = "=",
+  trim_start:str = "",
+  required:bool = True,
 ) -> dict[str, str]:
   """
-  key → value for lines starting with one of prefixes, split on sep.
+  key → value for lines starting with one of `prefixes`, split on `sep`.
 
-  trim_start strips a leading keyword such as #define, quotes around values are removed.
-  With required every prefix must match, otherwise the result is empty.
+  `trim_start` strips a leading keyword such as `#define`, quotes around values are removed.
+  With `required` every prefix must match, otherwise the result is empty.
   """
   if trim_start:
     lines = [re.sub(f"^{re.escape(trim_start)}+", "", ln).lstrip() for ln in lines]
@@ -71,7 +67,7 @@ def get_vars(
   return result
 
 def find_missing_keys(template:dict, subject:dict, prefix:str="") -> list[str]:
-  """Dotted paths of keys present in template but missing in subject, nested dicts included."""
+  """Dotted paths of keys present in `template` but missing in `subject`, nested dicts included."""
   missing = []
   for key in template:
     path = f"{prefix}.{key}" if prefix else key

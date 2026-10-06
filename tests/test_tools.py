@@ -11,7 +11,7 @@ from conftest import build_workspace, resolve_uno
 
 @pytest.fixture()
 def home(tmp_path, monkeypatch):
-  """A private tools directory on a Windows Forge, with the download and the registry stubbed."""
+  """Private tools directory on a Windows Forge, with the download and the registry stubbed."""
   root = tmp_path / "tools"
   monkeypatch.setenv("OPENCPLC_TOOLS", str(root))
   # `ensure_tools` prepends to PATH by assignment, so the fixture owns the restore
@@ -76,7 +76,7 @@ def git_comes_from_winget_without_a_question(monkeypatch):
   calls = []
   monkeypatch.setattr(tools, "WINDOWS", True)
   monkeypatch.setattr(tools, "which", lambda cmd: None)
-  monkeypatch.setattr(tools.subprocess, "run",
+  monkeypatch.setattr(tools, "run",
     lambda cmd, **kw: calls.append(cmd) or type("R", (), {"returncode": 0})())
   # git appears in its user home only once winget ran
   monkeypatch.setattr(tools.FILE, "exists",

@@ -1,17 +1,17 @@
 # opencplc/utils/common.py
 
-"""Small CLI helpers: OS detection, prompts, name validation."""
+"""Small CLI helpers: prompts, colored URLs, name validation."""
 
 import sys
 from typing import Any
-from xaeian import Print, Color as c, Ico
+from xaeian import Print, Color as c
 
 p = Print()
 
 def is_yes(msg:str="Proceed automatically") -> bool:
-  """Ask msg and read a yes/no answer; y, yes, t, tak and true count as yes."""
+  """Ask `msg` and read a yes/no answer; y, yes, t, tak and true count as yes."""
   yn = f"[{c.GREEN}YES{c.END}/{c.RED}NO{c.END}]"
-  print(f"{Ico.INF} {msg}? {yn}:", end=" ")
+  p.inf(f"{msg}? {yn}:", end=" ")
   ans = input().lower()
   return ans in ("yes", "y", "true", "tak", "t")
 
@@ -51,6 +51,5 @@ def validate_project_name(name:str) -> tuple[bool, str]:
     if not seg.isprintable(): return False, "Name contains a non-printable character"
     if seg != seg.strip(): return False, "Folder cannot start/end with spaces"
     if seg.endswith("."): return False, "Folder cannot end with a dot"
-    if seg.split(".")[0].upper() in reserved:
-      return False, f"'{seg}' is reserved on Windows"
+    if seg.split(".")[0].upper() in reserved: return False, f"'{seg}' is reserved on Windows"
   return True, ""

@@ -3,17 +3,17 @@
 """
 Generated makefiles driven by the real GNU Make.
 
-HOST projects compile with the local gcc over a synthetic Core; embedded
-makefiles are checked with a dry run. Skipped where make or gcc is missing.
+HOST projects compile with the local gcc over a synthetic Core;
+embedded makefiles are checked with a dry run. Skipped where make or gcc is missing.
 """
 
-import re, shutil, subprocess
+import os, re, shutil, subprocess
 import pytest
 from xaeian import file_context
 from opencplc.project import generate
 from conftest import (
   resolve_uno, build_workspace, host_model, make_run, make_root, write_file,
-  write_forge_config, forge_env, fake_tools, age, MAIN_H_HOST,
+  write_forge_config, fake_tools, age, MAIN_H_HOST,
 )
 
 HAVE_MAKE = shutil.which("make") is not None
@@ -117,8 +117,6 @@ def flash_without_image_says_so_and_leaves_the_probe_alone(tmp_path):
 
 @pytest.mark.skipif(not (HAVE_MAKE and HAVE_GCC), reason="make and gcc required")
 def stale_main_h_triggers_exactly_one_reload(ws):
-  import os, time
-  from conftest import write_forge_config
   write_forge_config(ws)
   generate(host_model())
   assert make_run(ws, "build").returncode == 0
@@ -130,16 +128,14 @@ def stale_main_h_triggers_exactly_one_reload(ws):
   res = make_run(ws, "build")
   assert res.returncode == 0, res.stdout + res.stderr
   assert res.stdout.count("using framework version") == 1
-  assert makefile.stat().st_mtime_ns == before # unchanged content keeps its time
-  assert stamp.stat().st_mtime_ns > before     # the stamp carries the reload
+  assert makefile.stat().st_mtime_ns == before  # unchanged content keeps its time
+  assert stamp.stat().st_mtime_ns > before      # the stamp carries the reload
   again = make_run(ws, "build")
   assert "using framework version" not in again.stdout
   assert "Nothing to be done" in again.stdout
 
 @pytest.mark.skipif(not (HAVE_MAKE and HAVE_GCC), reason="make and gcc required")
 def new_source_is_built_in_the_same_make_run(ws):
-  import time
-  from conftest import write_forge_config
   write_forge_config(ws)
   generate(host_model())
   assert make_run(ws, "build").returncode == 0
@@ -152,7 +148,6 @@ def new_source_is_built_in_the_same_make_run(ws):
 
 @pytest.mark.skipif(not (HAVE_MAKE and HAVE_GCC), reason="make and gcc required")
 def missing_forge_fails_the_reload(ws):
-  import os, time
   generate(host_model())
   assert make_run(ws, "build").returncode == 0
   age(ws / "projects" / "app" / "makefile")
@@ -187,8 +182,6 @@ def root_make_reports_idle_and_failure(ws):
 @pytest.mark.skipif(not (HAVE_MAKE and HAVE_GCC), reason="make and gcc required")
 def atomic_save_of_one_file_rebuilds_nothing(ws):
   """An editor saving through a temp file bumps the directory mtime, not the configuration."""
-  import os
-  from conftest import write_forge_config
   write_forge_config(ws)
   generate(host_model())
   assert make_run(ws, "build").returncode == 0

@@ -16,8 +16,8 @@ def root_found_at_root(tmp_path):
   assert find_workspace(str(tmp_path)) == PATH.normalize(str(tmp_path))
 
 def missing_marker_walks_past_tmp_tree(tmp_path):
-  # the machine may hold a stray opencplc.json above tmp, so assert only
-  # that nothing inside the marker-free tree was picked
+  # the machine may hold a stray opencplc.json above tmp,
+  # so assert only that nothing inside the marker-free tree was picked
   deep = tmp_path / "a" / "b"
   deep.mkdir(parents=True)
   found = find_workspace(str(deep))
@@ -55,5 +55,5 @@ def entering_pins_the_file_root_even_when_cwd_is_the_root(tmp_path, monkeypatch)
   monkeypatch.chdir(tmp_path)
   with file_context(root_path="C:/somewhere/else"):
     enter_workspace()
-    root = get_context().root_path.replace(chr(92), "/").lower()
-    assert root == str(tmp_path).replace(chr(92), "/").lower()
+    root = get_context().root_path.replace("\\", "/").lower()
+    assert root == str(tmp_path).replace("\\", "/").lower()

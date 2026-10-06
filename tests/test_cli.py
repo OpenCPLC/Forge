@@ -7,17 +7,19 @@ import pytest
 from xaeian import file_context
 import opencplc.__main__ as forge
 import opencplc.workspace as ws_mod
-from opencplc import actions
+from opencplc import actions, lock, project
 from opencplc.args import Args
-from conftest import build_workspace, write_forge_config, run_cli, refs_cfg
-from conftest import frozen_forge, _raise_disk_full
+from opencplc.utils import keys
+from conftest import build_workspace, write_forge_config, run_cli, refs_cfg, ship_key_bootloader
+from conftest import frozen_forge, _raise_disk_full, make_board, INI
 
 @pytest.fixture()
 def ws(tmp_path, monkeypatch):
+  """Synthetic workspace as cwd and file root, with 1.0.0 the only version on GitHub."""
   build_workspace(tmp_path)
   write_forge_config(tmp_path)
   monkeypatch.chdir(tmp_path)
-  monkeypatch.setattr(ws_mod, "REFS_FRESH", False)
+  monkeypatch.setattr(ws_mod, "_refs_fresh", False)
   monkeypatch.setattr(ws_mod.utils, "ensure_git", lambda yes: None)
   monkeypatch.setattr(ws_mod.utils, "git_get_refs", lambda url, opt="--ref": ["1.0.0"])
   monkeypatch.setattr(forge, "ensure_toolchains", lambda is_embedded, yes: None)
@@ -27,10 +29,11 @@ def ws(tmp_path, monkeypatch):
 def new_project_generates_everything(ws, monkeypatch):
   assert run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-y") == 0
   pro = ws / "projects" / "app"
-  assert (pro / "main.c").exists() and (pro / "main.h").exists()
+  assert (pro / "main.c").read_text().startswith("// app/main.c\n")
+  assert (pro / "main.h").read_text().startswith("// app/main.h\n")
   assert (pro / "makefile").exists() and (pro / "flash.ld").exists()
   assert "ACTIVE := projects/app" in (ws / "makefile").read_text()
-  assert 'PRO_BOARD_Uno' in (pro / "main.h").read_text()
+  assert "PRO_BOARD_Uno" in (pro / "main.h").read_text()
 
 def load_existing_project_by_name(ws, monkeypatch):
   assert run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-y") == 0
@@ -49,7 +52,7 @@ def switching_projects_moves_the_dispatcher(ws, monkeypatch):
   assert "ACTIVE := projects/b" in (ws / "makefile").read_text()
   run_cli(monkeypatch, "a")
   assert "ACTIVE := projects/a" in (ws / "makefile").read_text()
-  assert (ws / "projects" / "b" / "makefile").exists()  # other project keeps its files
+  assert (ws / "projects" / "b" / "makefile").exists() # other project keeps its files
 
 def reload_from_inside_project_dir_targets_that_project(ws, monkeypatch):
   run_cli(monkeypatch, "-n", "deep/app", "-b", "Uno", "-y")
@@ -84,6 +87,13 @@ def delete_active_project_empties_dispatcher(ws, monkeypatch):
   assert not (ws / "projects" / "gone").exists()
   assert "ACTIVE :=" in (ws / "makefile").read_text()
   assert "projects/gone" not in (ws / "makefile").read_text()
+
+def deleting_the_active_project_keeps_the_dispatcher_safe_for_sh(ws, monkeypatch):
+  """`clean_all` still runs in `/bin/sh`, which would cut a bare color code at its `;`."""
+  run_cli(monkeypatch, "-n", "gone", "-b", "Uno", "-y")
+  monkeypatch.setattr(project.platform, "system", lambda: "Linux")
+  assert run_cli(monkeypatch, "-d", "gone") == 0
+  assert "Removed '\x1b[" in (ws / "makefile").read_text()
 
 def version_and_hash_need_no_workspace(tmp_path, monkeypatch, capsys):
   monkeypatch.chdir(tmp_path)
@@ -144,7 +154,6 @@ def listing_creates_no_workspace_marker(tmp_path, monkeypatch):
   assert not (tmp_path / "opencplc.json").exists()
 
 def size_report_shows_kilobytes_and_percent(monkeypatch, capsys):
-  import opencplc.actions as actions
   monkeypatch.setattr(actions, "memory_usage", lambda elf: (70 * 1024 + 512, 35 * 1024))
   actions.size_report("x.elf", 72, 36)
   out = capsys.readouterr().out
@@ -171,7 +180,7 @@ def bare_metal_writes_a_void_board(ws, monkeypatch):
   main_h = (ws / "projects" / "app" / "main.h").read_text()
   assert "PRO_BOARD_None" in main_h
   assert "PRO_PLC false" in main_h
-  assert "PRO_DRIVERS" not in main_h  # nothing to name, no line
+  assert "PRO_DRIVERS" not in main_h # nothing to name, no line
   assert "plc/plc.c" not in (ws / "projects" / "app" / "makefile").read_text()
 
 def drivers_flag_seeds_pro_drivers(ws, monkeypatch):
@@ -185,10 +194,9 @@ def board_brings_its_own_plc_layer(ws, monkeypatch):
   assert "PRO_BOARD_Uno" in main_h and "PRO_PLC true" in main_h
 
 def board_without_the_plc_layer_gets_the_plain_skeleton(ws, monkeypatch):
-  from conftest import make_board, INI
   d = make_board(ws / "opencplc" / "1.0.0", "bare",
     INI.replace("plc = true", "plc = false"), title="Bare")
-  (d / "opencplc_bare.c").write_text("// bare" + chr(10))
+  (d / "opencplc_bare.c").write_text("// bare\n")
   assert run_cli(monkeypatch, "-n", "app", "-b", "bare", "-y") == 0
   main_h = (ws / "projects" / "app" / "main.h").read_text()
   assert "PRO_BOARD_Bare" in main_h and "PRO_PLC false" in main_h
@@ -197,7 +205,6 @@ def board_without_the_plc_layer_gets_the_plain_skeleton(ws, monkeypatch):
   assert "brd/bare/" in make and "plc/plc.c" not in make
 
 def board_without_the_plc_layer_takes_it_from_the_flag(ws, monkeypatch):
-  from conftest import make_board, INI
   make_board(ws / "opencplc" / "1.0.0", "bare",
     INI.replace("plc = true", "plc = false"), title="Bare")
   assert run_cli(monkeypatch, "-n", "app", "-b", "bare", "-P", "-y") == 0
@@ -208,9 +215,9 @@ def chip_flag_overrides_the_board_manifest(ws, monkeypatch):
   assert run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-c", "STM32G081", "-y") == 0
   main_h = (ws / "projects" / "app" / "main.h").read_text()
   assert "PRO_BOARD_Uno" in main_h and "PRO_CHIP_STM32G081" in main_h
-  assert "PRO_FLASH_kB 128" in main_h  # chip memory, not the 492kB of the board
+  assert "PRO_FLASH_kB 128" in main_h         # chip memory, not the 492kB of the board
   assert "SYS_CLOCK_FREQ 59904000" in main_h  # the clock still belongs to the board
-  assert run_cli(monkeypatch, "app") == 0  # and it loads back the same way
+  assert run_cli(monkeypatch, "app") == 0     # and it loads back the same way
 
 def boot_flag_seeds_pro_boot_and_the_slot(ws, monkeypatch):
   assert run_cli(monkeypatch, "-n", "app", "-c", "STM32G0C1", "-B", "-y") == 0
@@ -218,7 +225,7 @@ def boot_flag_seeds_pro_boot_and_the_slot(ws, monkeypatch):
   make = (ws / "projects" / "app" / "makefile").read_text()
   assert "-DBOOT_SLOT_PAGES=126" in make and "BOOT := true" in make # (512 - 8) / 2 = 252kB
   assert "ORIGIN = 0x08002000, LENGTH = 252K" in (ws / "projects" / "app" / "flash.ld").read_text()
-  assert run_cli(monkeypatch, "app", "-B") == 1 # PRO_BOOT is edited in main.h afterwards
+  assert run_cli(monkeypatch, "app", "-B") == 1 # `PRO_BOOT` is edited in main.h afterwards
 
 def a_new_boot_project_says_what_the_flag_costs(ws, monkeypatch, capsys):
   """The flag halves the flash, so creation says so; a later load stays quiet."""
@@ -304,3 +311,24 @@ def program_needs_a_chip_to_program(ws, monkeypatch, capsys):
   assert run_cli(monkeypatch, "-n", "sim", "-c", "HOST", "-y") == 0
   assert run_cli(monkeypatch, "sim", "--program", "app.hex") == 1
   assert "STM32" in capsys.readouterr().out
+
+def keygen_writes_the_key_and_the_same_run_builds_under_it(ws, monkeypatch):
+  ship_key_bootloader(ws)
+  monkeypatch.setenv(keys.KEYS_ENV, str(ws / "keys"))
+  monkeypatch.setenv(keys.PASSWORD_ENV, "correct horse")
+  assert run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-y") == 0
+  assert run_cli(monkeypatch, "app", "--keygen", "acme") == 0
+  public = keys.product_public("acme").hex()
+  assert f'#define PRO_BOOT_KEY "{public}"' in (ws / "projects" / "app" / "main.h").read_text()
+  assert "boot_stm32g0_key.hex" in (ws / "projects" / "app" / "makefile").read_text()
+
+def lock_writes_option_bytes_of_the_named_project(ws, monkeypatch):
+  sessions = []
+  def openocd(pro, *cmds):
+    sessions.append(cmds)
+    return 0, "0x050000BB\n0x0000007F\n" if "stm32l4x option_read 0 0x20" in cmds else ""
+  monkeypatch.setattr(lock, "openocd", openocd)
+  monkeypatch.setattr(lock, "probe_chip", lambda pro: 0x467)
+  assert run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-y") == 0
+  assert run_cli(monkeypatch, "app", "--lock", "-y") == 0
+  assert "catch {stm32l4x option_write 0 0x20 0x050000BB 0x050000FF}" in sessions[0]

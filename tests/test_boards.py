@@ -1,6 +1,6 @@
 # tests/test_boards.py
 
-"""Board discovery from brd/<name>/: manifests valid and broken, new directories."""
+"""Board discovery from `brd/<name>/`: manifests valid and broken, new directories."""
 
 import pytest
 from xaeian import file_context
@@ -9,6 +9,7 @@ from conftest import INI, make_board
 
 @pytest.fixture()
 def core(tmp_path):
+  """Path of Core 1.0.0 in an empty workspace set as file root, the directory not made yet."""
   (tmp_path / "opencplc.json").write_text("{}")
   with file_context(root_path=str(tmp_path)):
     yield tmp_path / "opencplc" / "1.0.0"
@@ -123,10 +124,10 @@ def none_is_reserved_for_a_project_without_a_board(core):
 
 def reserve_is_optional_and_comes_off_the_top(core):
   from opencplc.configure import board_fields
-  d = make_board(core, "uno", INI + "reserve_kB = 20" + chr(10), title="Uno")
+  d = make_board(core, "uno", INI + "reserve_kB = 20\n", title="Uno")
   board = parse_board(str(d / "opencplc_uno.ini"), "uno", "x")
   assert (board.flash_kB, board.reserve_kB) == (492, 20)
   assert board_fields(board)["flash_kB"] == 472
-  d = make_board(core, "big", INI + "reserve_kB = 999" + chr(10), title="Big")
+  d = make_board(core, "big", INI + "reserve_kB = 999\n", title="Big")
   with pytest.raises(ValueError, match="reserve_kB"):
     parse_board(str(d / "opencplc_big.ini"), "big", "x")
