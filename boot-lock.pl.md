@@ -1,9 +1,8 @@
 # 🥾 Bootloader i 🔒 blokada
 
-Dwa niezależne mechanizmy.
-Bootloader z Core decyduje, który obraz się uruchomi, i przyjmuje aktualizacje bez programatora.
-Blokada zamyka port programatora i start z ROM.
-Każdy działa bez drugiego, a razem dają poziom produkcyjny opisany w części Bezpieczeństwo.
+Bootloader z Core uruchamia tylko sprawdzony obraz i instaluje aktualizacje bez programatora.
+Blokada zamyka płytkę przed programatorem, więc nikt nie odczyta ani nie nadpisze jej flasha.
+Każdy działa bez drugiego, a razem zabezpieczają produkt, co opisuje część Bezpieczeństwo.
 Podstawy Forge są w [readme](readme.pl.md).
 
 ## 🥾 Bootloader
@@ -24,20 +23,6 @@ Za bootloaderem Forge dzieli resztę `PRO_FLASH_kB` na dwa równe sloty: slot ap
 Bootloader kopiuje do slotu aplikacji tylko cały, sprawdzony obraz, więc przerwany transfer albo zanik zasilania w trakcie kopiowania nie szkodzi: działa stary obraz albo kopiowanie powtarza się przy następnym starcie.
 `key` sprawdza do tego przy każdym starcie podpis Ed25519 kluczem, który nosi w swoim kodzie.
 
-### Klucze
-
-- **Klucz deweloperski** Forge robi sam przy pierwszym buildzie `key`, jeden na maszynę, jako `dev.key`.
-  Podpisują nim `make`, `make flash` i F5, a ten sam klucz trafia do bootloadera, więc płytka na biurku przyjmuje własne buildy.
-- **Klucz produktu** robi `--keygen`: `acme.key` zaszyfrowany hasłem i `acme.pub` obok.
-  Podpisuje nim tylko `make dist`, po podaniu hasła.
-
-Klucze leżą w `%LOCALAPPDATA%/OpenCPLC/keys`, na Linuksie w `~/.local/share/OpenCPLC/keys`, a `OPENCPLC_KEYS` wskazuje inny katalog.
-Uszkodzony `dev.key` przenieś gdzie indziej, Forge zrobi nowy.
-
-> [!WARNING]
-> Utrata klucza produktu albo hasła kończy aktualizacje wszystkich urządzeń w polu, a wyciek pozwala każdemu podpisać obraz, który przyjmą.
-> Trzymaj `acme.key` i hasło w dwóch kopiach offline, z ograniczonym dostępem, i miej osobny klucz dla każdego produktu.
-
 ### Włączenie
 
 ```sh
@@ -45,16 +30,37 @@ opencplc -n myapp -b uno -B  # nowy projekt z PRO_BOOT true w main.h
 make run                     # build, potem bootloader i obraz przez ST-Link
 ```
 
-Istniejący projekt przełącza jedna linia w `main.h`, `#define PRO_BOOT true`, a `make run` sam go przeładuje, bo `main.h` jest nowszy niż `makefile`.
-Powrót to `PRO_BOOT false` i znowu `make run`, które nadpisuje bootloader zwykłym obrazem.
+W istniejącym projekcie wystarczy ustawić w `main.h` `#define PRO_BOOT true` i wywołać `make run`.
+Wyłączenie to `PRO_BOOT false` i znowu `make run`: zwykły obraz nadpisze bootloader.
+
+### Klucze
+
+- **Klucz deweloperski** Forge robi sam przy pierwszym buildzie `key`, jeden na komputer, jako `dev.key`.
+  Podpisują nim `make`, `make flash` i F5, a ten sam klucz trafia do bootloadera, więc płytka na biurku przyjmuje buildy z tego komputera.
+- **Klucz produktu** robi `--keygen`: `acme.key` zaszyfrowany hasłem i `acme.pub` obok.
+  Podpisuje nim tylko `make dist`, po podaniu hasła.
+
+`acme` to przykład, klucz nazywa się zwykle jak produkt.
+`PRO_BOOT_KEY` w `main.h` to jawna część klucza: może trafić do gita i siedzi w każdym urządzeniu.
+Tajne są tylko `acme.key` i hasło.
+
+Klucze leżą w `%LOCALAPPDATA%/OpenCPLC/keys`, na Linuksie w `~/.local/share/OpenCPLC/keys`, a `OPENCPLC_KEYS` wskazuje inny katalog.
+Wydanie z innego komputera wymaga tam `acme.key`, `acme.pub` i hasła.
+Uszkodzony `dev.key` przenieś gdzie indziej, Forge zrobi nowy.
+
+> [!WARNING]
+> Utrata klucza produktu albo hasła kończy aktualizacje wszystkich urządzeń w polu, a wyciek pozwala każdemu podpisać obraz, który przyjmą.
+> Trzymaj `acme.key` i hasło w dwóch kopiach offline, z ograniczonym dostępem, i miej osobny klucz dla każdego produktu.
 
 ### Klucz produktu
 
 ```sh
 opencplc myapp --keygen acme  # nowy klucz: hasło dwa razy, PRO_BOOT_KEY i PRO_BOOT_EPOCH 0 do main.h
-make run                      # bootloader key z kluczem deweloperskim i podpisany obraz
+make run                      # bootloader key i podpisany obraz
 ```
 
+`--keygen` ustawia też `PRO_BOOT true`, więc projekt nie musi mieć wcześniej bootloadera.
+Na biurku dalej podpisuje klucz deweloperski, a klucz produktu wchodzi dopiero przy `make dist`.
 Drugi projekt tego samego produktu bierze istniejący klucz, bez hasła:
 
 ```sh
@@ -67,12 +73,12 @@ Projekt, który ma już `PRO_BOOT_KEY`, nowego klucza nie dostanie, bo odciąłb
 
 ```sh
 make      # build, podpis kluczem deweloperskim
-make run  # build i flash
+make run  # build i wgranie
 ```
 
 Build daje `build/projects/myapp/myapp-dist.hex`, bootloader z obrazem w jednym pliku, który wgrywają `make flash` i F5, a obok `myapp-dist.bin`, sam obraz do aktualizacji.
 F5 ma symbole bootloadera obok aplikacji, więc debugger przechodzi krokami z bootloadera do aplikacji.
-Aktualizację na płytce deweloperskiej testuje ten `myapp-dist.bin`, bo obraz z `make dist` niesie podpis klucza produktu i płytka odrzuci go z `signature`.
+Aktualizację na płytce z biurka testuj tym `myapp-dist.bin`: plik z `make dist` ma podpis klucza produktu, więc ta płytka odrzuci go z `signature`.
 
 ### Wydanie
 
@@ -80,7 +86,7 @@ Aktualizację na płytce deweloperskiej testuje ten `myapp-dist.bin`, bo obraz z
 make dist TAG=1.2.0 # pod key pyta o hasło klucza acme
 ```
 
-Do `projects/myapp/` trafia pełny obraz `myapp-1.2.0.hex` dla programatora i `myapp-1.2.0.bin` do aktualizacji, pod `key` oba z podpisem klucza produktu.
+Do `projects/myapp/` trafiają `myapp-1.2.0.hex`, pełny obraz dla programatora, i `myapp-1.2.0.bin` do aktualizacji, pod `key` oba z podpisem klucza produktu.
 W CI klucz i hasło przychodzą ze zmiennych:
 
 ```sh
@@ -90,7 +96,7 @@ opencplc myapp
 make dist TAG=1.2.0
 ```
 
-Bez `acme.key` na maszynie `make dist` odmawia z `no private key for ...`, a przy złym haśle z `wrong password for key acme`, w obu przypadkach bez żadnego pliku.
+Bez `acme.key` na komputerze `make dist` odmawia z `no private key for ...`, a przy złym haśle z `wrong password for key acme`, w obu przypadkach bez żadnego pliku.
 Gdy `PRO_BOOT_KEY` to klucz deweloperski, `make dist` podpisze nim bez hasła: tak sprawdza się ścieżkę wydania, zanim powstanie klucz produktu.
 
 Wydanie z łatką bezpieczeństwa podnosi epokę:
@@ -103,11 +109,23 @@ make dist TAG=1.2.1
 Po jego instalacji urządzenie nie przyjmie już obrazu z epoką 0, więc nie cofnie się do wersji z luką.
 Epoka rośnie tylko z łatką, bo ma blokować powrót za granicę luki, a nie każdy powrót do starszej wersji, np. po nieudanym wydaniu.
 
+### Wydanie na płytce
+
+```sh
+opencplc --program projects/myapp/myapp-1.2.0.hex # wydanie z kluczem produktu, bez blokady
+```
+
+Płytka dostaje bootloader z kluczem produktu, więc przyjmuje już tylko pliki z `make dist`, a zwykły build odrzuca z `signature`.
+`boot info` pokazuje `mode:key`, początek klucza produktu i `rdp:0`.
+Płytka zostaje otwarta: `make run` przywraca na niej klucz deweloperski.
+Sztukę dla klienta wgraj tak samo, tylko z `--lock`, patrz [Fabryka](#fabryka).
+
 ### Aktualizacja
 
 Aplikacja odbiera `myapp-1.2.0.bin` swoim łączem, np. BLE, RS albo USB, i oddaje bajty do `BOOT_Begin`, `BOOT_Write` i `BOOT_End` z `hal/stm32/sys/boot.h`, a podpis do `BOOT_Signature`.
 `BOOT_End` sprawdza obraz tak jak bootloader, płytka się resetuje, a bootloader kopiuje obraz do slotu aplikacji i go uruchamia.
 Kto może rozpocząć aktualizację i czy łącze jest szyfrowane, decyduje aplikacja.
+
 Stos radiowy STM32WB też aktualizuje aplikacja: przyjmuje binarkę ST swoim łączem i zleca instalację FUS, a bootloader stosu nie dotyka.
 Aplikacja powinna ruszać też bez stosu i dalej przyjmować aktualizacje przez USB, bo zanik zasilania w trakcie instalacji zostawia CPU2 bez stosu: `WPAN_Start` zwraca wtedy `ERR`, a kopia w stagingu pozwala instalację dokończyć.
 
@@ -143,7 +161,7 @@ Bez bootloadera albo z pustym slotem płytka nie uruchamia aplikacji, a wyjścia
 
 ### Przebudowa bootloadera
 
-Potrzebna po zmianie w Core plików, które wykonuje bootloader: `hal/stm32/sys/boot.c`, sterowniki flasha, CRC i zegara, `startup.c`, Monocypher pod `key` oraz `wpan_wb.c` na WB.
+Potrzebna tylko po zmianie w Core plików, które wykonuje bootloader: `hal/stm32/sys/boot.c`, sterowniki flasha, CRC i zegara, `startup.c`, Monocypher pod `key` oraz `wpan_wb.c` na WB.
 `make dist` zapisuje ten sam hex dla tego samego kodu, więc hex niezmieniony w `git status` Core znaczy, że przesunął się tylko elf z liniami źródeł, po których krokuje F5.
 Projekt bootloadera ma w `main.h` `#define BOOT_KEY OFF` albo `ON`, a region kodu liczy Forge:
 
@@ -156,15 +174,14 @@ Hex i elf trafiają do `scr/` w Core, a aplikacje pakują się z nowym bootloade
 
 ## 🔒 Blokada
 
-`--lock` ustawia przez SWD opcje chipu:
+`--lock` zmienia przez programator ustawienia chipu (option bytes):
 
 - RDP1: debugger i programator tracą dostęp do flasha, a zdjęcie blokady kasuje cały flash
 - start z bootloadera ST w ROM wyłączony, cokolwiek mówi pin `BOOT0`
-- pod bootloaderem także ochrona zapisu jego stron, bez strony mailboxa
+- z bootloaderem dochodzi ochrona zapisu jego stron
 
-Blokada nie zależy od trybu bootloadera: działa pod `plain`, pod `key` i bez bootloadera.
-Nie sprawdza też, co płytka trzyma, tylko chip na sondzie, bo opcje różnią się między rodzinami.
-Zawartość płytki ustala `--program`, dlatego w fabryce oba idą jednym wywołaniem.
+Blokada działa pod `plain`, pod `key` i bez bootloadera.
+Sprawdza tylko, czy programator widzi chip projektu, a nie, co jest we flashu: zawartość ustala `--program`, dlatego w fabryce oba idą jednym poleceniem.
 
 | | `--lock`, RDP1 | `--lock 2`, RDP2 |
 | --- | --- | --- |
@@ -181,7 +198,7 @@ opencplc --program projects/myapp/myapp-1.2.0.hex --lock     # pełny obraz z di
 opencplc --program projects/myapp/myapp-1.2.0.hex --lock -y  # linia produkcyjna, bez pytania
 ```
 
-Pod `key` wgrywa się obraz z `make dist`: build z `make run` niesie klucz deweloperski, a sztuka z nim przyjęłaby aktualizacje tylko z maszyny dewelopera.
+Pod `key` wgrywaj zawsze plik z `make dist`: build z `make run` ma klucz deweloperski, a sztuka z nim przyjmowałaby aktualizacje tylko z komputera dewelopera.
 Po blokadzie `make flash`, F5 i `--program` nie dochodzą już do flasha, aktualizacje dalej przechodzą łączem aplikacji, a `boot info` pokazuje `rdp:1`.
 Przy kilku ST-Linkach `opencplc myapp -s <serial>` wiąże właściwy z projektem, inaczej `--lock` trafi na obcy chip i odmówi.
 

@@ -225,7 +225,7 @@ def boot_image(cfg:dict, core_dir:str) -> str:
   """
   stem = boot_stem(cfg["hal"], bool(cfg.get("boot_key")))
   if FILE.exists(f"{core_dir}/{stem}.hex"): return f"{stem}.hex"
-  p.err(f"Core {c.VIOLET}{cfg['fw_ver']}{c.END} has no bootloader {c.BLUE}{stem}.hex{c.END}")
+  p.err(f"Core {c.VIOLET}{cfg['fw_ver']}{c.END} has no bootloader {c.LIME}{stem}.hex{c.END}")
   p.inf(f"{c.SKY}PRO_BOOT{c.END} needs a newer Core")
   sys.exit(1)
 

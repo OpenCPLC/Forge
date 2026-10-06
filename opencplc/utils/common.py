@@ -1,12 +1,14 @@
 # opencplc/utils/common.py
 
-"""Small CLI helpers: prompts, colored URLs, name validation."""
+"""Small CLI helpers: prompts, colored URLs, commands and images, name validation."""
 
 import sys
 from typing import Any
-from xaeian import Print, Color as c
+from xaeian import Print, Color as c, PATH
 
 p = Print()
+
+IMAGE_COLORS = {".hex": c.LIME, ".bin": c.SKY, ".elf": c.VIOLET}
 
 def is_yes(msg:str="Proceed automatically") -> bool:
   """Ask `msg` and read a yes/no answer; y, yes, t, tak and true count as yes."""
@@ -18,6 +20,16 @@ def is_yes(msg:str="Proceed automatically") -> bool:
 def color_url(url:str) -> str:
   """URL as Forge shows every one: grey scheme, teal body."""
   return url.replace("https://", f"{c.GREY}https://{c.END}{c.TEAL}") + c.END
+
+def color_command(cmd:str) -> str:
+  """Command the way a console colors it: program yellow, flags grey, arguments plain."""
+  program, *args = cmd.split(" ")
+  shown = [f"{c.GREY}{arg}{c.END}" if arg.startswith("-") else arg for arg in args]
+  return " ".join([f"{c.YELLOW}{program}{c.END}", *shown])
+
+def color_image(path:str) -> str:
+  """Image file in the color of its kind: hex lime, bin sky, elf violet."""
+  return f"{IMAGE_COLORS[PATH.ext(path).lower()]}{path}{c.END}"
 
 def assign_name(name:Any, flag:Any, msg:str) -> tuple[str, Any]:
   """Take the project name from a flag that carries one; a second, different name exits."""

@@ -50,7 +50,7 @@ def dev_seed() -> bytes:
   """Seed of the development key, made on first use; a damaged file raises and stays."""
   path = f"{keys_dir()}/{DEV_KEY}"
   if write_new(path, secrets.token_hex(32) + "\n"):
-    p.inf(f"Development key made in {c.BLUE}{path}{c.END}")
+    p.inf(f"Development key made in {c.CREAM}{path}{c.END}")
   try:
     seed = bytes.fromhex(FILE.load(path).strip())
   except ValueError:
@@ -122,4 +122,4 @@ def signing_seed(public:bytes|None=None) -> bytes:
   if name: return product_seed(name, password_for(name))
   seed = dev_seed()
   if public is None or ed25519.public_key(seed) == public: return seed
-  raise ValueError(f"no private key for {fingerprint(public)} in {keys_dir()}")
+  raise ValueError(f"no private key for {fingerprint(public)}... in {keys_dir()}")

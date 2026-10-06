@@ -158,7 +158,7 @@ OPENOCD = ${OPENOCD} -c
 # One file with or without a bootloader, `--pack` already put it in front
 # Looked for when `flash` runs, so `make run` finds the image its build just made
 flash:
-	@$(if $(wildcard $(BUILD)/$(TARGET)-dist.hex),$(OPENOCD) "program $(BUILD)/$(TARGET)-dist.hex verify reset exit" && echo Flashed ${VIOLET}$(TARGET)-dist.hex${END}|| (echo Flashing ${RED}failed${END}&& exit 1),echo No image ${YELLOW}$(TARGET)-dist.hex${END} to flash)
+	@$(if $(wildcard $(BUILD)/$(TARGET)-dist.hex),$(OPENOCD) "program $(BUILD)/$(TARGET)-dist.hex verify reset exit" && echo Flashed ${LIME}$(TARGET)-dist.hex${END}|| (echo Flashing ${RED}failed${END}&& exit 1),echo No image ${LIME}$(TARGET)-dist.hex${END} to flash)
 
 run: build flash
 
@@ -180,7 +180,7 @@ dist: build
 	@cd $(WORKSPACE) && $(FORGE) --pack $(BUILD)/$(TARGET).hex $(DIST_HEX) $(BOOT_IMAGE) $(BOOT_KEY_AT) $(BOOT_KEY)
 ifneq ($(DIST_ELF),)
 	@$(call COPY,$(BUILD)/$(TARGET).elf,$(DIST_ELF))
-	@echo Bootloader ${LIME}$(notdir $(DIST_HEX))${END} and its elf to Core
+	@echo Bootloader ${LIME}$(notdir $(DIST_HEX))${END} and ${VIOLET}$(notdir $(DIST_ELF))${END} to Core
 else ifeq ($(BOOT),true)
 	@echo Full image ${LIME}$(DIST).hex${END} to ${PROJECT_COLORED}
 	@echo Update image ${SKY}$(DIST).bin${END} to ${PROJECT_COLORED}

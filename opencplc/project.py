@@ -43,13 +43,16 @@ def recipe_safe(subs:dict) -> dict:
 
 def write_dispatcher(active:str, colored:str=""):
   """Workspace `makefile`: `make` at the root builds `active`, or names none when it is ""."""
-  utils.create_file("makefile", load_templates()["workspace.mk"], "", recipe_safe({
+  subs = recipe_safe({
     "${ACTIVE}": active,
     "${ACTIVE_COLORED}": colored,
-    "${GOLD}": c.GOLD, "${CMD}": c.CYAN, "${GREY}": c.GREY,
+    "${GOLD}": c.GOLD, "${GREY}": c.GREY,
     "${END}": c.END,
     "${ERR}": f"{c.RED}ERR{c.END}",
-  }))
+  })
+  # `$(error)` prints its text without a shell, so the codes stay bare
+  subs["${CMD}"] = utils.color_command("opencplc <name>")
+  utils.create_file("makefile", load_templates()["workspace.mk"], "", subs)
 
 def rel_from(items:list[str], base:str) -> list[str]:
   """Paths relative to a directory, e.g. core paths relative to the Core dir."""
@@ -88,7 +91,7 @@ def stack_command(pro:Project) -> str:
   if not utils.cube_found():
     missing = f"{c.YELLOW}STM32CubeProgrammer{c.END} not found"
     source = f"install it from {utils.color_url(utils.CUBE_URL)}"
-    reload = f"reload with {c.CYAN}opencplc -r{c.END}"
+    reload = f"reload with {utils.color_command('opencplc -r')}"
     return f"echo {missing}, {source} and {reload}&& exit 1"
   script = f'{bash_exe()} "$(OPENCPLC)/scr/{pro.stack_script}"'
   return f"{script} $(if $(STLINK),--sn=$(STLINK)) $(if $(FUS),--fus) $(if $(FAST),--fast)"
@@ -240,9 +243,8 @@ def generate(pro:Project, activate:bool=True):
     "${EXE_EXT}": ".exe" if is_windows else "",
     "${PROJECT_COLORED}": colored_path(pro.pro_dir, pro.name),
     "${BUILD_COLORED}": colored_path(pro.build_dir, pro.name),
-    "${GOLD}": c.GOLD, "${YELLOW}": c.YELLOW, "${GREEN}": c.GREEN, "${PINK}": c.PINK,
-    "${VIOLET}": c.VIOLET, "${LIME}": c.LIME, "${SKY}": c.SKY, "${RED}": c.RED,
-    "${BLUE}": c.BLUE, "${GREY}": c.GREY,
+    "${GOLD}": c.GOLD, "${PINK}": c.PINK, "${RED}": c.RED,
+    "${LIME}": c.LIME, "${SKY}": c.SKY, "${VIOLET}": c.VIOLET,
     "${END}": c.END,
   } | utils.template_paths(pro.platform == "STM32")
   # Linker script and makefile live inside the project - parallel builds stay disjoint

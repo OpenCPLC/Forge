@@ -1,9 +1,8 @@
 # 🥾 Bootloader and 🔒 lock
 
-Two independent mechanisms.
-The Core bootloader decides which image runs and takes updates without a programmer.
-The lock closes the programmer port and the start from ROM.
-Each works without the other, and together they make the production level described under Security.
+The Core bootloader starts only a verified image and installs updates without a programmer.
+The lock closes the board to the programmer, so nobody reads or overwrites its flash.
+Each works without the other, and together they protect a product, as Security describes.
 Forge basics are in the [readme](readme.md).
 
 ## 🥾 Bootloader
@@ -24,20 +23,6 @@ Behind the bootloader Forge splits the rest of `PRO_FLASH_kB` into two equal slo
 The bootloader copies only a whole, verified image into the application slot, so an interrupted transfer or a power loss during the copy is harmless: the old image runs, or the copy repeats on the next start.
 `key` also checks an Ed25519 signature at every start, against the key it carries in its code.
 
-### Keys
-
-- **Development key**: Forge makes it by itself on the first `key` build, one per machine, as `dev.key`.
-  `make`, `make flash` and F5 sign with it and write the same key into the bootloader, so a board on the desk takes its own builds.
-- **Product key**: `--keygen` makes it, `acme.key` encrypted with a password and `acme.pub` beside it.
-  Only `make dist` signs with it, after the password.
-
-Keys live in `%LOCALAPPDATA%/OpenCPLC/keys`, on Linux in `~/.local/share/OpenCPLC/keys`, and `OPENCPLC_KEYS` points elsewhere.
-Move a damaged `dev.key` away and Forge makes a new one.
-
-> [!WARNING]
-> Losing the product key or its password ends updates of every device in the field, and a leak lets anyone sign an image they accept.
-> Keep `acme.key` and its password in two offline copies with limited access, and use a separate key for each product.
-
 ### Switching on
 
 ```sh
@@ -45,16 +30,37 @@ opencplc -n myapp -b uno -B  # new project with PRO_BOOT true in main.h
 make run                     # build, then bootloader and image over ST-Link
 ```
 
-An existing project switches with one line in `main.h`, `#define PRO_BOOT true`, and `make run` reloads it by itself, as `main.h` is newer than the `makefile`.
-Back is `PRO_BOOT false` and `make run` again, which writes a plain image over the bootloader.
+In an existing project set `#define PRO_BOOT true` in `main.h` and run `make run`.
+To switch it off, set `PRO_BOOT false` and run `make run` again: a plain image replaces the bootloader.
+
+### Keys
+
+- **Development key**: Forge makes it by itself on the first `key` build, one per computer, as `dev.key`.
+  `make`, `make flash` and F5 sign with it and write the same key into the bootloader, so the board on the desk takes builds from this computer.
+- **Product key**: `--keygen` makes it, `acme.key` encrypted with a password and `acme.pub` beside it.
+  Only `make dist` signs with it, after the password.
+
+`acme` is an example, a key is usually named after its product.
+`PRO_BOOT_KEY` in `main.h` is the public part of the key: it may go into git and sits in every device.
+Only `acme.key` and its password are secret.
+
+Keys live in `%LOCALAPPDATA%/OpenCPLC/keys`, on Linux in `~/.local/share/OpenCPLC/keys`, and `OPENCPLC_KEYS` points elsewhere.
+A release from another computer needs `acme.key`, `acme.pub` and the password there.
+Move a damaged `dev.key` away and Forge makes a new one.
+
+> [!WARNING]
+> Losing the product key or its password ends updates of every device in the field, and a leak lets anyone sign an image they accept.
+> Keep `acme.key` and its password in two offline copies with limited access, and use a separate key for each product.
 
 ### Product key
 
 ```sh
 opencplc myapp --keygen acme  # new key: password twice, PRO_BOOT_KEY and PRO_BOOT_EPOCH 0 into main.h
-make run                      # key bootloader with development key and signed image
+make run                      # key bootloader and signed image
 ```
 
+`--keygen` also sets `PRO_BOOT true`, so the project needs no bootloader beforehand.
+On the desk the development key still signs, and the product key comes in only with `make dist`.
 A second project of the same product takes the existing key, without a password:
 
 ```sh
@@ -72,7 +78,7 @@ make run  # build and flash
 
 A build gives `build/projects/myapp/myapp-dist.hex`, bootloader and image in one file, which `make flash` and F5 send, and beside it `myapp-dist.bin`, the image alone for an update.
 F5 loads bootloader symbols beside the application, so the debugger steps from the bootloader into the application.
-An update on a development board is tested with that `myapp-dist.bin`, as an image of `make dist` carries the product key signature and the board refuses it with `signature`.
+Test an update on the desk board with this `myapp-dist.bin`: a file from `make dist` carries the product key signature, so this board refuses it with `signature`.
 
 ### Release
 
@@ -80,7 +86,7 @@ An update on a development board is tested with that `myapp-dist.bin`, as an ima
 make dist TAG=1.2.0 # under key asks for password of key acme
 ```
 
-Into `projects/myapp/` go the full image `myapp-1.2.0.hex` for a programmer and `myapp-1.2.0.bin` for an update, under `key` both signed with the product key.
+Into `projects/myapp/` go `myapp-1.2.0.hex`, the full image for a programmer, and `myapp-1.2.0.bin` for an update, under `key` both signed with the product key.
 In CI the key and password come from variables:
 
 ```sh
@@ -90,7 +96,7 @@ opencplc myapp
 make dist TAG=1.2.0
 ```
 
-Without `acme.key` on the machine `make dist` refuses with `no private key for ...`, with a wrong password with `wrong password for key acme`, leaving no file either way.
+Without `acme.key` on the computer `make dist` refuses with `no private key for ...`, with a wrong password with `wrong password for key acme`, leaving no file either way.
 With the development key in `PRO_BOOT_KEY`, `make dist` signs with it without a password: that tests the release path before a product key exists.
 
 A release with a security fix raises the epoch:
@@ -103,11 +109,23 @@ make dist TAG=1.2.1
 Once it is installed, the device takes no image of epoch 0, so it never goes back to the vulnerable version.
 The epoch goes up only with a fix, as it should block going back past the hole, not every return to an older version, e.g. after a failed release.
 
+### Release on a board
+
+```sh
+opencplc --program projects/myapp/myapp-1.2.0.hex # release with product key, no lock
+```
+
+The board gets the bootloader with the product key, so from now on it takes only files from `make dist` and refuses a regular build with `signature`.
+`boot info` shows `mode:key`, the start of the product key and `rdp:0`.
+The board stays open: `make run` puts the development key back on it.
+Program a unit for a customer the same way, just with `--lock`, see [Factory](#factory).
+
 ### Update
 
 The application takes `myapp-1.2.0.bin` over its own link, e.g. BLE, RS or USB, and hands the bytes to `BOOT_Begin`, `BOOT_Write` and `BOOT_End` of `hal/stm32/sys/boot.h`, the signature to `BOOT_Signature`.
 `BOOT_End` checks the image as the bootloader does, the board resets, and the bootloader copies the image into the application slot and starts it.
 Who may start an update and whether the link is encrypted is up to the application.
+
 The STM32WB radio stack is updated by the application too: it takes the ST binary over its link and has FUS install it, while the bootloader never touches the stack.
 The application should start without the stack too and keep taking updates over USB, as a power loss during the install leaves CPU2 without a stack: `WPAN_Start` then returns `ERR`, and the copy in staging lets the install finish.
 
@@ -143,7 +161,7 @@ Without a bootloader or with an empty slot the board starts no application, and 
 
 ### Rebuilding bootloader
 
-Needed after a change in Core files the bootloader runs: `hal/stm32/sys/boot.c`, flash, CRC and clock drivers, `startup.c`, Monocypher under `key`, and `wpan_wb.c` on WB.
+Needed only after a change in Core files the bootloader runs: `hal/stm32/sys/boot.c`, flash, CRC and clock drivers, `startup.c`, Monocypher under `key`, and `wpan_wb.c` on WB.
 `make dist` writes the same hex for the same code, so a hex unchanged in `git status` of Core means only the elf moved, with the source lines F5 steps through.
 The bootloader project has `#define BOOT_KEY OFF` or `ON` in `main.h`, and Forge computes its code region:
 
@@ -156,15 +174,14 @@ Hex and elf land in `scr/` of Core, and applications pack the new bootloader on 
 
 ## 🔒 Lock
 
-`--lock` sets chip options over SWD:
+`--lock` changes chip settings (option bytes) through the programmer:
 
 - RDP1: debugger and programmer lose the flash, and taking the lock off erases all of it
 - start from the ST ROM bootloader off, whatever the `BOOT0` pin says
-- under a bootloader, write protection of its pages too, the mailbox page left out
+- with a bootloader, write protection of its pages too
 
-The lock does not depend on the bootloader mode: it works under `plain`, under `key` and without a bootloader.
-Nor does it check what the board holds, only the chip on the probe, as options differ between families.
-`--program` decides what the board holds, which is why the factory runs both in one call.
+The lock works under `plain`, under `key` and without a bootloader.
+It checks only that the programmer sees the project's chip, not what the flash holds: `--program` sets the content, which is why the factory runs both in one command.
 
 | | `--lock`, RDP1 | `--lock 2`, RDP2 |
 | --- | --- | --- |
@@ -181,7 +198,7 @@ opencplc --program projects/myapp/myapp-1.2.0.hex --lock     # full image of dis
 opencplc --program projects/myapp/myapp-1.2.0.hex --lock -y  # production line, no prompt
 ```
 
-Under `key` the image comes from `make dist`: a build of `make run` carries the development key, and a unit with it would take updates only from a developer's machine.
+Under `key` always program the file from `make dist`: a `make run` build carries the development key, and a unit with it would take updates only from the developer's computer.
 Once locked, `make flash`, F5 and `--program` no longer reach the flash, updates still go over the application link, and `boot info` shows `rdp:1`.
 With several ST-Links `opencplc myapp -s <serial>` binds the right one to the project, otherwise `--lock` may meet a foreign chip and refuse.
 

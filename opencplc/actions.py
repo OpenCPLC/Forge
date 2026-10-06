@@ -48,7 +48,7 @@ def update_forge(args):
   """
   if not FROZEN:
     p.err("Forge runs here as a Python package")
-    p.run(f"Update it with {c.CYAN}pip install -U opencplc{c.END}")
+    p.run(f"Update it with {utils.color_command('pip install -U opencplc')}")
     sys.exit(1)
   latest = args.update in ("last", "latest")
   utils.ensure_git(args.yes)
@@ -159,16 +159,16 @@ def program_image(pro:Project, path:str):
     p.err(f"Flag {flag.program} takes a .hex or .elf, a raw binary carries no address")
     sys.exit(1)
   if not FILE.exists(path):
-    p.err(f"File {c.VIOLET}{path}{c.END} not found")
+    p.err(f"File {utils.color_image(path)} not found")
     sys.exit(1)
   cmd = utils.openocd_command(pro.openocd_target, pro.stlink)
   # braces keep a path with spaces one word for openocd
   cmd += ["-c", f"program {{{PATH.normalize(path)}}} verify reset exit"]
-  name = PATH.basename(path)
+  name = utils.color_image(PATH.basename(path))
   if run(cmd, capture=False).returncode:
-    p.err(f"Programming {c.VIOLET}{name}{c.END} failed")
+    p.err(f"Programming {name} failed")
     sys.exit(1)
-  p.ok(f"Programmed {c.VIOLET}{name}{c.END} into {c.PINK}{pro.chip}{c.END}")
+  p.ok(f"Programmed {name} into {c.PINK}{pro.chip}{c.END}")
 
 def info_show(pro:Project):
   """-i: print the resolved project configuration and exit."""

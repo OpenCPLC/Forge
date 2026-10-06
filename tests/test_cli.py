@@ -241,7 +241,7 @@ def update_outside_a_frozen_build_points_at_pip(tmp_path, monkeypatch, capsys):
   monkeypatch.setattr(actions, "FROZEN", False)
   with pytest.raises(SystemExit):
     actions.update_forge(Args(update="latest", yes=True))
-  assert "pip install -U opencplc" in capsys.readouterr().out
+  assert "pip install -U opencplc" in project.ANSI.sub("", capsys.readouterr().out)
 
 def frozen_update_lands_next_to_the_executable(tmp_path, monkeypatch):
   exe = frozen_forge(tmp_path, monkeypatch)

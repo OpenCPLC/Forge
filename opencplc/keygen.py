@@ -63,15 +63,15 @@ def keygen(name:str, main_h_path:str):
     with_key(text, bytes(32)) # its refusals come before any password: a key already, no `PRO_BOOT`
     if FILE.exists(f"{keys.keys_dir()}/{name}.key"):
       p.err(f"Key {c.GOLD}{name}{c.END} lost {c.BLUE}{name}.pub{c.END} "
-        f"beside {c.BLUE}{name}.key{c.END} in {c.BLUE}{keys.keys_dir()}{c.END}")
+        f"beside {c.BLUE}{name}.key{c.END} in {c.CREAM}{keys.keys_dir()}{c.END}")
       p.run(f"Put it back: one line, {c.SKY}PRO_BOOT_KEY{c.END} of a project signed with the key")
       sys.exit(1)
     public = keys.product_make(name, new_password(name))
-    p.ok(f"Key {c.GOLD}{name}{c.END} made in {c.BLUE}{keys.keys_dir()}{c.END}")
+    p.ok(f"Key {c.GOLD}{name}{c.END} made in {c.CREAM}{keys.keys_dir()}{c.END}")
     p.wrn(f"Keep two offline copies of {c.BLUE}{name}.key{c.END} and its password: "
       "losing either ends updates of every device")
   else:
-    p.inf(f"Key {c.GOLD}{name}{c.END} taken from {c.BLUE}{keys.keys_dir()}{c.END}")
+    p.inf(f"Key {c.GOLD}{name}{c.END} taken from {c.CREAM}{keys.keys_dir()}{c.END}")
   FILE.save(main_h_path, with_key(text, public).encode("utf-8"))
-  p.ok(f"{c.SKY}PRO_BOOT_KEY{c.END} {c.GOLD}{keys.fingerprint(public)}{c.END} "
+  p.ok(f"{c.SKY}PRO_BOOT_KEY{c.END} {c.GOLD}{keys.fingerprint(public)}{c.GREY}...{c.END} "
     f"written into {c.BLUE}main.h{c.END}")

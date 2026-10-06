@@ -189,7 +189,8 @@ def project_delete(args, projects:dict, make_info:dict|None, forge_cfg:dict):
     DIR.remove(projects[key], force=True)
     if make_info and make_info.get("ACTIVE") == active:
       write_dispatcher("")
-      p.inf(f"Active project removed - select another with {c.CYAN}opencplc <name>{c.END}")
+      p.inf("Active project removed - "
+        f"select another with {utils.color_command('opencplc <name>')}")
     p.ok(f"Project {c.BLUE}{args.name}{c.END} deleted")
     sys.exit(0)
   except Exception as e:

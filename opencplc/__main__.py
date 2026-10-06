@@ -85,7 +85,7 @@ def main():
     utils.ensure_git(args.yes)
     utils.git_clone_missing(URL_DEMO, DIR_DEMO, "main", args.yes)
     p.inf(f"Demo in {c.GREY}{DIR_DEMO}{c.END}, "
-      f"load one with {c.CYAN}opencplc demo/<name>{c.END}")
+      f"load one with {utils.color_command('opencplc demo/<name>')}")
     sys.exit(0)
   projects = utils.get_project_list(paths["pro"])
   project_select(args, projects)

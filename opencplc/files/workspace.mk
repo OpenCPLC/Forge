@@ -15,7 +15,7 @@ endif
 
 ifeq ($(ACTIVE),)
 build run flash erase stack dist clean clr:
-	$(error No active project, select one with: ${CMD}opencplc <name>${END})
+	$(error No active project, select one with: ${CMD})
 else
 build:
 	@echo Entering directory: ${ACTIVE_COLORED}

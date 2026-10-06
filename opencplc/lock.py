@@ -150,7 +150,8 @@ def confirm(pro:Project, level:int, yes:bool):
     protected = "bootloader write-protected, " if pro.boot else ""
     p.wrn(f"Lock: {protected}BOOT0 off, RDP{level}, flash closed to debugger and programmer")
     if pro.stack_script:
-      p.wrn(f"{c.CYAN}make stack{c.END} stops working, SWD no longer reaches radio stack")
+      p.wrn(f"{utils.color_command('make stack')} stops working, "
+        "SWD no longer reaches radio stack")
     question = f"Lock {chip} at RDP{level}"
   if not yes and not utils.is_yes(question): sys.exit(1)
   if level == 2:
@@ -173,7 +174,7 @@ def lock_board(pro:Project, level:int, yes:bool):
   if level == 2 and read is None and swd_shut(pro): # RDP2 shuts SWD at once
     p.ok(f"{c.PINK}{pro.chip}{c.END} at RDP2: powered, silent on SWD for good")
     # the silence of SWD alone could have another cause, the chip itself names its level
-    p.run(f"Power-cycle board, {c.CYAN}boot info{c.END} then shows {c.GOLD}rdp:2{c.END}")
+    p.run(f"Power-cycle board, {utils.color_command('boot info')} then shows {c.GOLD}rdp:2{c.END}")
     return
   if read is None or (read[0] & 0xFF) != RDP[level]:
     got = f"OPTR 0x{read[0]:08X}, WRP1AR 0x{read[1]:08X}" if read else "nothing readable"
@@ -183,7 +184,7 @@ def lock_board(pro:Project, level:int, yes:bool):
   p.ok(f"{c.PINK}{pro.chip}{c.END} at RDP{level}, OPTR 0x{read[0]:08X}, WRP1AR 0x{read[1]:08X}")
   if level == 0:
     # option reload saw flash empty, and G0 boots its ROM until next power-on
-    p.run(f"Program board with {c.CYAN}make flash{c.END}, then power-cycle it")
+    p.run(f"Program board with {utils.color_command('make flash')}, then power-cycle it")
     return
   # a debugger seen since power-on keeps flash shut until next power-on
   p.run("Power-cycle board")

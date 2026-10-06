@@ -101,7 +101,7 @@ build: $(EXE)
 endif
 
 run: build
-	@echo Running ${GREEN}$(notdir $(EXE))${END}
+	@echo Running ${LIME}$(notdir $(EXE))${END}
 	@$(EXE)
 
 # `make dist TAG=1.2.0` names the copy <target>-1.2.0
