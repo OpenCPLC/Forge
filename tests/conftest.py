@@ -250,7 +250,12 @@ def forge_env(ws):
   return env, f"FORGE={sys.executable} -m opencplc"
 
 def age(*paths, seconds:float=10.0):
-  """Move mtimes into the past, so a fresh touch is newer at any timestamp resolution."""
+  """
+  Move mtimes into the past, so a fresh touch is newer at any timestamp resolution.
+
+  Make on Windows compares whole seconds: a quick build leaves its outputs,
+  reload stamp `.forge` too, in the second of the next edit.
+  """
   for path in paths:
     stamp = os.path.getmtime(path) - seconds
     os.utime(path, (stamp, stamp))

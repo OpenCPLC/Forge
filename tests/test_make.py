@@ -139,7 +139,8 @@ def new_source_is_built_in_the_same_make_run(ws):
   write_forge_config(ws)
   generate(host_model())
   assert make_run(ws, "build").returncode == 0
-  age(ws / "projects" / "app" / "makefile", *(ws / "build").rglob("*.o"))
+  stamp = ws / "build" / "projects" / "app" / ".forge"
+  age(ws / "projects" / "app" / "makefile", stamp, *(ws / "build").rglob("*.o"))
   write_file(ws / "projects" / "app" / "more.c", "int more(void) { return 3; }\n")
   res = make_run(ws, "build")
   assert res.returncode == 0, res.stdout + res.stderr
@@ -150,7 +151,7 @@ def new_source_is_built_in_the_same_make_run(ws):
 def missing_forge_fails_the_reload(ws):
   generate(host_model())
   assert make_run(ws, "build").returncode == 0
-  age(ws / "projects" / "app" / "makefile")
+  age(ws / "projects" / "app" / "makefile", ws / "build" / "projects" / "app" / ".forge")
   os.utime(ws / "projects" / "app" / "main.h", None)
   res = subprocess.run(["make", "-C", str(ws / "projects" / "app"), "build",
     "FORGE=no_such_forge_cmd"], capture_output=True, text=True)
