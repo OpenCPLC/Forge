@@ -48,9 +48,11 @@ def git_clone(url:str, path:str, ref:str|None=None, drop_on_err:bool=False):
   cmd = ["git", "clone"]
   if ref: cmd += ["--branch", ref]
   cmd += [url, path]
-  if run(cmd).returncode:
+  res = run(cmd)
+  if res.returncode:
     if drop_on_err and DIR.exists(path): DIR.remove(path, force=True)
-    p.err(f"Clone failed: {color_url(url)}")
+    p.err(f"Clone of {color_url(url)} failed")
+    for line in res.stderr.strip().splitlines()[-2:]: p.gap(f"{c.GREY}{line}{c.END}")
     sys.exit(1)
 
 def git_get_refs(url:str, option:Literal["--heads", "--tags", "--ref"]="--ref") -> list[str]:

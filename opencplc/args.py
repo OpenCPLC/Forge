@@ -54,7 +54,7 @@ class Args:
   version: bool = False
   stlink: str|None = None
   size: list[str]|None = None
-  program: str|None = None
+  program: str|bool|None = None
   lock: int|None = None
   keygen: str|None = None
   pack: list[str]|None = None
@@ -143,8 +143,8 @@ def load_args() -> Args:
     help="Report FLASH and RAM usage of an .elf against the chip memory")
   parser.add_argument("-p", "--pack", nargs="+", metavar="FILE",
     help="Pack the flash image: APP.hex OUT.hex [BOOT [KEY_AT [KEY]]], a makefile step")
-  parser.add_argument("--program", type=str, metavar="FILE",
-    help="Send a .hex to the board through the programmer, e.g. the one from dist")
+  parser.add_argument("--program", type=str, nargs="?", const=True, metavar="FILE",
+    help="Send a .hex to the board through the programmer; alone, the one make dist left")
   parser.add_argument("--lock", type=int, nargs="?", const=1, choices=(0, 1, 2), metavar="LEVEL",
     help="Lock board for production: 1 RDP1, 2 for good, 0 unlocks, erasing flash")
   parser.add_argument("--keygen", type=str, metavar="NAME",

@@ -1,10 +1,11 @@
 # opencplc/utils/common.py
 
-"""Small CLI helpers: prompts, colored URLs, commands and images, name validation."""
+"""Small CLI helpers: prompts, colored URLs, commands, images and main.h, name validation."""
 
 import sys
 from typing import Any
 from xaeian import Print, Color as c, PATH
+from ..config import DIR_PROJECTS
 
 p = Print()
 
@@ -26,6 +27,10 @@ def color_command(cmd:str) -> str:
   program, *args = cmd.split(" ")
   shown = [f"{c.GREY}{arg}{c.END}" if arg.startswith("-") else arg for arg in args]
   return " ".join([f"{c.YELLOW}{program}{c.END}", *shown])
+
+def color_main_h(name:str) -> str:
+  """`main.h` of project `name` as messages point at it: grey folder, blue file."""
+  return f"{c.GREY}{DIR_PROJECTS}/{name}/{c.END}{c.BLUE}main.h{c.END}"
 
 def color_image(path:str) -> str:
   """Image file in the color of its kind: hex lime, bin sky, elf violet."""

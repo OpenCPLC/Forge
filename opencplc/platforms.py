@@ -91,7 +91,7 @@ def parse_chip(name:str) -> dict:
   chip_key = next((k for k in CHIPS if k.upper() == name_upper), None)
   if not chip_key:
     p.err(f"Unknown chip: {c.MAGNTA}{name}{c.END}")
-    p.inf(f"Available: {', '.join(f'{c.PINK}{k}{c.END}' for k in CHIPS)}")
+    p.inf(f"Chips Forge knows: {', '.join(f'{c.PINK}{k}{c.END}' for k in CHIPS)}")
     sys.exit(1)
   cfg = CHIPS[chip_key].copy()
   cfg["chip"] = chip_key

@@ -22,7 +22,8 @@ from .tools import (
 )
 from .hash import hash_string, c_code_enum
 from .common import (
-  is_yes, color_url, color_command, color_image, assign_name, validate_project_name,
+  is_yes, color_url, color_command, color_image, color_main_h,
+  assign_name, validate_project_name,
 )
 
 __all__ = [
@@ -37,5 +38,6 @@ __all__ = [
   "tools_dir", "template_paths", "ensure_git", "ensure_tools", "verify_compiler",
   "openocd_command", "cube_bin", "cube_cli", "cube_found", "CUBE_URL",
   "hash_string", "c_code_enum",
-  "is_yes", "color_url", "color_command", "color_image", "assign_name", "validate_project_name",
+  "is_yes", "color_url", "color_command", "color_image", "color_main_h",
+  "assign_name", "validate_project_name",
 ]

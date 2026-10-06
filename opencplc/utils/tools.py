@@ -133,7 +133,7 @@ def install(name:str):
   except Exception:
     retire(dst)
     FILE.remove(tmp)
-    p.err(f"Broken package {c.YELLOW}{package}{c.END}, run again")
+    p.err(f"Package {c.YELLOW}{package}{c.END} arrived broken, run again to download it anew")
     sys.exit(1)
   FILE.remove(tmp)
   installed = JSON.load(f"{root}/{INSTALLED}", {})

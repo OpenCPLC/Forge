@@ -50,7 +50,7 @@ def unzip(data:bytes, path:str, drop_on_err:bool=True):
   except Exception:
     if drop_on_err:
       DIR.remove(path, force=True)
-    p.err("Invalid ZIP file")
+    p.err("Downloaded file is not a valid ZIP archive")
     sys.exit(1)
 
 def project_remote(url:str, path:str, ref:str|None=None, name:str="") -> str:

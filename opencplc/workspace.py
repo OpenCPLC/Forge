@@ -57,6 +57,7 @@ def forge_config(templates:dict) -> dict:
   missing = utils.find_missing_keys(template, cfg)
   if missing:
     p.err(f"Missing key {c.SKY}{missing[0]}{c.END} in {c.ORANGE}opencplc.json{c.END}")
+    p.run(f"Add it back, or remove {c.ORANGE}opencplc.json{c.END} to start from defaults")
     sys.exit(1)
   # Only documented fields survive a save, version list is Forge's own cache
   cfg = {k: cfg[k] for k in (*template, "available-versions") if k in cfg}
@@ -144,7 +145,7 @@ def reload_from_makefile(args, make_info:dict|None):
     args.name = PATH.rel(active, DIR_PROJECTS)
   else:
     p.err("No active project in this workspace")
-    p.inf("Provide project name as positional argument")
+    p.run(f"Load one with {utils.color_command('opencplc <name>')}")
     sys.exit(1)
 
 def stlink_bind(forge_cfg:dict, pro_id:str, serial:str|None):
@@ -164,7 +165,7 @@ def project_select(args, projects:dict):
   if not (args.project_list or (args.name and args.name.isdigit())): return
   if not projects:
     p.wrn("No projects found")
-    p.inf(f"Create new with flag {flag.n}")
+    p.run(f"Create one with {utils.color_command('opencplc -n <name>')}")
     sys.exit(1)
   for i, (name, path) in enumerate(projects.items(), 1):
     if args.project_list:

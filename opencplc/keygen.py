@@ -44,7 +44,9 @@ def with_key(main_h:str, public:bytes) -> str:
   boot = re.compile(r"\s*#define\s+PRO_BOOT\s")
   at = next((i for i, line in enumerate(lines) if boot.match(line)), None)
   if at is None:
-    p.err(f"File {c.BLUE}main.h{c.END} has no {c.SKY}PRO_BOOT{c.END}")
+    p.err(f"File {c.BLUE}main.h{c.END} has no {c.SKY}PRO_BOOT{c.END} definition, "
+      "the key goes right below it")
+    p.run(f"Add {c.SKY}#define PRO_BOOT true{c.END} to it and run again")
     sys.exit(1)
   lines[at:at + 1] = ["#define PRO_BOOT true",
     f'#define PRO_BOOT_KEY "{public.hex()}"', "#define PRO_BOOT_EPOCH 0"]
@@ -64,7 +66,8 @@ def keygen(name:str, main_h_path:str):
     if FILE.exists(f"{keys.keys_dir()}/{name}.key"):
       p.err(f"Key {c.GOLD}{name}{c.END} lost {c.BLUE}{name}.pub{c.END} "
         f"beside {c.BLUE}{name}.key{c.END} in {c.CREAM}{keys.keys_dir()}{c.END}")
-      p.run(f"Put it back: one line, {c.SKY}PRO_BOOT_KEY{c.END} of a project signed with the key")
+      p.run(f"Recreate {c.BLUE}{name}.pub{c.END} with one line: the {c.SKY}PRO_BOOT_KEY{c.END} "
+        "hex of a project signed with this key")
       sys.exit(1)
     public = keys.product_make(name, new_password(name))
     p.ok(f"Key {c.GOLD}{name}{c.END} made in {c.CREAM}{keys.keys_dir()}{c.END}")

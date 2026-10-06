@@ -3,9 +3,10 @@
 """Generators: project makefile, dispatcher, idempotency, preserved mtime."""
 
 import json, re, time
+from pathlib import Path
 import pytest
 from xaeian import file_context, Color as c
-from opencplc import utils, project
+from opencplc import actions, utils, project
 from opencplc.project import generate, prepare_project
 from opencplc.resolver import resolve_project
 from conftest import build_workspace, uno_cfg, wb55_cfg, ws_paths, parse_dispatcher, resolve_uno
@@ -231,6 +232,12 @@ def bootloader_project_links_its_code_region_and_dists_into_core(ws):
     make = read_makefile(ws)
     assert f"DIST_HEX = $(OPENCPLC)/scr/{stem}.hex\n" in make
     assert f"DIST_ELF := $(OPENCPLC)/scr/{stem}.elf\n" in make
+
+def program_alone_finds_the_bootloader_image_in_core(ws):
+  """The bootloader project dists into Core, so `--program` alone looks there."""
+  cfg = uno_cfg() | {"flash_kB": 492, "bootloader": True, "boot_key_build": False}
+  found = actions.dist_image(resolve_project(cfg, ws_paths(), {}), yes=False)
+  assert Path(found) == ws / "opencplc" / "1.0.0" / "scr" / "boot_stm32g0.hex"
 
 def application_dists_into_its_project(ws):
   generate(resolve_uno())

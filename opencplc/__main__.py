@@ -41,8 +41,10 @@ def ensure_toolchains(is_embedded:bool, yes:bool):
   if not utils.verify_compiler(is_embedded):
     compiler = "arm-none-eabi-gcc" if is_embedded else "gcc"
     p.err(f"Compiler {c.YELLOW}{compiler}{c.END} not working")
-    if os.name == "nt": p.inf(f"Remove {c.CREAM}{utils.tools_dir()}{c.END} and run again")
-    else: p.inf(f"Check installation and {c.SKY}PATH{c.END}")
+    if os.name == "nt":
+      p.run(f"Remove {c.CREAM}{utils.tools_dir()}{c.END} and run again, Forge reinstalls them")
+    else:
+      p.run(f"Check that {c.YELLOW}{compiler}{c.END} is installed and on {c.SKY}PATH{c.END}")
     sys.exit(1)
 
 def main():
@@ -90,9 +92,9 @@ def main():
   projects = utils.get_project_list(paths["pro"])
   project_select(args, projects)
   if not args.name and not args.reload and not args.info:
-    p.err(f"Name {c.GREY}name{c.END} not provided")
-    p.inf(f"Provide project name or use flag {flag.r}")
-    p.run(f"To reload the currently active project use flag {flag.r}")
+    p.err("Project name not given")
+    p.run(f"Load one with {utils.color_command('opencplc <name>')}, "
+      f"or reload the active project with {flag.r}")
     sys.exit(1)
   if args.name:
     valid, reason = utils.validate_project_name(args.name)
@@ -119,7 +121,7 @@ def main():
   # the factory programs the full image of `dist`, then locks the board
   if args.program or args.lock is not None:
     model = resolve_project(cfg, paths, forge_cfg)
-    if args.program: program_image(model, args.program)
+    if args.program: program_image(model, args.program, args.yes)
     if args.lock is not None: lock_board(model, args.lock, args.yes)
     sys.exit(0)
   prepare_project(cfg, paths)

@@ -77,7 +77,7 @@ def hardware_config(args, paths:dict) -> dict:
       | {"plc": board.plc or args.plc})
   cfg = parse_chip(args.chip) | board_fields(None) | {"plc": args.plc}
   if cfg["plc"] and cfg["platform"] != "STM32":
-    p.err(f"Flag {flag.P} needs an STM32 chip {flag.c}")
+    p.err(f"Flag {flag.P} needs an STM32 chip, given with {flag.c}")
     sys.exit(1)
   return cfg | {"freq_Hz": boardless_freq(cfg)}
 
@@ -86,7 +86,7 @@ def config_new(args, projects:dict, paths:dict, fw_ver:str, forge_cfg:dict) -> d
   reject_existing(args, projects, paths)
   cfg = hardware_config(args, paths)
   if args.boot and cfg["platform"] != "STM32":
-    p.err(f"Flag {flag.B} needs an STM32 chip {flag.c}")
+    p.err(f"Flag {flag.B} needs an STM32 chip, given with {flag.c}")
     sys.exit(1)
   # Memory override: -m FLASH RAM [RESERVED]
   if args.memory and len(args.memory) >= 2:
@@ -133,7 +133,7 @@ def main_h_defines(lines:list[str]) -> dict:
   info = utils.get_vars(lines, ["PRO_BOARD", "PRO_CHIP"], "_", "#define", required=False)
   return info | utils.get_vars(lines, MAIN_H_DEFINES, " ", "#define", required=False)
 
-def read_main_h(args, projects:dict, paths:dict) -> dict:
+def read_main_h(args, projects:dict) -> dict:
   """`#define` entries of an existing project; exits when the file is missing or unusable."""
   key = utils.project_key(projects, args.name)
   if key is None:
@@ -142,22 +142,24 @@ def read_main_h(args, projects:dict, paths:dict) -> dict:
     sys.exit(1)
   args.name = key
   main_h_path = PATH.resolve(f"{projects[key]}/main.h", read=False)
+  shown = utils.color_main_h(key)
   if not FILE.exists(main_h_path):
-    p.err(f"File {c.BLUE}main.h{c.END} not found in project")
-    p.inf(f"Project may be corrupted, consider recreating with {flag.n}")
+    p.err(f"File {shown} not found")
+    p.run(f"Restore it from version control, or create the project anew with {flag.n}")
     sys.exit(1)
   lines = utils.load_lines(main_h_path)
   if not lines:
-    p.err(f"File {c.BLUE}main.h{c.END} is empty or unreadable")
+    p.err(f"File {shown} is empty or unreadable")
     sys.exit(1)
   info = main_h_defines(utils.lines_clear(lines, "//"))
   if not info.get("PRO_CHIP"):
-    p.err(f"File {c.BLUE}main.h{c.END} missing {c.SKY}PRO_CHIP{c.END} definition")
-    p.inf(f"Check {c.GREY}{paths['pro']}/{c.END}{c.BLUE}main.h{c.END}")
+    p.err(f"File {shown} has no {c.SKY}PRO_CHIP{c.END} definition")
+    p.run(f"Open it and add the chip, e.g. {c.SKY}#define PRO_CHIP_STM32G0C1{c.END}")
     sys.exit(1)
   if not info.get("PRO_FRAMEWORK"):
-    p.err(f"File {c.BLUE}main.h{c.END} missing {c.SKY}PRO_FRAMEWORK{c.END} definition")
-    p.inf("It names the Core version the project builds with")
+    p.err(f"File {shown} has no {c.SKY}PRO_FRAMEWORK{c.END} definition")
+    p.run(f"Open it and add the Core version, {c.SKY}#define PRO_FRAMEWORK \"<version>\"{c.END}, "
+      f"versions listed by {flag.F}")
     sys.exit(1)
   return info
 
@@ -165,7 +167,8 @@ def boot_key(info:dict) -> str:
   """`PRO_BOOT_KEY` as 64 lowercase hex digits, "" without one; any other value exits."""
   key = info.get("PRO_BOOT_KEY", "").strip().lower()
   if key and not re.fullmatch(r"[0-9a-f]{64}", key):
-    p.err(f"{c.SKY}PRO_BOOT_KEY{c.END} in {c.BLUE}main.h{c.END} needs public key as 64 hex digits")
+    p.err(f"Definition {c.SKY}PRO_BOOT_KEY{c.END} in {c.BLUE}main.h{c.END} "
+      "needs the public key as 64 hex digits")
     sys.exit(1)
   return key
 
@@ -208,7 +211,7 @@ def resolve_version(args, pro_ver:str, paths:dict, fw_ver:str, forge_cfg:dict) -
 def config_load(args, projects:dict, paths:dict, fw_ver:str, forge_cfg:dict) -> dict:
   """Config for an existing project; points `paths["fw"]` at the Core that builds it."""
   flags_reject(args)
-  info = read_main_h(args, projects, paths)
+  info = read_main_h(args, projects)
   pro_ver = info["PRO_FRAMEWORK"]
   stored_board = info.get("PRO_BOARD", "").lower()
   if stored_board == "none": stored_board = ""
@@ -237,7 +240,7 @@ def config_load(args, projects:dict, paths:dict, fw_ver:str, forge_cfg:dict) -> 
     cfg["plc"] = stored_plc == "true" if stored_plc else board.plc
     if board.plc and not cfg["plc"]:
       p.err(f"Board {c.TURQUS}{board.title}{c.END} runs on the PLC layer")
-      p.run(f"Set {c.SKY}PRO_PLC true{c.END} in {c.BLUE}main.h{c.END}")
+      p.run(f"Open {utils.color_main_h(args.name)} and set {c.SKY}#define PRO_PLC true{c.END}")
       sys.exit(1)
   else:
     cfg |= board_fields(None)

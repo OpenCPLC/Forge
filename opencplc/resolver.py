@@ -171,13 +171,17 @@ def boot_region_kB(cfg:dict) -> int:
   """
   under_key, key_build = bool(cfg.get("boot_key")), bool(cfg.get("boot_key_build"))
   if under_key and not cfg.get("boot"):
-    p.err(f"{c.SKY}PRO_BOOT_KEY{c.END} needs {c.SKY}PRO_BOOT true{c.END}")
-    p.run(f"Set {c.SKY}PRO_BOOT true{c.END} in {c.BLUE}main.h{c.END}")
+    p.err(f"Definition {c.SKY}PRO_BOOT_KEY{c.END} needs {c.SKY}PRO_BOOT{c.END} set to true")
+    p.run(f"Open {utils.color_main_h(cfg['pro_name'])} "
+      f"and set {c.SKY}#define PRO_BOOT true{c.END}")
+    p.gap(f"or comment out {c.SKY}PRO_BOOT_KEY{c.END} for a build without bootloader")
     sys.exit(1)
   # `BOOT_KEY` marks the bootloader project, `OFF` as much as `ON`
   if (cfg.get("bootloader") or key_build) and cfg.get("boot"):
-    p.err(f"{c.SKY}BOOT_KEY{c.END} builds bootloader itself, "
-      f"image under it takes {c.SKY}PRO_BOOT_KEY{c.END}")
+    p.err(f"Definition {c.SKY}BOOT_KEY{c.END} belongs to the bootloader project, "
+      f"which runs without {c.SKY}PRO_BOOT{c.END}")
+    p.run(f"Open {utils.color_main_h(cfg['pro_name'])} and remove {c.SKY}BOOT_KEY{c.END}, "
+      f"or in the bootloader project set {c.SKY}#define PRO_BOOT false{c.END}")
     sys.exit(1)
   if not under_key and not key_build: return cfg.get("boot_kB", 0)
   if not cfg.get("boot_key_kB"):
@@ -208,12 +212,15 @@ def flash_layout(cfg:dict) -> tuple[int, int, list[str]]:
   if not cfg.get("boot"): return FLASH_BASE, flash_kB, defines
   if not boot_kB:
     p.err(f"Chip {c.PINK}{cfg['chip']}{c.END} has no bootloader")
-    p.run(f"Set {c.SKY}PRO_BOOT false{c.END} in {c.BLUE}main.h{c.END}")
+    p.run(f"Open {utils.color_main_h(cfg['pro_name'])} "
+      f"and set {c.SKY}#define PRO_BOOT false{c.END}")
     sys.exit(1)
   slot_kB = (flash_kB - boot_kB) // 2 // page_kB * page_kB
   if slot_kB < page_kB:
     p.err(f"{c.SKY}PRO_FLASH_kB{c.END} {c.GOLD}{flash_kB}{c.END}kB leaves no room "
       f"for two slots behind the {c.GOLD}{boot_kB}{c.END}kB bootloader")
+    p.run(f"Open {utils.color_main_h(cfg['pro_name'])} and raise {c.SKY}PRO_FLASH_kB{c.END} "
+      f"or set {c.SKY}#define PRO_BOOT false{c.END}")
     sys.exit(1)
   return FLASH_BASE + boot_kB * 1024, slot_kB, defines + [f"BOOT_SLOT_PAGES={slot_kB // page_kB}"]
 
@@ -226,7 +233,8 @@ def boot_image(cfg:dict, core_dir:str) -> str:
   stem = boot_stem(cfg["hal"], bool(cfg.get("boot_key")))
   if FILE.exists(f"{core_dir}/{stem}.hex"): return f"{stem}.hex"
   p.err(f"Core {c.VIOLET}{cfg['fw_ver']}{c.END} has no bootloader {c.LIME}{stem}.hex{c.END}")
-  p.inf(f"{c.SKY}PRO_BOOT{c.END} needs a newer Core")
+  p.run(f"Open {utils.color_main_h(cfg['pro_name'])} and set {c.SKY}PRO_FRAMEWORK{c.END} "
+    f"to a newer Core, or {c.SKY}#define PRO_BOOT false{c.END}")
   sys.exit(1)
 
 def project_sources(pro_dir:str, ext:str) -> list[str]:

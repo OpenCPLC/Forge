@@ -11,7 +11,7 @@ from opencplc import actions, lock, project
 from opencplc.args import Args
 from opencplc.utils import keys
 from conftest import build_workspace, write_forge_config, run_cli, refs_cfg, ship_key_bootloader
-from conftest import frozen_forge, _raise_disk_full, make_board, INI
+from conftest import frozen_forge, _raise_disk_full, make_board, INI, age
 
 @pytest.fixture()
 def ws(tmp_path, monkeypatch):
@@ -311,6 +311,48 @@ def program_needs_a_chip_to_program(ws, monkeypatch, capsys):
   assert run_cli(monkeypatch, "-n", "sim", "-c", "HOST", "-y") == 0
   assert run_cli(monkeypatch, "sim", "--program", "app.hex") == 1
   assert "STM32" in capsys.readouterr().out
+
+def program_alone_sends_the_one_image_dist_left(ws, monkeypatch):
+  """No name and no file: the active project and the image `make dist` left in it."""
+  assert run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-y") == 0
+  image = ws / "projects" / "app" / "app-1.0.0.hex"
+  image.write_text(":00000001FF\n")
+  cmd = []
+  monkeypatch.setattr(subprocess, "run",
+    lambda c, **kw: cmd.extend(c) or subprocess.CompletedProcess(c, 0))
+  monkeypatch.setattr(actions.utils, "is_yes", lambda msg: pytest.fail("one image, no question"))
+  assert run_cli(monkeypatch, "--program") == 0
+  assert f"program {{{image.as_posix()}}} verify reset exit" in cmd
+
+def program_alone_takes_the_newest_of_several_images(ws, monkeypatch, capsys):
+  """`dist` with a new `TAG` keeps the older images: all listed, the newest sent after `-y`."""
+  assert run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-y") == 0
+  folder = ws / "projects" / "app"
+  old, new = folder / "app-1.0.0.hex", folder / "app-1.1.0.hex"
+  for image in (old, new): image.write_text(":00000001FF\n")
+  age(old)
+  cmd = []
+  monkeypatch.setattr(subprocess, "run",
+    lambda c, **kw: cmd.extend(c) or subprocess.CompletedProcess(c, 0))
+  assert run_cli(monkeypatch, "--program", "-y") == 0
+  assert f"program {{{new.as_posix()}}} verify reset exit" in cmd
+  assert "app-1.0.0.hex" in capsys.readouterr().out
+
+def program_alone_stops_on_a_no(ws, monkeypatch):
+  assert run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-y") == 0
+  for tag in ("1.0.0", "1.1.0"):
+    (ws / "projects" / "app" / f"app-{tag}.hex").write_text(":00000001FF\n")
+  cmd = []
+  monkeypatch.setattr(subprocess, "run",
+    lambda c, **kw: cmd.extend(c) or subprocess.CompletedProcess(c, 0))
+  monkeypatch.setattr(actions.utils, "is_yes", lambda msg: False)
+  assert run_cli(monkeypatch, "--program") == 1
+  assert not cmd
+
+def program_alone_without_an_image_points_at_dist(ws, monkeypatch, capsys):
+  assert run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-y") == 0
+  assert run_cli(monkeypatch, "--program") == 1
+  assert "No .hex image" in capsys.readouterr().out
 
 def keygen_writes_the_key_and_the_same_run_builds_under_it(ws, monkeypatch):
   ship_key_bootloader(ws)

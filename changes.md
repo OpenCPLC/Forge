@@ -1,5 +1,10 @@
 # Changes `opencplc`
 
+## `0.4.9` Program from dist
+
+- `--program` alone sends newest `.hex` from `make dist`
+- Errors say what to change and where
+
 ## `0.4.8` Key bootloader
 
 Breaking: `PRO_VERSION` becomes `PRO_FRAMEWORK`, required in `main.h`.

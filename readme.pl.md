@@ -308,7 +308,7 @@ Platforma HOST dostarcza stub'y dla modułów zależnych od sprzętu _(GPIO, tim
 
 - `-a --assets`: Pobiera materiały pomocnicze _(dokumentacja, diagramy)_. Opcjonalnie przyjmuje nazwę folderu docelowego.
 - `-u --update`: Podmienia plik wykonywalny Forge na wskazaną wersję _(domyślnie `latest`)_; instalację z `pip` aktualizuje się przez `pip`.
-- `--program`: Wysyła `.hex` na płytkę przez programator, np. ten z `make dist`.
+- `--program`: Wysyła `.hex` na płytkę przez programator. Bez pliku bierze ten, który `make dist` zostawił w aktywnym projekcie; z kilku najnowszy, po potwierdzeniu.
 - `--keygen`: Tworzy albo podpina klucz produktu **`NAZWA`** i wpisuje go do `main.h`, patrz [Bootloader](boot-lock.pl.md).
 - `--lock`: Blokuje płytkę na produkcję: domyślnie RDP1, `2` na zawsze, `0` zdejmuje blokadę, kasując flash, patrz [Blokada](boot-lock.pl.md).
 - `-z --size`: Raportuje zajętość FLASH i RAM pliku `.elf`; `make` używa tego po linkowaniu.

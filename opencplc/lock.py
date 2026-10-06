@@ -117,7 +117,10 @@ def check_chip(pro:Project, chip:int|None):
   want = int(define(pro, "BOOT_CHIP"), 16)
   if chip == want: return
   seen = f"chip {c.GOLD}0x{chip:03X}{c.END}" if chip is not None else "no chip"
-  p.err(f"Probe sees {seen}, project {c.PINK}{pro.chip}{c.END} needs {c.GOLD}0x{want:03X}{c.END}")
+  p.err(f"ST-Link sees {seen}, "
+    f"project {c.PINK}{pro.chip}{c.END} needs {c.GOLD}0x{want:03X}{c.END}")
+  p.run("Check the board on the ST-Link; with several, bind the right one by "
+    f"{utils.color_command('opencplc <name> -s <serial>')}")
   sys.exit(1)
 
 def options_read(pro:Project) -> tuple[int, int]|None:
@@ -162,7 +165,7 @@ def confirm(pro:Project, level:int, yes:bool):
 def lock_board(pro:Project, level:int, yes:bool):
   """`--lock`: option bytes of `level` written, then read back."""
   if pro.platform != "STM32":
-    p.err(f"Flag {flag.lock} needs STM32 project")
+    p.err(f"Flag {flag.lock} needs an STM32 project")
     sys.exit(1)
   check_chip(pro, probe_chip(pro))
   confirm(pro, level, yes)
@@ -174,7 +177,8 @@ def lock_board(pro:Project, level:int, yes:bool):
   if level == 2 and read is None and swd_shut(pro): # RDP2 shuts SWD at once
     p.ok(f"{c.PINK}{pro.chip}{c.END} at RDP2: powered, silent on SWD for good")
     # the silence of SWD alone could have another cause, the chip itself names its level
-    p.run(f"Power-cycle board, {utils.color_command('boot info')} then shows {c.GOLD}rdp:2{c.END}")
+    p.run("Unplug and plug board power, "
+      f"then {utils.color_command('boot info')} shows {c.GOLD}rdp:2{c.END}")
     return
   if read is None or (read[0] & 0xFF) != RDP[level]:
     got = f"OPTR 0x{read[0]:08X}, WRP1AR 0x{read[1]:08X}" if read else "nothing readable"
@@ -184,7 +188,8 @@ def lock_board(pro:Project, level:int, yes:bool):
   p.ok(f"{c.PINK}{pro.chip}{c.END} at RDP{level}, OPTR 0x{read[0]:08X}, WRP1AR 0x{read[1]:08X}")
   if level == 0:
     # option reload saw flash empty, and G0 boots its ROM until next power-on
-    p.run(f"Program board with {utils.color_command('make flash')}, then power-cycle it")
+    p.run(f"Program board with {utils.color_command('make flash')}, "
+      "then unplug and plug its power")
     return
   # a debugger seen since power-on keeps flash shut until next power-on
-  p.run("Power-cycle board")
+  p.run("Unplug and plug board power, a chip locked under the debugger starts nothing until then")

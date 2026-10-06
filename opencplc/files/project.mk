@@ -158,7 +158,7 @@ OPENOCD = ${OPENOCD} -c
 # One file with or without a bootloader, `--pack` already put it in front
 # Looked for when `flash` runs, so `make run` finds the image its build just made
 flash:
-	@$(if $(wildcard $(BUILD)/$(TARGET)-dist.hex),$(OPENOCD) "program $(BUILD)/$(TARGET)-dist.hex verify reset exit" && echo Flashed ${LIME}$(TARGET)-dist.hex${END}|| (echo Flashing ${RED}failed${END}&& exit 1),echo No image ${LIME}$(TARGET)-dist.hex${END} to flash)
+	@$(if $(wildcard $(BUILD)/$(TARGET)-dist.hex),$(OPENOCD) "program $(BUILD)/$(TARGET)-dist.hex verify reset exit" && echo Flashed ${LIME}$(TARGET)-dist.hex${END}|| (echo Flashing ${RED}failed${END}&& exit 1),echo No image ${LIME}$(TARGET)-dist.hex${END} to flash, build it with make)
 
 run: build flash
 

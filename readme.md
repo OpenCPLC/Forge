@@ -311,7 +311,7 @@ Full list:
 
 - `-a --assets`: Downloads helper materials for design _(docs, diagrams)_. Optionally accepts a folder name as destination.
 - `-u --update`: Replaces the Forge executable with the given version _(default: `latest`)_; a `pip` install updates through `pip` instead.
-- `--program`: Sends a `.hex` to the board through the programmer, e.g. the one from `make dist`.
+- `--program`: Sends a `.hex` to the board through the programmer. Alone, it takes the one `make dist` left in the active project; of several, the newest, after confirmation.
 - `--keygen`: Makes or takes product key **`NAME`** and writes it into `main.h`, see [Bootloader](https://github.com/OpenCPLC/Forge/blob/main/boot-lock.md).
 - `--lock`: Locks the board for production: RDP1 by default, `2` for good, `0` unlocks, erasing the flash, see [Lock](https://github.com/OpenCPLC/Forge/blob/main/boot-lock.md).
 - `-z --size`: Reports FLASH and RAM usage of an `.elf`; `make` uses it after linking.
