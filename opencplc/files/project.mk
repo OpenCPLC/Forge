@@ -86,7 +86,8 @@ OBJECTS += $(patsubst %.s,$(BUILD)/project/%.o,$(PRO_S))
 CONFIG_DEPS = $(MAKEFILE_PATH)
 
 # Configuration changed: Forge rewrites this file and Make restarts once with fresh sources
-# Stamp carries the reload time, so a rewrite with identical content rebuilds nothing
+# Stamp carries the time of the last load, by `opencplc` or by this rule,
+# so a rewrite with identical content rebuilds nothing
 FORGE = opencplc
 CONFIG_INPUTS = $(wildcard ${CONFIG_INPUTS})
 FORGE_STAMP := $(BUILD)/.forge

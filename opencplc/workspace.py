@@ -102,9 +102,20 @@ def ensure_refs(forge_cfg:dict, yes:bool) -> list[str]:
   return forge_cfg["available-versions"]
 
 def paths_setup(args, forge_cfg:dict) -> tuple[dict, str]:
-  """Workspace paths of the fixed layout and the target framework version."""
+  """
+  Workspace paths of the fixed layout and the target framework version.
+
+  A project in Core builds with the Core it lies in, so -f has no say over it.
+  """
   fw_ver = utils.version_active(args.framework, forge_cfg)
-  paths = {"projects": DIR_PROJECTS, "framework": DIR_FRAMEWORK, "build": DIR_BUILD}
+  core = utils.core_version(args.name or "")
+  if core and args.framework and fw_ver != core:
+    p.err(f"Project {c.BLUE}{args.name}{c.END} lies in Core {c.VIOLET}{core}{c.END} "
+      "and builds with it")
+    p.run(f"Drop flag {flag.f}")
+    sys.exit(1)
+  fw_ver = core or fw_ver
+  paths = {"framework": DIR_FRAMEWORK, "build": DIR_BUILD}
   paths["fw"] = PATH.resolve(f"{DIR_FRAMEWORK}/{fw_ver}", read=False)
   paths["pro"] = DIR_PROJECTS
   return paths, fw_ver
@@ -131,19 +142,17 @@ def makefile_info() -> dict|None:
   lines = utils.lines_clear(utils.load_lines("makefile"), "#")
   return utils.get_vars(lines, ["ACTIVE"], ":=", required=False) or None
 
-def reload_from_cwd(args, paths:dict, cwd:str) -> bool:
-  """-r/-i run inside a project directory: that project is the target."""
-  name = project_from_path(cwd, paths["projects"])
-  if name is None: return False
+def reload_from_cwd(args, cwd:str) -> bool:
+  """-r/-i inside a project directory, in `projects/` or a Core: that project is the target."""
+  name = utils.project_name(project_from_path(cwd, ".") or "")
+  if not name: return False
   args.name = name
   return True
 
 def reload_from_makefile(args, make_info:dict|None):
   """-r/-i without a name: recover the active project from the dispatcher."""
-  active = (make_info or {}).get("ACTIVE", "")
-  if active.startswith(DIR_PROJECTS + "/"):
-    args.name = PATH.rel(active, DIR_PROJECTS)
-  else:
+  args.name = utils.project_name((make_info or {}).get("ACTIVE", ""))
+  if not args.name:
     p.err("No active project in this workspace")
     p.run(f"Load one with {utils.color_command('opencplc <name>')}")
     sys.exit(1)
@@ -159,6 +168,14 @@ def stlink_bind(forge_cfg:dict, pro_id:str, serial:str|None):
   persist_config(forge_cfg)
 
 #-------------------------------------------------------------------------------- Project inventory
+
+def project_inventory(name:str|None) -> dict[str, str]:
+  """Projects by name: all of `projects/`, and those of the Core `name` lies in."""
+  projects = utils.get_project_list(DIR_PROJECTS)
+  core = utils.core_version(name or "")
+  if not core: return projects
+  home = f"{DIR_FRAMEWORK}/{core}"
+  return projects | {f"{home}/{key}": path for key, path in utils.get_project_list(home).items()}
 
 def project_select(args, projects:dict):
   """-l listing and picking a project by its number on that list."""
@@ -185,7 +202,7 @@ def project_delete(args, projects:dict, make_info:dict|None, forge_cfg:dict):
     sys.exit(1)
   try:
     active = PATH.local(projects[key])
-    if forge_cfg["stlink"].pop(f"{DIR_PROJECTS}/{key}", None) is not None:
+    if forge_cfg["stlink"].pop(utils.project_dir(key), None) is not None:
       persist_config(forge_cfg)
     DIR.remove(projects[key], force=True)
     if make_info and make_info.get("ACTIVE") == active:

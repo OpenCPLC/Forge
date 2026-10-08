@@ -6,13 +6,13 @@
 void loop(void)
 {
   while(1) {
-    LED_Set(RGB_Red); // Set status LED to red
+    RGB_Set(&RGB, RGB_Red); // Set status LED to red
     delay(1000); // Wait 1s
-    LED_Set(RGB_Green); // Set status LED to green
+    RGB_Set(&RGB, RGB_Green); // Set status LED to green
     delay(1000); // Wait 1s
-    LED_Set(RGB_Blue); // Set status LED to blue
+    RGB_Set(&RGB, RGB_Blue); // Set status LED to blue
     delay(1000); // Wait 1s
-    LED_Rst(); // Turn off status LED
+    RGB_Rst(&RGB); // Turn off status LED
     delay(1000); // Wait 1s
   }
 }

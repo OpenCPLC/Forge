@@ -5,7 +5,8 @@
 import sys
 from typing import Any
 from xaeian import Print, Color as c, PATH
-from ..config import DIR_PROJECTS
+from ..config import DIR_FRAMEWORK
+from .files import core_version, project_dir
 
 p = Print()
 
@@ -30,7 +31,7 @@ def color_command(cmd:str) -> str:
 
 def color_main_h(name:str) -> str:
   """`main.h` of project `name` as messages point at it: grey folder, blue file."""
-  return f"{c.GREY}{DIR_PROJECTS}/{name}/{c.END}{c.BLUE}main.h{c.END}"
+  return f"{c.GREY}{project_dir(name)}/{c.END}{c.BLUE}main.h{c.END}"
 
 def color_image(path:str) -> str:
   """Image file in the color of its kind: hex lime, bin sky, elf violet."""
@@ -53,6 +54,8 @@ def validate_project_name(name:str) -> tuple[bool, str]:
   if name.startswith("/") or (len(name) > 1 and name[1] == ":"):
     return False, "Name cannot be absolute path"
   if len(name) > 100: return False, "Name too long (max 100 chars)"
+  if name.startswith(f"{DIR_FRAMEWORK}/") and not core_version(name):
+    return False, f"Project in Core needs a folder, {DIR_FRAMEWORK}/<version>/<folder>"
   invalid_chars = '<>:"|?*\\'
   reserved = (
     ["CON", "PRN", "AUX", "NUL"]

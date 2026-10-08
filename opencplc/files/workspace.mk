@@ -26,9 +26,10 @@ run flash erase stack dist clean clr:
 	@"$(MAKE)" --no-print-directory -C $(ACTIVE) $@
 endif
 
+# Builds of projects from `projects/` and from Core alike
 clean_all:
-	@$(call RMDIR,build/projects)
-	@echo Removed ${GREY}./build/projects${END}
+	@$(call RMDIR,build)
+	@echo Removed ${GREY}./build${END}
 
 clr_all: clean_all
 

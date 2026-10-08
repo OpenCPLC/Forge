@@ -60,9 +60,9 @@ Szkielet projektu dla sterownika PLC wygląda tak:
 void loop(void)
 {
   while(1) {
-    LED_Set(RGB_Green);
+    RGB_Set(&RGB, RGB_Green);
     delay(1000);
-    LED_Rst();
+    RGB_Rst(&RGB);
     delay(1000);
   }
 }
@@ -183,6 +183,9 @@ Na tej wersji jest budowany, a gdy jej brakuje, Forge ją klonuje, więc starsze
 Jeśli klonowanie się nie powiedzie, Forge ostrzega i buduje na domyślnej wersji workspace.
 
 Aby sprawdzić inną wersję bez ruszania `main.h`, podaj `-f` przy ładowaniu projektu: zbuduje się z nią jednorazowo i powie o tym.
+
+Projekt wewnątrz wersji framework'a, np. jego własne testy, ładuje się po ścieżce: `opencplc opencplc/develop/.tests/host`.
+Nie ma `PRO_FRAMEWORK` i buduje się framework'iem, w którym leży, do `build/opencplc/develop/.tests/host/`.
 
 ### 🧩 Płytki
 

@@ -156,7 +156,14 @@ def read_main_h(args, projects:dict) -> dict:
     p.err(f"File {shown} has no {c.SKY}PRO_CHIP{c.END} definition")
     p.run(f"Open it and add the chip, e.g. {c.SKY}#define PRO_CHIP_STM32G0C1{c.END}")
     sys.exit(1)
-  if not info.get("PRO_FRAMEWORK"):
+  # in Core the folder names the version, a pin would lie on a checkout of another one
+  in_core = bool(utils.core_version(key))
+  if in_core and info.get("PRO_FRAMEWORK"):
+    p.err(f"File {shown} pins {c.SKY}PRO_FRAMEWORK{c.END}, "
+      "a project in Core builds with the Core it lies in")
+    p.run(f"Open it and remove {c.SKY}PRO_FRAMEWORK{c.END}")
+    sys.exit(1)
+  if not in_core and not info.get("PRO_FRAMEWORK"):
     p.err(f"File {shown} has no {c.SKY}PRO_FRAMEWORK{c.END} definition")
     p.run(f"Open it and add the Core version, {c.SKY}#define PRO_FRAMEWORK \"<version>\"{c.END}, "
       f"versions listed by {flag.F}")
@@ -212,7 +219,8 @@ def config_load(args, projects:dict, paths:dict, fw_ver:str, forge_cfg:dict) -> 
   """Config for an existing project; points `paths["fw"]` at the Core that builds it."""
   flags_reject(args)
   info = read_main_h(args, projects)
-  pro_ver = info["PRO_FRAMEWORK"]
+  core = utils.core_version(args.name)
+  pro_ver = core or info["PRO_FRAMEWORK"]
   stored_board = info.get("PRO_BOARD", "").lower()
   if stored_board == "none": stored_board = ""
   stored_plc = info.get("PRO_PLC", "").strip().lower()
@@ -228,7 +236,7 @@ def config_load(args, projects:dict, paths:dict, fw_ver:str, forge_cfg:dict) -> 
     "boot_key_build": info.get("BOOT_KEY", "").strip().lower() in ("on", "true", "1"),
     "project_drivers": parse_drivers(info.get("PRO_DRIVERS", "")),
   }
-  use_ver = resolve_version(args, pro_ver, paths, fw_ver, forge_cfg)
+  use_ver = core or resolve_version(args, pro_ver, paths, fw_ver, forge_cfg)
   cfg["fw_ver"] = use_ver
   paths["fw"] = PATH.resolve(f"{paths['framework']}/{use_ver}", read=False)
   # Board layer comes from the Core that actually builds this project

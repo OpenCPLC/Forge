@@ -25,6 +25,27 @@ def core_and_project_sources_are_separate(ws):
   assert pro.project_c_sources == ["projects/myapp/main.c", "projects/myapp/util/extra.c"]
   assert not any(f.startswith("projects/") for f in pro.core_c_sources)
 
+def projects_in_core_stay_out_of_every_build(ws):
+  """`.tests/` of a Core holds whole projects, each with its own `main()`."""
+  test = ws / "opencplc" / "1.0.0" / ".tests" / "g081"
+  test.mkdir(parents=True)
+  (test / "main.c").write_text("// .tests/g081/main.c\n")
+  (test / "main.h").write_text("")
+  pro = resolve_uno()
+  assert not any("/.tests/" in f for f in pro.core_c_sources)
+  assert not any("/.tests/" in d for d in pro.include_dirs)
+
+def project_in_core_is_named_from_core_root(ws):
+  """Build follows its folder, images leave the version and a leading dot out."""
+  name = "opencplc/1.0.0/.tests/g081"
+  (ws / name).mkdir(parents=True)
+  (ws / name / "main.c").write_text("// .tests/g081/main.c\n")
+  pro = resolve_project(uno_cfg(name), ws_paths() | {"pro": name}, {"stlink": {name: "ABC123"}})
+  assert pro.target == "tests-g081"
+  assert pro.build_dir == "build/opencplc/1.0.0/.tests/g081"
+  assert pro.project_c_sources == ["opencplc/1.0.0/.tests/g081/main.c"]
+  assert pro.stlink == "ABC123"
+
 def selected_board_stays_other_boards_drop(ws):
   pro = resolve_uno()
   assert "opencplc/1.0.0/brd/uno/opencplc_uno.c" in pro.core_c_sources

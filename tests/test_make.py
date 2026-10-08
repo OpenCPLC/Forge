@@ -11,9 +11,10 @@ import os, re, shutil, subprocess
 import pytest
 from xaeian import file_context
 from opencplc.project import generate
+from opencplc.resolver import resolve_project
 from conftest import (
   resolve_uno, build_workspace, host_model, make_run, make_root, write_file,
-  write_forge_config, fake_tools, age, MAIN_H_HOST,
+  write_forge_config, fake_tools, age, host_cfg, ws_paths, MAIN_H_HOST,
 )
 
 HAVE_MAKE = shutil.which("make") is not None
@@ -135,6 +136,15 @@ def stale_main_h_triggers_exactly_one_reload(ws):
   assert "Nothing to be done" in again.stdout
 
 @pytest.mark.skipif(not (HAVE_MAKE and HAVE_GCC), reason="make and gcc required")
+def first_make_builds_what_the_load_wrote(ws):
+  """No reload right after a load: it would drop -f, back to the pin of `main.h`."""
+  write_forge_config(ws)
+  generate(host_model())
+  res = make_run(ws, "build")
+  assert res.returncode == 0, res.stdout + res.stderr
+  assert "using framework version" not in res.stdout
+
+@pytest.mark.skipif(not (HAVE_MAKE and HAVE_GCC), reason="make and gcc required")
 def new_source_is_built_in_the_same_make_run(ws):
   write_forge_config(ws)
   generate(host_model())
@@ -146,6 +156,23 @@ def new_source_is_built_in_the_same_make_run(ws):
   assert res.returncode == 0, res.stdout + res.stderr
   assert res.stdout.count("using framework version") == 1
   assert (ws / "build" / "projects" / "app" / "project" / "more.o").exists()
+
+@pytest.mark.skipif(not (HAVE_MAKE and HAVE_GCC), reason="make and gcc required")
+def project_in_core_builds_and_reloads_by_its_name(ws):
+  """Make reloads it as `opencplc/<version>/...`, Forge reads no `PRO_FRAMEWORK` there."""
+  name = "opencplc/1.0.0/.tests/host"
+  write_file(ws / name / "main.h", MAIN_H_HOST.replace('#define PRO_FRAMEWORK "1.0.0"\n', ""))
+  write_file(ws / name / "main.c", '#include "sys.h"\nint main(void) { return sys_tick(); }\n')
+  generate(resolve_project(host_cfg(name), ws_paths() | {"pro": name}, {}))
+  first = make_root(ws)
+  assert first.returncode == 0, first.stdout + first.stderr
+  build = ws / "build" / name
+  assert any(f.name.startswith("tests-host") for f in build.iterdir())
+  age(ws / name / "makefile", build / ".forge", *build.rglob("*.o"))
+  os.utime(ws / name / "main.h", None)
+  res = make_root(ws)
+  assert res.returncode == 0, res.stdout + res.stderr
+  assert res.stdout.count("using framework version") == 1
 
 @pytest.mark.skipif(not (HAVE_MAKE and HAVE_GCC), reason="make and gcc required")
 def missing_forge_fails_the_reload(ws):

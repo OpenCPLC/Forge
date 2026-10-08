@@ -22,11 +22,11 @@ p = Print()
 class Project:
   """Fully resolved project model."""
   # Identity
-  name: str     # "firm/app"
+  name: str     # "firm/app", "opencplc/develop/.tests/host" in a Core
   pro_dir: str  # workspace-relative source directory
-  target: str   # artifact base name
+  target: str   # artifact base name, "tests-host" in a Core
   # Core
-  pro_ver: str   # Core version pinned in main.h
+  pro_ver: str   # Core version pinned in main.h, the one it lies in for a project in Core
   core_ref: str  # Core version used for this build
   core_dir: str  # workspace-relative Core directory
   # Hardware
@@ -285,7 +285,7 @@ def resolve_project(cfg:dict, paths:dict, forge_cfg:dict) -> Project:
   return Project(
     name=name,
     pro_dir=pro_dir,
-    target=name.replace("/", "-"),
+    target=utils.home_name(name).replace("/", "-").lstrip("."), # a leading dot hides on Linux
     pro_ver=cfg["pro_ver"],
     core_ref=cfg["fw_ver"],
     core_dir=core_dir,
@@ -325,8 +325,8 @@ def resolve_project(cfg:dict, paths:dict, forge_cfg:dict) -> Project:
     boot_image=image,
     boot_elf=elf if boot and FILE.exists(elf) else "",
     bootloader=boot_stem(cfg["hal"], bool(cfg.get("boot_key_build"))) if is_bootloader else "",
-    stlink=(forge_cfg.get("stlink") or {}).get(f"projects/{name}", ""),
-    build_dir=f"{PATH.local(paths['build'])}/projects/{name}",
+    stlink=(forge_cfg.get("stlink") or {}).get(pro_dir, ""),
+    build_dir=f"{PATH.local(paths['build'])}/{pro_dir}",
     board_drivers=board_drivers,
     project_drivers=project_drivers,
   )

@@ -4,6 +4,7 @@
 
 from datetime import datetime
 from xaeian import Print, Color as c, FILE, DIR, PATH, replace_map
+from ..config import DIR_PROJECTS, DIR_FRAMEWORK
 from .text import line_remove
 
 p = Print()
@@ -70,6 +71,27 @@ def get_project_list(path:str) -> dict[str, str]:
 def project_key(projects:dict[str, str], name:str) -> str|None:
   """Project `name` as `get_project_list` keys it, case aside; `None` when there is none."""
   return next((k for k in projects if k.lower() == name.lower()), None)
+
+# A project lives in `projects/`, named from there, or in a Core, named `opencplc/<version>/...`
+
+def core_version(name:str) -> str:
+  """Core version project `name` lies in, "" for a project in `projects/`."""
+  parts = name.split("/")
+  return parts[1] if len(parts) > 2 and parts[0] == DIR_FRAMEWORK else ""
+
+def project_dir(name:str) -> str:
+  """Workspace folder of project `name`."""
+  return name if core_version(name) else f"{DIR_PROJECTS}/{name}"
+
+def project_name(pro_dir:str) -> str:
+  """Name of the project in workspace folder `pro_dir`, "" for a folder in neither place."""
+  if core_version(pro_dir): return pro_dir
+  prefix = f"{DIR_PROJECTS}/"
+  return pro_dir[len(prefix):] if pro_dir.startswith(prefix) else ""
+
+def home_name(name:str) -> str:
+  """Name its files and images carry: in a Core the path from its root, the version left out."""
+  return name.split("/", 2)[2] if core_version(name) else name
 
 def check_write_permission(path:str) -> bool:
   """`True` when a probe file can be created in `path`; the directory is created when missing."""

@@ -11,7 +11,7 @@ from opencplc import actions, lock, project
 from opencplc.args import Args
 from opencplc.utils import keys
 from conftest import build_workspace, write_forge_config, run_cli, refs_cfg, ship_key_bootloader
-from conftest import frozen_forge, _raise_disk_full, make_board, INI, age
+from conftest import frozen_forge, _raise_disk_full, make_board, INI, age, core_test, CORE_TEST
 
 @pytest.fixture()
 def ws(tmp_path, monkeypatch):
@@ -363,6 +363,55 @@ def keygen_writes_the_key_and_the_same_run_builds_under_it(ws, monkeypatch):
   public = keys.product_public("acme").hex()
   assert f'#define PRO_BOOT_KEY "{public}"' in (ws / "projects" / "app" / "main.h").read_text()
   assert "boot_stm32g0_key.hex" in (ws / "projects" / "app" / "makefile").read_text()
+
+def project_in_core_builds_with_that_core(ws, monkeypatch):
+  """No `PRO_FRAMEWORK`: the folder names the Core, the workspace default plays no part."""
+  pro = core_test(ws)
+  cfg = (ws / "opencplc.json").read_text().replace('"version": "1.0.0"', '"version": "2.0.0"')
+  (ws / "opencplc.json").write_text(cfg.replace('["1.0.0"]', '["2.0.0", "1.0.0"]'))
+  assert run_cli(monkeypatch, CORE_TEST) == 0
+  make = (pro / "makefile").read_text()
+  assert f"NAME := {CORE_TEST}" in make and "OPENCPLC := $(WORKSPACE)/opencplc/1.0.0" in make
+  assert f"ACTIVE := {CORE_TEST}" in (ws / "makefile").read_text()
+  assert not (ws / "opencplc" / "2.0.0").exists()
+
+def project_in_core_refuses_a_pin(ws, monkeypatch, capsys):
+  core_test(ws, '#define PRO_FRAMEWORK "1.0.0"\n')
+  assert run_cli(monkeypatch, CORE_TEST) == 1
+  assert "PRO_FRAMEWORK" in capsys.readouterr().out
+
+def project_in_core_refuses_another_core(ws, monkeypatch):
+  core_test(ws)
+  assert run_cli(monkeypatch, CORE_TEST, "-f", "2.0.0") == 1
+  assert run_cli(monkeypatch, CORE_TEST, "-f", "1.0.0") == 0
+
+def reload_finds_the_active_project_in_core(ws, monkeypatch):
+  pro = core_test(ws)
+  assert run_cli(monkeypatch, CORE_TEST) == 0
+  (pro / "makefile").unlink()
+  assert run_cli(monkeypatch, "-r") == 0
+  assert (pro / "makefile").exists()
+
+def reload_inside_a_project_in_core_targets_it(ws, monkeypatch):
+  pro = core_test(ws)
+  run_cli(monkeypatch, "-n", "other", "-b", "Uno", "-y")
+  monkeypatch.chdir(pro)
+  assert run_cli(monkeypatch, "-r") == 0
+  assert (pro / "makefile").exists()
+  assert "ACTIVE := projects/other" in (ws / "makefile").read_text()
+
+def new_project_in_core_neither_pins_nor_prints_a_version(ws, monkeypatch):
+  assert run_cli(monkeypatch, "-n", CORE_TEST, "-c", "STM32G081", "-y") == 0
+  main_c, main_h = ((ws / CORE_TEST / f).read_text() for f in ("main.c", "main.h"))
+  assert main_c.startswith("// .tests/g081/main.c\n")
+  assert main_h.startswith("// .tests/g081/main.h\n")
+  assert "PRO_FRAMEWORK" not in main_c + main_h
+  assert run_cli(monkeypatch, CORE_TEST) == 0 # and it loads back
+
+def stlink_of_a_project_in_core_is_keyed_by_its_folder(ws, monkeypatch):
+  core_test(ws)
+  assert run_cli(monkeypatch, CORE_TEST, "-s", "066AFF49") == 0
+  assert f'"{CORE_TEST}": "066AFF49"' in (ws / "opencplc.json").read_text()
 
 def lock_writes_option_bytes_of_the_named_project(ws, monkeypatch):
   sessions = []

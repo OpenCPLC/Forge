@@ -25,8 +25,9 @@ def mk_list(items:list[str]) -> str:
   return " \\\n".join(items)
 
 def colored_path(path:str, name:str) -> str:
-  """Workspace-relative path with the project name picked out of it."""
-  return f"{c.GREY}./{replace_end(path, name, '')}{c.END}{c.BLUE}{name}{c.END}"
+  """Workspace-relative path with the project name picked out of it, Core version greyed."""
+  shown = utils.home_name(name)
+  return f"{c.GREY}./{replace_end(path, shown, '')}{c.END}{c.BLUE}{shown}{c.END}"
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -119,9 +120,9 @@ def project_header(cfg:dict, paths:dict, new:bool=False):
   A new project under the bootloader says what that costs.
   The flag halves flash it can use and nothing else on screen would show it.
   """
-  rel_path = PATH.local(paths["pro"])
-  path_prefix = replace_end(rel_path, cfg["pro_name"], "")
-  p.inf(f"Project {c.GREY}{path_prefix}{c.END}{c.BLUE}{cfg['pro_name']}{c.END}")
+  shown = utils.home_name(cfg["pro_name"])
+  path_prefix = replace_end(PATH.local(paths["pro"]), shown, "")
+  p.inf(f"Project {c.GREY}{path_prefix}{c.END}{c.BLUE}{shown}{c.END}")
   is_windows = platform.system() == "Windows"
   plc_msg = f" {c.TURQUS}PLC{c.END}" if cfg.get("plc") else ""
   if cfg.get("board"):
@@ -147,7 +148,7 @@ def prepare_project(cfg:dict, paths:dict):
   if cfg.get("plc"):
     DIR.ensure(f"{paths['fw']}/plc")
   subs = {
-    "${NAME}": cfg["pro_name"],
+    "${NAME}": utils.home_name(cfg["pro_name"]),
     "${DATE}": datetime.now().strftime("%Y-%m-%d"),
     "${PRO_FRAMEWORK}": cfg["pro_ver"],
     "${OPT_LEVEL}": cfg.get("opt_level", OPT_DEFAULT if is_embedded else "O2"),
@@ -169,6 +170,8 @@ def prepare_project(cfg:dict, paths:dict):
     "${LED_PIN}": cfg["led"]["pin"],
     "${LED_NAME}": cfg["led"]["name"],
   }
+  # a project in Core builds with the Core it lies in, so it neither pins nor prints a version
+  pinless = ["PRO_FRAMEWORK"] if utils.core_version(cfg["pro_name"]) else []
   if not FILE.exists(f"{paths['pro']}/main.c"):
     if is_embedded:
       # A board on the PLC layer ships `PLC_Main`; the rest starts from the plain skeleton
@@ -176,11 +179,11 @@ def prepare_project(cfg:dict, paths:dict):
       main_c = templates["main.c"] if on_plc else templates["main-none.c"]
     else:
       main_c = tpl.get("main.c", templates["main-none.c"])
-    utils.create_file("main.c", main_c, paths["pro"], subs, color=c.BLUE)
+    utils.create_file("main.c", without(main_c, pinless), paths["pro"], subs, color=c.BLUE)
   if not FILE.exists(f"{paths['pro']}/main.h"):
     main_h = tpl.get("main.h", templates["main.h"])
-    drop = "" if cfg["project_drivers"] else "PRO_DRIVERS"
-    utils.create_file("main.h", main_h, paths["pro"], subs, remove_line=drop, color=c.BLUE)
+    drop = ([] if cfg["project_drivers"] else ["PRO_DRIVERS"]) + pinless
+    utils.create_file("main.h", without(main_h, drop), paths["pro"], subs, color=c.BLUE)
 
 def generate(pro:Project, activate:bool=True):
   """
@@ -256,6 +259,8 @@ def generate(pro:Project, activate:bool=True):
   keep_cube = bool(pro.stack_script and subs["${CUBE_PATH}"])
   utils.create_file("makefile", makefile, pro.pro_dir, recipe_safe(subs),
     remove_line="" if keep_cube else "${CUBE_PATH}")
+  # make takes this makefile as reloaded: a reload would write the same and drop -f of this run
+  FILE.save(f"{pro.build_dir}/.forge", "")
   if not activate: return
   write_dispatcher(pro.pro_dir, colored_path(pro.pro_dir, pro.name))
   DIR.ensure(".vscode")

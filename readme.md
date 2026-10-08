@@ -60,9 +60,9 @@ The skeleton of a PLC board project looks like this:
 void loop(void)
 {
   while(1) {
-    LED_Set(RGB_Green);
+    RGB_Set(&RGB, RGB_Green);
     delay(1000);
-    LED_Rst();
+    RGB_Rst(&RGB);
     delay(1000);
   }
 }
@@ -183,6 +183,9 @@ That version is used to build it and gets cloned when missing, so old projects c
 If the clone fails, Forge warns and builds with the workspace default.
 
 To try another version without touching `main.h`, pass `-f` when loading the project: it builds with that version once and says so.
+
+A project inside a framework version, such as the framework's own tests, is loaded by its path: `opencplc opencplc/develop/.tests/host`.
+It has no `PRO_FRAMEWORK` and builds with the framework it lies in, into `build/opencplc/develop/.tests/host/`.
 
 ### 🧩 Boards
 

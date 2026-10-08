@@ -22,7 +22,7 @@ from .configure import config_new, config_load, opt_normalize
 from .workspace import (
   enter_workspace, forge_config, persist_config, ensure_refs, paths_setup,
   ensure_framework, makefile_info, reload_from_cwd, reload_from_makefile,
-  project_select, project_delete, stlink_bind,
+  project_inventory, project_select, project_delete, stlink_bind,
 )
 from . import utils
 
@@ -64,16 +64,17 @@ def main():
   persist_config(forge_cfg, create=bool(args.new or args.demo)) # a workspace starts here
   if not forge_cfg.get("available-versions"):
     ensure_refs(forge_cfg, args.yes) # first run: the version list must exist
-  paths, fw_ver = paths_setup(args, forge_cfg)
   make_info = makefile_info()
   # -r <name> and -r inside a project directory touch that project only, never the workspace
   scoped = bool(args.reload and args.name)
   # these act on the active project when no name is given
   acting = args.program or args.keygen or args.lock is not None
   if not args.name and (args.reload or args.info or acting):
-    scoped = reload_from_cwd(args, paths, cwd)
+    scoped = reload_from_cwd(args, cwd)
     if not scoped:
       reload_from_makefile(args, make_info)
+  # after the name is known: a project in Core sets the version
+  paths, fw_ver = paths_setup(args, forge_cfg)
   # A new project takes the workspace default Core, an existing one the version it pins
   if args.new:
     ensure_framework(fw_ver, paths, forge_cfg, args.yes)
@@ -89,7 +90,7 @@ def main():
     p.inf(f"Demo in {c.GREY}{DIR_DEMO}{c.END}, "
       f"load one with {utils.color_command('opencplc demo/<name>')}")
     sys.exit(0)
-  projects = utils.get_project_list(paths["pro"])
+  projects = project_inventory(args.name)
   project_select(args, projects)
   if not args.name and not args.reload and not args.info:
     p.err("Project name not given")
@@ -103,7 +104,7 @@ def main():
       sys.exit(1)
   if args.delete:
     project_delete(args, projects, make_info, forge_cfg)
-  paths["pro"] = PATH.resolve(f"{paths['pro']}/{args.name}", read=False)
+  paths["pro"] = PATH.resolve(utils.project_dir(args.name), read=False)
   # the key goes into main.h first, so this very run builds the project under it
   named = utils.project_key(projects, args.name)
   if args.keygen and named:
@@ -114,7 +115,7 @@ def main():
     cfg = config_load(args, projects, paths, fw_ver, forge_cfg)
   ensure_framework(cfg["fw_ver"], paths, forge_cfg, args.yes)
   opt_normalize(cfg)
-  stlink_bind(forge_cfg, f"projects/{args.name}", args.stlink)
+  stlink_bind(forge_cfg, utils.project_dir(args.name), args.stlink)
   if args.info:
     info_show(resolve_project(cfg, paths, forge_cfg))
   ensure_toolchains(cfg["platform"] == "STM32", args.yes)

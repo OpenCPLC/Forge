@@ -1,5 +1,9 @@
 # Changes `opencplc`
 
+## `0.5.0` Projects in Core
+
+- Project in `opencplc/<version>/` builds with that Core, without `PRO_FRAMEWORK`
+
 ## `0.4.9` Program from dist
 
 - `--program` alone sends newest `.hex` from `make dist`

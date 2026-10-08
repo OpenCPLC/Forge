@@ -6,14 +6,16 @@ import pytest
 from opencplc.utils.common import validate_project_name, assign_name
 
 def valid_names_pass():
-  for name in ("myapp", "firm/app", "ok/nested/deep", "app.v2", "a_b-c"):
+  for name in ("myapp", "firm/app", "ok/nested/deep", "app.v2", "a_b-c", "opencplc"):
     assert validate_project_name(name) == (True, "")
+  assert validate_project_name("opencplc/develop/.tests/host") == (True, "")
 
 def invalid_names_fail():
   bad = (
     "", "..", "../x", "a/../b", "foo//bar", "foo/.", "foo/name.",
     "foo/CON", "CON", "COM1.c", "/abs", "C:/abs", "a\\b", "a\x08b", "a<b", "a|b",
     "foo/name /b", " lead", "x" * 101,
+    "opencplc/develop", "opencplc//.tests/host", # Core without a folder, folder without a version
   )
   for name in bad:
     valid, reason = validate_project_name(name)

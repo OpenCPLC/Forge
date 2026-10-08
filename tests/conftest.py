@@ -118,6 +118,16 @@ def ship_key_bootloader(ws, hal:str="stm32g0", core:str="1.0.0"):
   scr.mkdir(parents=True, exist_ok=True)
   (scr / f"boot_{hal}_key.hex").write_text(":00000001FF\n")
 
+CORE_TEST = "opencplc/1.0.0/.tests/g081"
+
+def core_test(ws, pin:str=""):
+  """Project `.tests/g081` of Core 1.0.0, `pin` the `PRO_FRAMEWORK` it should not have."""
+  pro = ws / CORE_TEST
+  pro.mkdir(parents=True)
+  (pro / "main.c").write_text("// .tests/g081/main.c\n")
+  (pro / "main.h").write_text(f"#define PRO_CHIP_STM32G081\n{pin}")
+  return pro
+
 def add_define(ws, line:str, project:str="myapp"):
   """One more `#define` at the end of the project `main.h`, where Forge reads it as well."""
   main_h = ws / "projects" / project / "main.h"
@@ -146,7 +156,7 @@ def wb55_cfg(name:str="myapp", core:str="1.0.0") -> dict:
 def ws_paths(core:str="1.0.0", name:str="myapp") -> dict:
   """Workspace paths of `paths_setup`, with `pro` narrowed to the project."""
   return {
-    "projects": "projects", "framework": "opencplc", "build": "build",
+    "framework": "opencplc", "build": "build",
     "fw": f"opencplc/{core}", "pro": f"projects/{name}",
   }
 
