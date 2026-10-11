@@ -108,6 +108,7 @@ Pełna lista celów:
 - **`make build`** lub samo **`make`**: Buduje projekt w języku C do postaci plików wsadowych `.bin`, `.hex`, `.elf`
 - **`make flash`**: Wgrywa plik wsadowy programu do pamięci sterownika PLC _(mikrokontrolera)_
 - **`make run`**: Wykonuje `make build`, a następnie `make flash`
+- `make test`: Buduje każdy `.tests/*.c` do programu na komputer i uruchamia go, patrz [Testy](#-testy); `make test T=name` uruchamia jeden
 - **`make clean`** lub `make clr`: Usuwa zbudowane pliki projektu
 - `make clean_all` lub `make clr_all`: Usuwa zbudowane pliki wszystkich projektów
 - `make dist`: Kopiuje `-dist.hex` do folderu projektu, a pod bootloaderem także `-dist.bin`; `make dist TAG=1.2.0` nazywa je `<name>-1.2.0.hex` i `.bin`
@@ -184,8 +185,9 @@ Jeśli klonowanie się nie powiedzie, Forge ostrzega i buduje na domyślnej wers
 
 Aby sprawdzić inną wersję bez ruszania `main.h`, podaj `-f` przy ładowaniu projektu: zbuduje się z nią jednorazowo i powie o tym.
 
-Projekt wewnątrz wersji framework'a, np. jego własne testy, ładuje się po ścieżce: `opencplc opencplc/develop/.tests/host`.
-Nie ma `PRO_FRAMEWORK` i buduje się framework'iem, w którym leży, do `build/opencplc/develop/.tests/host/`.
+Projekt wewnątrz wersji framework'a, np. jego test kompilacji, ładuje się po ścieżce: `opencplc opencplc/develop/.tests/g081`.
+Nie ma `PRO_FRAMEWORK` i buduje się framework'iem, w którym leży, do `build/opencplc/develop/.tests/g081/`.
+`opencplc opencplc/develop` ładuje sam framework, a `make test` uruchamia jego testy.
 
 ### 🧩 Płytki
 
@@ -246,6 +248,7 @@ workspace/
 │  ├─ myapp/
 │  │  ├─ main.c
 │  │  ├─ main.h
+│  │  ├─ .tests/   # testy na komputerze, `make test`
 │  │  ├─ makefile  # generowany przez Forge
 │  │  └─ flash.ld  # generowany przez Forge, tylko STM32
 │  ├─ firm/app/    # projekty mogą być zagnieżdżone
@@ -273,6 +276,13 @@ Przydatne do:
 - Szybkiego prototypowania przed wdrożeniem na PLC
 
 Platforma HOST dostarcza stub'y dla modułów zależnych od sprzętu _(GPIO, timery, itp.)_, więc struktura kodu pozostaje kompatybilna z targetami STM32.
+
+## 🧪 Testy
+
+Każdy plik `.c` bezpośrednio w `.tests/` w katalogu głównym projektu to program testowy, który `make test` buduje i uruchamia na komputerze, także w projekcie STM32.
+Test dołącza moduł, który sprawdza, więc wykonuje sam kod firmware'u.
+Jeden plik workflow robi to samo na GitHubie przy każdym pushu.
+Pisanie, uruchamianie i CI: [🧪 Testy](tests.pl.md).
 
 ## 🚩 Flags
 
@@ -315,6 +325,7 @@ Platforma HOST dostarcza stub'y dla modułów zależnych od sprzętu _(GPIO, tim
 - `--keygen`: Tworzy albo podpina klucz produktu **`NAZWA`** i wpisuje go do `main.h`, patrz [Bootloader](boot-lock.pl.md).
 - `--lock`: Blokuje płytkę na produkcję: domyślnie RDP1, `2` na zawsze, `0` zdejmuje blokadę, kasując flash, patrz [Blokada](boot-lock.pl.md).
 - `-z --size`: Raportuje zajętość FLASH i RAM pliku `.elf`; `make` używa tego po linkowaniu.
+- `--test`: Uruchamia programy testowe, każdy we własnym czystym katalogu i z minutą na zakończenie; `make test` używa tego.
 - `-y --yes`: Automatycznie potwierdza wszystkie pytania _(tryb nieinteraktywny)_.
 
 #### Hash utilities

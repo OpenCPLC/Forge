@@ -4,7 +4,7 @@
 
 from datetime import datetime
 from xaeian import Print, Color as c, FILE, DIR, PATH, replace_map
-from ..config import DIR_PROJECTS, DIR_FRAMEWORK
+from ..config import DIR_PROJECTS, DIR_FRAMEWORK, DIR_TESTS
 from .text import line_remove
 
 p = Print()
@@ -73,24 +73,39 @@ def project_key(projects:dict[str, str], name:str) -> str|None:
   return next((k for k in projects if k.lower() == name.lower()), None)
 
 # A project lives in `projects/`, named from there, or in a Core, named `opencplc/<version>/...`
+# `opencplc/<version>` alone is the Core itself, loaded for its own tests in `.tests/`
 
 def core_version(name:str) -> str:
   """Core version project `name` lies in, "" for a project in `projects/`."""
   parts = name.split("/")
-  return parts[1] if len(parts) > 2 and parts[0] == DIR_FRAMEWORK else ""
+  return parts[1] if len(parts) > 1 and parts[0] == DIR_FRAMEWORK else ""
+
+def is_core(name:str) -> bool:
+  """`True` for the Core itself, `opencplc/<version>`."""
+  return bool(core_version(name)) and name.count("/") == 1
 
 def project_dir(name:str) -> str:
-  """Workspace folder of project `name`."""
+  """Workspace folder of project `name`; of the Core itself, its tests."""
+  if is_core(name): return f"{name}/{DIR_TESTS}"
   return name if core_version(name) else f"{DIR_PROJECTS}/{name}"
 
 def project_name(pro_dir:str) -> str:
-  """Name of the project in workspace folder `pro_dir`, "" for a folder in neither place."""
-  if core_version(pro_dir): return pro_dir
+  """
+  Name of the project in workspace folder `pro_dir`, "" for a folder in neither place.
+
+  `.tests/` of a Core names the Core itself, while the Core folder alone is no project.
+  """
+  core = core_version(pro_dir)
+  if core:
+    home = f"{DIR_FRAMEWORK}/{core}"
+    if pro_dir == f"{home}/{DIR_TESTS}": return home
+    return "" if pro_dir == home else pro_dir
   prefix = f"{DIR_PROJECTS}/"
   return pro_dir[len(prefix):] if pro_dir.startswith(prefix) else ""
 
 def home_name(name:str) -> str:
   """Name its files and images carry: in a Core the path from its root, the version left out."""
+  if is_core(name): return DIR_TESTS
   return name.split("/", 2)[2] if core_version(name) else name
 
 def check_write_permission(path:str) -> bool:

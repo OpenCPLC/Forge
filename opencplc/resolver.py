@@ -12,7 +12,7 @@ Absolute paths appear only while scanning.
 import sys
 from dataclasses import dataclass, field
 from xaeian import Print, Color as c, DIR, FILE, PATH
-from .config import OPT_DEFAULT, LOG_LEVEL_DEFAULT
+from .config import DIR_TESTS, OPT_DEFAULT, LOG_LEVEL_DEFAULT
 from .platforms import get_hal_dirs, boot_stem
 from . import utils, __version__
 
@@ -22,9 +22,9 @@ p = Print()
 class Project:
   """Fully resolved project model."""
   # Identity
-  name: str     # "firm/app", "opencplc/develop/.tests/host" in a Core
+  name: str     # "firm/app", "opencplc/develop/.tests/g081" in a Core
   pro_dir: str  # workspace-relative source directory
-  target: str   # artifact base name, "tests-host" in a Core
+  target: str   # artifact base name, "tests-g081" in a Core
   # Core
   pro_ver: str   # Core version pinned in main.h, the one it lies in for a project in Core
   core_ref: str  # Core version used for this build
@@ -71,6 +71,12 @@ class Project:
   bootloader: str    # Core files the bootloader project dists into, "" for any other
   stlink: str
   build_dir: str
+  # Tests: `.c` programs of `test_dir` built for this computer against Core in test mode
+  test_dir: str  # `.tests/` of the project, the folder of the Core itself
+  tests: bool    # `test_dir` holds a program, so an STM32 project needs MinGW too
+  test_core_sources: list[str]
+  test_include_dirs: list[str]
+  test_defines: list[str]
   # Device drivers selected by the board and by `PRO_DRIVERS`
   board_drivers: list[str] = field(default_factory=list)
   project_drivers: list[str] = field(default_factory=list)
@@ -237,13 +243,36 @@ def boot_image(cfg:dict, core_dir:str) -> str:
     f"to a newer Core, or {c.SKY}#define PRO_BOOT false{c.END}")
   sys.exit(1)
 
+def firmware_tree(pro_dir:str, ext:str) -> dict[str, list[str]]:
+  """
+  Project tree without `.tests/` at its top.
+
+  Only that one: a test project of Core lies in `.tests/` of the Core itself.
+  """
+  tests = f"{pro_dir}/{DIR_TESTS}"
+  return {folder: fs for folder, fs in rel_tree(pro_dir, ext).items()
+    if not PATH.is_under(folder, tests)}
+
 def project_sources(pro_dir:str, ext:str) -> list[str]:
   """Project files with `ext`, sorted and workspace-relative."""
-  return sorted(f for fs in rel_tree(pro_dir, ext).values() for f in fs)
+  return sorted(f for fs in firmware_tree(pro_dir, ext).values() for f in fs)
 
 def project_includes(pro_dir:str) -> list[str]:
   """Project directories holding headers."""
-  return sorted(rel_tree(pro_dir, ".h"))
+  return sorted(firmware_tree(pro_dir, ".h"))
+
+# A test program runs on the computer, against Core built for it from these trees alone
+TEST_TREES = ("hal/host", "lib", "tst")
+
+def test_tree(core_dir:str, ext:str) -> dict[str, list[str]]:
+  """Core files with `ext` of a test build."""
+  found = {}
+  for sub in TEST_TREES: found.update(rel_tree(f"{core_dir}/{sub}", ext))
+  return found
+
+def has_tests(test_dir:str) -> bool:
+  """`True` when a `.c` lies right in `test_dir`: a program each, deeper folders its helpers."""
+  return bool(DIR.file_list(test_dir, exts=[".c"], deep=False))
 
 def project_dirs(pro_dir:str, sources:list[str], includes:list[str]) -> list[str]:
   """Directories whose content decides the source list - the inputs of a makefile reload."""
@@ -279,9 +308,20 @@ def resolve_project(cfg:dict, paths:dict, forge_cfg:dict) -> Project:
   project_drivers = list(cfg.get("project_drivers", []))
   cfg["drivers"] = list(dict.fromkeys(board_drivers + project_drivers))
   validate_drivers(cfg, core_dir)
-  pro_c = project_sources(pro_dir, ".c")
+  # The Core itself has no sources of its own, only tests, and no `main.h`
+  core_itself = utils.is_core(name)
+  pro_c = [] if core_itself else project_sources(pro_dir, ".c")
   pro_s = project_sources(pro_dir, ".s") if is_embedded else []
-  pro_inc = project_includes(pro_dir)
+  pro_inc = [] if core_itself else project_includes(pro_dir)
+  build_dir = f"{PATH.local(paths['build'])}/{pro_dir}"
+  test_dir = pro_dir if core_itself else f"{pro_dir}/{DIR_TESTS}"
+  # `main.h` of the Core itself is Forge's, in its build folder;
+  # a module comes by name, one beyond the test trees by its path from Core root, `hal/stm32/...`
+  test_inc = [test_dir] + ([build_dir] if core_itself else pro_inc)
+  test_inc += sorted(test_tree(core_dir, ".h")) + [core_dir]
+  # Platform and family give way to the host, the chip and the rest stay as in firmware
+  test_defines = ["HOST", "HOST_TEST", *([cfg["define"]] if is_embedded else [])]
+  test_defines += [d for d in defines if d not in cfg["defines"]]
   return Project(
     name=name,
     pro_dir=pro_dir,
@@ -326,7 +366,12 @@ def resolve_project(cfg:dict, paths:dict, forge_cfg:dict) -> Project:
     boot_elf=elf if boot and FILE.exists(elf) else "",
     bootloader=boot_stem(cfg["hal"], bool(cfg.get("boot_key_build"))) if is_bootloader else "",
     stlink=(forge_cfg.get("stlink") or {}).get(pro_dir, ""),
-    build_dir=f"{PATH.local(paths['build'])}/{pro_dir}",
+    build_dir=build_dir,
+    test_dir=test_dir,
+    tests=has_tests(test_dir),
+    test_core_sources=sorted(f for fs in test_tree(core_dir, ".c").values() for f in fs),
+    test_include_dirs=test_inc,
+    test_defines=test_defines,
     board_drivers=board_drivers,
     project_drivers=project_drivers,
   )

@@ -15,6 +15,7 @@ from .config import URL_DL, URL_FORGE, URL_CORE, EXE_NAME, DIR_FRAMEWORK
 from .args import flag
 from .resolver import Project
 from .pack import pack_command
+from .runner import run_tests
 from .workspace import ensure_refs
 from . import utils, __version__
 
@@ -80,7 +81,7 @@ def update_forge(args):
 # Flags of a project run, where -f is an override, not a download
 PROJECT_FLAGS = ("name", "new", "demo", "reload", "delete", "get", "board", "chip", "plc",
   "dvr", "boot", "memory", "opt_level", "project_list", "info", "version", "framework_versions",
-  "size", "pack", "program", "lock", "keygen", "hash_list", "update", "assets")
+  "size", "pack", "test", "program", "lock", "keygen", "hash_list", "update", "assets")
 
 def framework_fetch(args, forge_cfg:dict) -> bool:
   """
@@ -113,6 +114,8 @@ def info_actions(args, forge_cfg:dict) -> bool:
   if args.pack:
     pack_command(args.pack)
     ran = True
+  if args.test:
+    sys.exit(run_tests(args.test[0], args.test[1:]))
   if args.version:
     p.inf(f"OpenCPLC Forge {c.VIOLET}{__version__}{c.END}")
     p.gap(utils.color_url("https://github.com/OpenCPLC/Forge"))

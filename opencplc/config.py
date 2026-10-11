@@ -30,6 +30,7 @@ Framework version rules:
 
 # Workspace layout, fixed by Forge; Demo holds ordinary projects, cloned as a whole
 DIR_PROJECTS = "projects"
+DIR_TESTS = ".tests" # at the top of a project, or of a Core for its own tests
 DIR_DEMO = "projects/demo"
 DIR_FRAMEWORK = "opencplc"
 DIR_BUILD = "build"

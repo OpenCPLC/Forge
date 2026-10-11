@@ -12,6 +12,8 @@
         "${workspaceFolder}/${CORE_DIR}/brd/${BOARD_LOWER}/**",
         "${workspaceFolder}/${CORE_DIR}/plc/com/**",
         "${workspaceFolder}/${CORE_DIR}/plc/per/**",
+        "${workspaceFolder}/${CORE_DIR}/tst",
+        "${workspaceFolder}/${CORE_DIR}",
         "${workspaceFolder}/${PRO_DIR}/**"
       ],
       "defines": [

@@ -15,7 +15,7 @@ from xaeian import Print, Color as c, FILE, DIR, PATH, replace_end
 from xaeian.cmd import which
 from .config import OPT_DEFAULT, LOG_LEVEL_DEFAULT
 from .templates import load_templates
-from .resolver import Project, flash_layout
+from .resolver import Project, flash_layout, forge_version
 from . import utils
 
 p = Print()
@@ -97,20 +97,32 @@ def stack_command(pro:Project) -> str:
   script = f'{bash_exe()} "$(OPENCPLC)/scr/{pro.stack_script}"'
   return f"{script} $(if $(STLINK),--sn=$(STLINK)) $(if $(FUS),--fus) $(if $(FAST),--fast)"
 
+def test_rules(pro:Project, block:str) -> str:
+  """
+  `make test` of a project: the test block, or a refusal on a Core without the harness.
+
+  The refusal has no prerequisites, so it comes before the archive builds, not after.
+  Its colors stay placeholders, so the shell gets them as safe as those of the template.
+  """
+  if any(PATH.is_under(f, f"{pro.core_dir}/tst") for f in pro.test_core_sources):
+    return block.strip()
+  separator = block.splitlines()[0] # the `Tests` section keeps its line in the makefile
+  refusal = (f"Core ${{VIOLET}}{pro.core_ref}${{END}} has no test harness, "
+    "raise ${SKY}PRO_FRAMEWORK${END} in main.h")
+  return f"{separator}\ntest:\n\t@echo {refusal}&& exit 1\n\n.PHONY: test"
+
 def config_inputs(pro:Project) -> list[str]:
   """Reload inputs of the project makefile, anchored in `$(PROJECT)`."""
   return ["$(PROJECT)/main.h"] + [anchored(d, pro.pro_dir, "PROJECT") for d in pro.project_dirs]
 
-def include_flags(pro:Project) -> list[str]:
-  """-I flags anchored in `$(OPENCPLC)`/`$(PROJECT)`, resolved by Make at build time."""
+def include_flags(pro:Project, dirs:list[str]) -> list[str]:
+  """-I flags anchored in `$(PROJECT)`, `$(BUILD)` or `$(OPENCPLC)`, resolved by Make."""
+  # the project first: a test project of Core lies inside Core
+  bases = ((pro.pro_dir, "PROJECT"), (pro.build_dir, "BUILD"), (pro.core_dir, "OPENCPLC"))
   flags = []
-  for d in pro.include_dirs:
-    if PATH.is_under(d, pro.pro_dir):
-      flags.append("-I" + anchored(d, pro.pro_dir, "PROJECT"))
-    elif PATH.is_under(d, pro.core_dir):
-      flags.append("-I" + anchored(d, pro.core_dir, "OPENCPLC"))
-    else:
-      flags.append("-I$(WORKSPACE)/" + d)
+  for d in dirs:
+    base = next(((path, var) for path, var in bases if PATH.is_under(d, path)), None)
+    flags.append("-I" + anchored(d, *base) if base else "-I$(WORKSPACE)/" + d)
   return flags
 
 def project_header(cfg:dict, paths:dict, new:bool=False):
@@ -144,6 +156,7 @@ def prepare_project(cfg:dict, paths:dict):
   is_embedded = cfg["platform"] == "STM32"
   tpl = templates.get(cfg["hal"], {})
   project_header(cfg, paths, new=not FILE.exists(f"{paths['pro']}/main.h"))
+  if utils.is_core(cfg["pro_name"]): return # the Core itself: its tests are all there is
   DIR.ensure(paths["pro"])
   if cfg.get("plc"):
     DIR.ensure(f"{paths['fw']}/plc")
@@ -209,9 +222,10 @@ def generate(pro:Project, activate:bool=True):
     "${CORE_S}": mk_list(rel_from(pro.core_asm_sources, pro.core_dir)),
     "${PRO_C}": mk_list(rel_from(pro.project_c_sources, pro.pro_dir)),
     "${PRO_S}": mk_list(rel_from(pro.project_asm_sources, pro.pro_dir)),
-    "${C_INCLUDES}": mk_list(include_flags(pro)),
+    "${C_INCLUDES}": mk_list(include_flags(pro, pro.include_dirs)),
     "${CONFIG_INPUTS}": " ".join(config_inputs(pro)),
     "${C_DEFS}": " ".join(f"-D{d}" for d in pro.defines),
+    "${FORGE_VERSION}": forge_version(),
     "${MCU_FLAGS}": pro.mcu_flags,
     "${OPT_LEVEL}": pro.opt_level,
     "${LOG_LEVEL}": pro.log_level,
@@ -246,15 +260,26 @@ def generate(pro:Project, activate:bool=True):
     "${EXE_EXT}": ".exe" if is_windows else "",
     "${PROJECT_COLORED}": colored_path(pro.pro_dir, pro.name),
     "${BUILD_COLORED}": colored_path(pro.build_dir, pro.name),
+    "${TEST_DIR}": anchored(pro.test_dir, pro.pro_dir, "PROJECT"),
+    "${TEST_CORE_C}": mk_list(rel_from(pro.test_core_sources, pro.core_dir)),
+    "${TEST_INCLUDES}": mk_list(include_flags(pro, pro.test_include_dirs)),
+    "${TEST_DEFS}": " ".join(f"-D{d}" for d in pro.test_defines),
+    "${TEST_COLORED}": f"{c.GREY}./{pro.test_dir}{c.END}",
     "${GOLD}": c.GOLD, "${PINK}": c.PINK, "${RED}": c.RED,
     "${LIME}": c.LIME, "${SKY}": c.SKY, "${VIOLET}": c.VIOLET,
     "${END}": c.END,
-  } | utils.template_paths(pro.platform == "STM32")
+  } | utils.template_paths(pro.platform == "STM32", pro.tests)
   # Linker script and makefile live inside the project - parallel builds stay disjoint
   if pro.linker:
     ld_template = templates["flash"].get(pro.linker, templates["flash"]["stm32g0.ld"])
     utils.create_file("flash.ld", ld_template, pro.pro_dir, subs)
-  makefile = tpl.get("project.mk", templates["project.mk"])
+  # the Core itself has tests alone, and no `main.h`: Forge writes one into its build
+  if utils.is_core(pro.name):
+    makefile = tpl["core.mk"]
+    utils.create_file("main.h", tpl["core.h"], pro.build_dir, subs)
+  else:
+    makefile = tpl.get("project.mk", templates["project.mk"])
+  makefile = makefile.replace("${TEST}", test_rules(pro, templates["test.mk"]))
   # CubeProgrammer joins PATH of `make stack` only from its default home, elsewhere PATH has it
   keep_cube = bool(pro.stack_script and subs["${CUBE_PATH}"])
   utils.create_file("makefile", makefile, pro.pro_dir, recipe_safe(subs),
@@ -266,6 +291,7 @@ def generate(pro:Project, activate:bool=True):
   DIR.ensure(".vscode")
   props = tpl.get("properties.json", templates["properties.json"])
   drop = ([] if pro.plc else ["/plc/", '"OpenCPLC"']) + ([] if pro.board else ["/brd/"])
+  drop += [] if utils.is_core(pro.name) else ["${BUILD_DIR}"] # `main.h` of the Core itself
   utils.create_file("c_cpp_properties.json", without(props, drop), ".vscode", subs)
   # cortex-debug takes its tools from PATH where Forge has no packages to point at
   launch = tpl.get("launch.json", templates["launch.json"])

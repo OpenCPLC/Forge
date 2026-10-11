@@ -12,7 +12,7 @@ Both paths return the same cfg dict that `resolve_project()` consumes.
 
 import re, sys
 from xaeian import Print, Color as c, Ico, FILE, DIR, PATH
-from .config import URL_CORE, OPT_DEFAULT, LOG_LEVEL_DEFAULT
+from .config import URL_CORE, DIR_TESTS, OPT_DEFAULT, LOG_LEVEL_DEFAULT
 from .args import flag
 from .platforms import parse_chip
 from .boards import Board, load_boards, board_pick, board_list, parse_drivers
@@ -41,6 +41,11 @@ def boardless_freq(cfg:dict) -> int:
 
 def reject_existing(args, projects:dict, paths:dict):
   """A new project needs a free name, a free path and a writable parent."""
+  if utils.is_core(args.name):
+    p.err(f"{c.BLUE}{args.name}{c.END} is a Core, it loads as it is")
+    p.run("Create a project inside it, e.g. "
+      f"{utils.color_command(f'opencplc -n {args.name}/{DIR_TESTS}/<name>')}")
+    sys.exit(1)
   if args.name.lower() in (n.lower() for n in projects):
     p.err(f"Project {c.MAGNTA}{args.name}{c.END} already exists")
     p.run(f"Use a different name or load it without flag {flag.n}")
@@ -215,9 +220,23 @@ def resolve_version(args, pro_ver:str, paths:dict, fw_ver:str, forge_cfg:dict) -
       f"newer release {c.GREY}{latest}{c.END} is available")
   return pro_ver
 
+def config_core(name:str, core:str) -> dict:
+  """Config of the Core itself: its tests on the host, under the defaults of Core."""
+  return parse_chip("HOST") | board_fields(None) | {
+    "pro_name": name, "pro_ver": core, "fw_ver": core,
+    "opt_level": OPT_DEFAULT, "log_level": LOG_LEVEL_DEFAULT,
+    "boot": False, "boot_key": "", "bootloader": False, "boot_key_build": False,
+    "plc": False, "project_drivers": [], "freq_Hz": 0,
+  }
+
 def config_load(args, projects:dict, paths:dict, fw_ver:str, forge_cfg:dict) -> dict:
   """Config for an existing project; points `paths["fw"]` at the Core that builds it."""
   flags_reject(args)
+  if utils.is_core(args.name):
+    if utils.project_key(projects, args.name) is None:
+      p.err(f"Core {c.VIOLET}{args.name}{c.END} has no {c.GREY}{DIR_TESTS}/{c.END}")
+      sys.exit(1)
+    return config_core(args.name, utils.core_version(args.name))
   info = read_main_h(args, projects)
   core = utils.core_version(args.name)
   pro_ver = core or info["PRO_FRAMEWORK"]

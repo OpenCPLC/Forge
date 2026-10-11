@@ -170,12 +170,15 @@ def stlink_bind(forge_cfg:dict, pro_id:str, serial:str|None):
 #-------------------------------------------------------------------------------- Project inventory
 
 def project_inventory(name:str|None) -> dict[str, str]:
-  """Projects by name: all of `projects/`, and those of the Core `name` lies in."""
+  """Projects by name: all of `projects/`, and those of the Core `name` lies in, itself too."""
   projects = utils.get_project_list(DIR_PROJECTS)
   core = utils.core_version(name or "")
   if not core: return projects
   home = f"{DIR_FRAMEWORK}/{core}"
-  return projects | {f"{home}/{key}": path for key, path in utils.get_project_list(home).items()}
+  projects |= {f"{home}/{key}": path for key, path in utils.get_project_list(home).items()}
+  tests = PATH.resolve(utils.project_dir(home), read=False)
+  if DIR.exists(tests): projects[home] = tests # the Core itself is a project of its tests
+  return projects
 
 def project_select(args, projects:dict):
   """-l listing and picking a project by its number on that list."""
@@ -199,6 +202,9 @@ def project_delete(args, projects:dict, make_info:dict|None, forge_cfg:dict):
   key = utils.project_key(projects, args.name)
   if key is None:
     p.err(f"Project {c.MAGNTA}{args.name}{c.END} does not exist")
+    sys.exit(1)
+  if utils.is_core(key):
+    p.err(f"{c.BLUE}{key}{c.END} is a Core, its tests stay with it")
     sys.exit(1)
   try:
     active = PATH.local(projects[key])

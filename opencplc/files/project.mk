@@ -190,6 +190,8 @@ else
 endif
 	@$(call TOUCH,$(FORGE_STAMP))
 
+${TEST}
+
 clean:
 	@$(call RMDIR,$(BUILD))
 	@echo Removed ${BUILD_COLORED}

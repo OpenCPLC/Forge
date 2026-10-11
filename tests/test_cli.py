@@ -22,7 +22,7 @@ def ws(tmp_path, monkeypatch):
   monkeypatch.setattr(ws_mod, "_refs_fresh", False)
   monkeypatch.setattr(ws_mod.utils, "ensure_git", lambda yes: None)
   monkeypatch.setattr(ws_mod.utils, "git_get_refs", lambda url, opt="--ref": ["1.0.0"])
-  monkeypatch.setattr(forge, "ensure_toolchains", lambda is_embedded, yes: None)
+  monkeypatch.setattr(forge, "ensure_toolchains", lambda is_embedded, yes, tests: None)
   with file_context(root_path=str(tmp_path)):
     yield tmp_path
 
@@ -412,6 +412,40 @@ def stlink_of_a_project_in_core_is_keyed_by_its_folder(ws, monkeypatch):
   core_test(ws)
   assert run_cli(monkeypatch, CORE_TEST, "-s", "066AFF49") == 0
   assert f'"{CORE_TEST}": "066AFF49"' in (ws / "opencplc.json").read_text()
+
+def core_itself_loads_for_its_tests(ws, monkeypatch):
+  """`opencplc/<version>` alone: its `.tests/` gets the makefile, the build gets `main.h`."""
+  core_test(ws)
+  (ws / "opencplc" / "1.0.0" / ".tests" / "test_log.c").write_text("// log\n")
+  assert run_cli(monkeypatch, "opencplc/1.0.0") == 0
+  tests = ws / "opencplc" / "1.0.0" / ".tests"
+  assert "NAME := opencplc/1.0.0" in (tests / "makefile").read_text()
+  assert not (tests / "main.c").exists() and not (tests / "main.h").exists()
+  assert (ws / "build" / "opencplc" / "1.0.0" / ".tests" / "main.h").exists()
+  assert "ACTIVE := opencplc/1.0.0/.tests" in (ws / "makefile").read_text()
+  (tests / "makefile").unlink()
+  assert run_cli(monkeypatch, "-r") == 0 # the dispatcher folder leads back to the Core
+  assert (tests / "makefile").exists()
+
+def editor_finds_the_headers_of_tests(ws, monkeypatch):
+  """`test.h` in `tst/`, modules by their path from Core root, `main.h` of the Core itself."""
+  assert run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-y") == 0
+  props = (ws / ".vscode" / "c_cpp_properties.json").read_text()
+  assert '/opencplc/1.0.0/tst"' in props and '/opencplc/1.0.0"' in props
+  assert "/build/" not in props
+  core_test(ws)
+  assert run_cli(monkeypatch, "opencplc/1.0.0") == 0
+  assert '/build/opencplc/1.0.0/.tests"' in (ws / ".vscode" / "c_cpp_properties.json").read_text()
+
+def core_itself_is_neither_created_nor_deleted(ws, monkeypatch):
+  core_test(ws)
+  assert run_cli(monkeypatch, "-n", "opencplc/1.0.0", "-c", "HOST", "-y") == 1
+  assert run_cli(monkeypatch, "-d", "opencplc/1.0.0") == 1
+  assert (ws / CORE_TEST / "main.h").exists()
+
+def core_without_tests_says_so(ws, monkeypatch, capsys):
+  assert run_cli(monkeypatch, "opencplc/1.0.0") == 1
+  assert ".tests" in capsys.readouterr().out
 
 def lock_writes_option_bytes_of_the_named_project(ws, monkeypatch):
   sessions = []

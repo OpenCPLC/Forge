@@ -7,6 +7,7 @@ from xaeian import file_context
 from opencplc import resolver
 from opencplc.resolver import resolve_project, available_drivers, forge_version
 from opencplc.platforms import parse_chip
+from opencplc.configure import config_core
 from conftest import build_workspace, uno_cfg, ws_paths, resolve_uno, KEY, ship_key_bootloader
 from conftest import resolve_key_uno
 
@@ -45,6 +46,41 @@ def project_in_core_is_named_from_core_root(ws):
   assert pro.build_dir == "build/opencplc/1.0.0/.tests/g081"
   assert pro.project_c_sources == ["opencplc/1.0.0/.tests/g081/main.c"]
   assert pro.stlink == "ABC123"
+
+def tests_stay_out_of_firmware(ws):
+  """Programs of `.tests/` run on the computer, never in the image."""
+  tests = ws / "projects" / "myapp" / ".tests"
+  (tests / "fake").mkdir(parents=True)
+  (tests / "frame.c").write_text("// frame\n")
+  (tests / "fake" / "link.h").write_text("")
+  pro = resolve_uno()
+  assert pro.project_c_sources == ["projects/myapp/main.c", "projects/myapp/util/extra.c"]
+  assert not any(".tests" in d for d in pro.include_dirs)
+  assert pro.tests and pro.test_dir == "projects/myapp/.tests"
+
+def test_build_trades_the_platform_for_the_host(ws):
+  """Chip, `FORGE_VERSION`, `OpenCPLC` and `BOOT_*` stay, `STM32` and its family give way."""
+  for rel in ("hal/host/sys.c", "tst/test.c", "tst/test.h"):
+    (ws / "opencplc" / "1.0.0" / rel).parent.mkdir(parents=True, exist_ok=True)
+    (ws / "opencplc" / "1.0.0" / rel).write_text("")
+  pro = resolve_uno()
+  assert pro.test_defines == ["HOST", "HOST_TEST", "STM32G0C1xx",
+    f"FORGE_VERSION={forge_version()}", "OpenCPLC", "BOOT_PAGES=4", "BOOT_CHIP=0x467"]
+  assert pro.test_core_sources == ["opencplc/1.0.0/hal/host/sys.c",
+    "opencplc/1.0.0/lib/log/log.c", "opencplc/1.0.0/tst/test.c"]
+  assert pro.test_include_dirs[0] == "projects/myapp/.tests"
+  assert pro.test_include_dirs[-1] == "opencplc/1.0.0" # a module by its path from Core root
+  assert not pro.tests
+
+def core_itself_builds_its_tests_alone(ws):
+  """No sources and no `main.h` of its own: Forge writes that one into the build."""
+  tests = ws / "opencplc" / "1.0.0" / ".tests"
+  tests.mkdir()
+  (tests / "test_log.c").write_text("// log\n")
+  name = "opencplc/1.0.0"
+  pro = resolve_project(config_core(name, "1.0.0"), ws_paths() | {"pro": f"{name}/.tests"}, {})
+  assert pro.project_c_sources == [] and pro.target == "tests" and pro.tests
+  assert pro.test_include_dirs[:2] == [f"{name}/.tests", f"build/{name}/.tests"]
 
 def selected_board_stays_other_boards_drop(ws):
   pro = resolve_uno()

@@ -3,6 +3,8 @@
 ## `0.5.0` Projects in Core
 
 - Project in `opencplc/<version>/` builds with that Core, without `PRO_FRAMEWORK`
+- `make test` runs `.tests/*.c` on computer, `opencplc opencplc/<version>` tests Core itself
+- GitHub runs `make test` and `make` of project repository through `project.yml`
 
 ## `0.4.9` Program from dist
 

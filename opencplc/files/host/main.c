@@ -1,6 +1,7 @@
 // ${NAME}/main.c
 
 #include <vrts.h>
+#include <sys.h>
 #include <rtc.h>
 #include <log.h>
 

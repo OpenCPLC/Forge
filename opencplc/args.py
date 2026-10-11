@@ -58,6 +58,7 @@ class Args:
   lock: int|None = None
   keygen: str|None = None
   pack: list[str]|None = None
+  test: list[str]|None = None
   assets: str|None = None
   update: str|None = None
   yes: bool = False
@@ -143,6 +144,8 @@ def load_args() -> Args:
     help="Report FLASH and RAM usage of an .elf against the chip memory")
   parser.add_argument("-p", "--pack", nargs="+", metavar="FILE",
     help="Pack the flash image: APP.hex OUT.hex [BOOT [KEY_AT [KEY]]], a makefile step")
+  parser.add_argument("--test", nargs="+", metavar="PATH",
+    help="Run test programs: BUILD NAME [NAME ...], a makefile step")
   parser.add_argument("--program", type=str, nargs="?", const=True, metavar="FILE",
     help="Send a .hex to the board through the programmer; alone, the one make dist left")
   parser.add_argument("--lock", type=int, nargs="?", const=1, choices=(0, 1, 2), metavar="LEVEL",
@@ -194,6 +197,7 @@ def load_args() -> Args:
     lock=ns.lock,
     keygen=ns.keygen,
     pack=ns.pack,
+    test=ns.test,
     assets=ns.assets,
     update=ns.update,
     yes=ns.yes,

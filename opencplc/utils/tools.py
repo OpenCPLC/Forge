@@ -38,6 +38,11 @@ COMMANDS = {
 STM32_TOOLS = ("make", "arm-gcc", "openocd")
 HOST_TOOLS = ("make", "mingw")
 
+def tool_names(is_embedded:bool, tests:bool) -> tuple[str, ...]:
+  """Packages of a project: its toolchain, and MinGW beside `arm-gcc` for tests on the computer."""
+  if not is_embedded: return HOST_TOOLS
+  return STM32_TOOLS + (("mingw",) if tests else ())
+
 def tools_dir() -> str:
   """Where the packages live; `OPENCPLC_TOOLS` moves them, PATH is then the user's own business."""
   return PATH.normalize(os.environ.get("OPENCPLC_TOOLS") or DEFAULT_DIR)
@@ -54,7 +59,7 @@ def bin_dir(name:str) -> str:
   """Where a tool runs from."""
   return tool_path(name) + bin_suffix(name)
 
-def template_paths(is_embedded:bool) -> dict[str, str]:
+def template_paths(is_embedded:bool, tests:bool=False) -> dict[str, str]:
   """
   Tool paths for generated files, spelled through the environment, never as text:
   `$(LOCALAPPDATA)` for Make, `${env:LOCALAPPDATA}` for VS Code.
@@ -74,7 +79,7 @@ def template_paths(is_embedded:bool) -> dict[str, str]:
   moved = bool(os.environ.get("OPENCPLC_TOOLS"))
   var, home = ("OPENCPLC_TOOLS", "") if moved else ("LOCALAPPDATA", "/OpenCPLC")
   mk, vs = f"$({var}){home}", f"${{env:{var}}}{home}"
-  names = STM32_TOOLS if is_embedded else HOST_TOOLS
+  names = tool_names(is_embedded, tests)
   return {
     "${TOOLS_PATH}": ";".join(f"{mk}/{n}{bin_suffix(n)}" for n in names),
     "${TOOLS_ARM_DIR}": f"{vs}/arm-gcc/bin",
@@ -176,7 +181,7 @@ def ensure_git(yes:bool):
   p.err("Git installed, open a new console and run again")
   sys.exit(1)
 
-def ensure_tools(is_embedded:bool, yes:bool):
+def ensure_tools(is_embedded:bool, yes:bool, tests:bool=False):
   """
   Everything a build needs.
 
@@ -185,7 +190,7 @@ def ensure_tools(is_embedded:bool, yes:bool):
   `yes` answers every install prompt.
   """
   ensure_git(yes)
-  names = STM32_TOOLS if is_embedded else HOST_TOOLS
+  names = tool_names(is_embedded, tests)
   if not WINDOWS:
     missing = [COMMANDS[n] for n in names if not which(COMMANDS[n])]
     if missing:

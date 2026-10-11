@@ -5,6 +5,9 @@
       "includePath": [
         "${workspaceFolder}/${CORE_DIR}/hal/host/**",
         "${workspaceFolder}/${CORE_DIR}/lib/**",
+        "${workspaceFolder}/${CORE_DIR}/tst",
+        "${workspaceFolder}/${CORE_DIR}",
+        "${workspaceFolder}/${BUILD_DIR}",
         "${workspaceFolder}/${PRO_DIR}/**"
       ],
       "defines": [

@@ -10,7 +10,7 @@ embedded makefiles are checked with a dry run. Skipped where make or gcc is miss
 import os, re, shutil, subprocess
 import pytest
 from xaeian import file_context
-from opencplc.project import generate
+from opencplc.project import generate, ANSI
 from opencplc.resolver import resolve_project
 from conftest import (
   resolve_uno, build_workspace, host_model, make_run, make_root, write_file,
@@ -50,6 +50,15 @@ def host_project_builds_and_rebuild_is_a_noop(ws):
   assert any(f.name.startswith("app") for f in out.iterdir())
   again = make_run(ws, "build")
   assert "Nothing to be done" in again.stdout
+
+@pytest.mark.skipif(not (HAVE_MAKE and HAVE_GCC), reason="make and gcc required")
+def host_build_carries_the_forge_version(ws):
+  """Core stops a build without `FORGE_VERSION`, as its `xdef.h` does."""
+  write_file(ws / "opencplc" / "1.0.0" / "lib" / "guard.c",
+    "#if !defined(FORGE_VERSION) || FORGE_VERSION < 408\n#error old Forge\n#endif\nint guard;\n")
+  generate(host_model())
+  res = make_run(ws, "build")
+  assert res.returncode == 0, res.stdout + res.stderr
 
 @pytest.mark.skipif(not (HAVE_MAKE and HAVE_GCC), reason="make and gcc required")
 def same_file_name_in_core_and_project_gives_two_objects(ws):
@@ -160,19 +169,51 @@ def new_source_is_built_in_the_same_make_run(ws):
 @pytest.mark.skipif(not (HAVE_MAKE and HAVE_GCC), reason="make and gcc required")
 def project_in_core_builds_and_reloads_by_its_name(ws):
   """Make reloads it as `opencplc/<version>/...`, Forge reads no `PRO_FRAMEWORK` there."""
-  name = "opencplc/1.0.0/.tests/host"
+  name = "opencplc/1.0.0/.tests/app"
   write_file(ws / name / "main.h", MAIN_H_HOST.replace('#define PRO_FRAMEWORK "1.0.0"\n', ""))
   write_file(ws / name / "main.c", '#include "sys.h"\nint main(void) { return sys_tick(); }\n')
   generate(resolve_project(host_cfg(name), ws_paths() | {"pro": name}, {}))
   first = make_root(ws)
   assert first.returncode == 0, first.stdout + first.stderr
   build = ws / "build" / name
-  assert any(f.name.startswith("tests-host") for f in build.iterdir())
+  assert any(f.name.startswith("tests-app") for f in build.iterdir())
   age(ws / name / "makefile", build / ".forge", *build.rglob("*.o"))
   os.utime(ws / name / "main.h", None)
   res = make_root(ws)
   assert res.returncode == 0, res.stdout + res.stderr
   assert res.stdout.count("using framework version") == 1
+
+@pytest.mark.skipif(not (HAVE_MAKE and HAVE_GCC), reason="make and gcc required")
+def make_test_runs_every_program_and_one_failure_fails_it(ws):
+  """`.tests/*.c` against Core built in test mode, each program run by Forge."""
+  core = ws / "opencplc" / "1.0.0"
+  write_file(core / "tst" / "test.h", "extern int checks;\nvoid TEST_Cases(void);\n")
+  write_file(core / "tst" / "test.c", '#include <stdio.h>\n#include "test.h"\nint checks;\n'
+    'int main(void) { TEST_Cases(); printf("%d OK\\n", checks); return 0; }\n')
+  tests = ws / "projects" / "app" / ".tests"
+  write_file(tests / "test_util.c", '#include "test.h"\n#include "util.h"\n'
+    "void TEST_Cases(void) { checks += lib_util() == 1; }\n")
+  generate(host_model())
+  res = make_root(ws, "test")
+  assert res.returncode == 0, res.stdout + res.stderr
+  out = ANSI.sub("", res.stdout)
+  assert "INF test_util 1/1 OK" in out and "INF Test programs 1/1, checks 1/1 in" in out
+  assert not re.search(r"-o \S*build/projects/app/project/", res.stdout) # firmware untouched
+  write_file(tests / "reset.c", '#include <stdlib.h>\n#include "test.h"\n'
+    "void TEST_Cases(void) { exit(0); }\n")
+  res = make_root(ws, "test")
+  assert res.returncode != 0
+  assert "ended with code 0" in res.stdout
+
+@pytest.mark.skipif(not HAVE_MAKE, reason="make required")
+def make_test_on_a_core_without_harness_refuses_at_once(ws):
+  """An older Core has no `tst/`: `make test` says what to change before anything builds."""
+  write_file(ws / "projects" / "app" / ".tests" / "test_util.c", '#include "test.h"\n')
+  generate(host_model())
+  res = make_root(ws, "test")
+  assert res.returncode != 0
+  assert "PRO_FRAMEWORK" in res.stdout
+  assert not (ws / "build" / "projects" / "app" / "test").exists()
 
 @pytest.mark.skipif(not (HAVE_MAKE and HAVE_GCC), reason="make and gcc required")
 def missing_forge_fails_the_reload(ws):

@@ -10,11 +10,11 @@ CLI entry point: parses arguments and orchestrates the run.
 
 import os, signal, sys
 from xaeian import Print, Color as c, PATH
-from .config import URL_DEMO, DIR_DEMO
+from .config import URL_DEMO, DIR_DEMO, DIR_TESTS
 from .args import flag, load_args, check_flags
 from .templates import load_templates
 from .project import prepare_project, generate
-from .resolver import resolve_project
+from .resolver import resolve_project, has_tests
 from .actions import info_actions, info_show, program_image
 from .keygen import keygen
 from .lock import lock_board
@@ -35,9 +35,9 @@ def handle_sigint(signum, frame):
 
 signal.signal(signal.SIGINT, handle_sigint)
 
-def ensure_toolchains(is_embedded:bool, yes:bool):
+def ensure_toolchains(is_embedded:bool, yes:bool, tests:bool):
   """Install missing tools, then make sure the compiler actually runs."""
-  utils.ensure_tools(is_embedded, yes)
+  utils.ensure_tools(is_embedded, yes, tests)
   if not utils.verify_compiler(is_embedded):
     compiler = "arm-none-eabi-gcc" if is_embedded else "gcc"
     p.err(f"Compiler {c.YELLOW}{compiler}{c.END} not working")
@@ -118,7 +118,8 @@ def main():
   stlink_bind(forge_cfg, utils.project_dir(args.name), args.stlink)
   if args.info:
     info_show(resolve_project(cfg, paths, forge_cfg))
-  ensure_toolchains(cfg["platform"] == "STM32", args.yes)
+  tests = has_tests(f"{paths['pro']}/{DIR_TESTS}")
+  ensure_toolchains(cfg["platform"] == "STM32", args.yes, tests)
   # the factory programs the full image of `dist`, then locks the board
   if args.program or args.lock is not None:
     model = resolve_project(cfg, paths, forge_cfg)

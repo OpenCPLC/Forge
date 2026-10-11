@@ -35,6 +35,9 @@ LIBS = -lm -lpthread
 EXE = $(BUILD)/$(TARGET)
 endif
 
+# Core refuses a Forge older than its makefile needs
+C_DEFS += -DFORGE_VERSION=${FORGE_VERSION}
+
 # Core sources, relative to `$(OPENCPLC)`
 CORE_C = ${CORE_C}
 
@@ -113,6 +116,8 @@ dist: build
 	@$(call COPY,$(EXE),$(PROJECT)/$(DIST))
 	@$(call TOUCH,$(FORGE_STAMP))
 	@echo Copied ${LIME}$(DIST)${END} to ${PROJECT_COLORED}
+
+${TEST}
 
 clean:
 	@$(call RMDIR,$(BUILD))

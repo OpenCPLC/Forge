@@ -321,3 +321,10 @@ def write_boot_image(path, data:bytes):
   boot = Memory()
   boot.add(0x08000000, data)
   save_hex(boot, path)
+
+def build_program(folder, name:str, body:str):
+  """Test program `name` from C `body`, where `make test` leaves one."""
+  from opencplc.runner import EXE_EXT
+  src = folder / f"{name}.c"
+  src.write_text(body)
+  subprocess.run(["gcc", str(src), "-o", str(folder / f"{name}{EXE_EXT}")], check=True)

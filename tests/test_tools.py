@@ -142,3 +142,8 @@ def a_running_make_is_renamed_aside_and_swept_later(tmp_path):
   proc.wait()
   tools.sweep(str(tmp_path))
   assert list(pkg.iterdir()) == []
+
+def tests_of_an_stm32_project_bring_mingw():
+  assert "mingw" not in tools.tool_names(True, False)
+  assert tools.tool_names(True, True) == tools.STM32_TOOLS + ("mingw",)
+  assert tools.tool_names(False, True) == tools.HOST_TOOLS

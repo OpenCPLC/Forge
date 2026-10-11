@@ -13,6 +13,7 @@ def load_templates() -> dict:
       "opencplc.json": JSON.load("opencplc.json", {}),
       "project.mk": FILE.load("project.mk"),
       "workspace.mk": FILE.load("workspace.mk"),
+      "test.mk": FILE.load("test.mk"),
       "flash": {
         "stm32g0.ld": FILE.load("flash/stm32g0.ld"),
         "stm32wb.ld": FILE.load("flash/stm32wb.ld"),
@@ -27,6 +28,8 @@ def load_templates() -> dict:
       "main-none.c": FILE.load("main-none.c"),
       "host": {
         "project.mk": FILE.load("host/project.mk"),
+        "core.mk": FILE.load("host/core.mk"),
+        "core.h": FILE.load("host/core.h"),
         "properties.json": FILE.load("host/properties.json"),
         "launch.json": FILE.load("host/launch.json"),
         "main.h": FILE.load("host/main.h"),
