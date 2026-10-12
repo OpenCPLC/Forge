@@ -101,15 +101,19 @@ def test_rules(pro:Project, block:str) -> str:
   """
   `make test` of a project: the test block, or a refusal on a Core without the harness.
 
-  The refusal has no prerequisites, so it comes before the archive builds, not after.
+  The refusal stands only with programs to build, and has no prerequisites,
+  so it comes before the archive builds, not after; with no program `make test` passes.
   Its colors stay placeholders, so the shell gets them as safe as those of the template.
+  A comma would end an argument of `$(if)`, so the texts hold none.
   """
-  if any(PATH.is_under(f, f"{pro.core_dir}/tst") for f in pro.test_core_sources):
+  if f"{pro.core_dir}/lib/sh/test.c" in pro.test_core_sources:
     return block.strip()
   separator = block.splitlines()[0] # the `Tests` section keeps its line in the makefile
-  refusal = (f"Core ${{VIOLET}}{pro.core_ref}${{END}} has no test harness, "
+  programs = f"$(wildcard {anchored(pro.test_dir, pro.pro_dir, 'PROJECT')}/*.c)"
+  refusal = (f"Core ${{VIOLET}}{pro.core_ref}${{END}} has no test harness: "
     "raise ${SKY}PRO_FRAMEWORK${END} in main.h")
-  return f"{separator}\ntest:\n\t@echo {refusal}&& exit 1\n\n.PHONY: test"
+  return (f"{separator}\ntest:\n\t@$(if {programs},echo {refusal}&& exit 1,"
+    "echo No test programs in ${TEST_COLORED})\n\n.PHONY: test")
 
 def config_inputs(pro:Project) -> list[str]:
   """Reload inputs of the project makefile, anchored in `$(PROJECT)`."""
@@ -212,6 +216,7 @@ def generate(pro:Project, activate:bool=True):
   up_path = PATH.rel(".", pro.pro_dir)
   subs = {
     "${NAME}": pro.name,
+    "${LOAD_FLAGS}": pro.load_flags,
     "${TARGET}": pro.target,
     "${STLINK}": pro.stlink,
     "${UP_PATH}": up_path,
@@ -284,7 +289,7 @@ def generate(pro:Project, activate:bool=True):
   keep_cube = bool(pro.stack_script and subs["${CUBE_PATH}"])
   utils.create_file("makefile", makefile, pro.pro_dir, recipe_safe(subs),
     remove_line="" if keep_cube else "${CUBE_PATH}")
-  # make takes this makefile as reloaded: a reload would write the same and drop -f of this run
+  # make takes this makefile as reloaded, a reload now would only write the same
   FILE.save(f"{pro.build_dir}/.forge", "")
   if not activate: return
   write_dispatcher(pro.pro_dir, colored_path(pro.pro_dir, pro.name))

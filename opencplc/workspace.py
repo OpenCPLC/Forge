@@ -10,7 +10,7 @@ keeps the Core checkout present and answers what projects exist here.
 
 import os, sys, json
 from xaeian import Print, Color as c, Ico, FILE, DIR, JSON, PATH, replace_end, set_context
-from .config import URL_CORE, DIR_PROJECTS, DIR_FRAMEWORK, DIR_BUILD
+from .config import URL_CORE, DIR_PROJECTS, DIR_FRAMEWORK, DIR_BUILD, DIR_TESTS
 from .args import flag
 from .project import write_dispatcher
 from . import utils
@@ -29,11 +29,15 @@ def find_workspace(start:str=".") -> str|None:
   return path
 
 def project_from_path(path:str, pro_root:str) -> str|None:
-  """Name of the project holding `path`: the closest dir with main.h under `pro_root`."""
+  """
+  Folder of the project holding `path`: the closest dir with main.h under `pro_root`,
+  or `.tests/` of a Core, the folder of the Core itself.
+  """
   if not PATH.is_under(path, pro_root): return None
   name = PATH.rel(path, pro_root)
   while name:
     if FILE.exists(f"{pro_root}/{name}/main.h"): return name
+    if PATH.basename(name) == DIR_TESTS and utils.is_core(PATH.dirname(name)): return name
     name = PATH.dirname(name)
   return None
 

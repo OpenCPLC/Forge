@@ -46,8 +46,17 @@ opencplc <project_name>
 opencplc -r
 ```
 
-Flagi takie jak `-b`, `-c`, `-m` i `-o` konfigurują projekt tylko przy jego tworzeniu.
+Flagi takie jak `-m` i `-o` konfigurują projekt tylko przy jego tworzeniu.
 Później konfiguracja mieszka w `main.h`: edytujesz i przeładowujesz.
+
+`-b` i `-c` budują też istniejący projekt na innym sprzęcie, z pamięcią i zegarem tego sprzętu, a `main.h` zostaje bez zmian:
+
+```sh
+opencplc test/flash -c STM32WB55
+```
+
+`make` trzyma ten wybór, aż załadujesz projekt bez nich.
+Test albo demo na dowolną płytkę nie wpisuje do `main.h` `PRO_BOARD`, `PRO_CHIP` ani pamięci, więc sprzęt podaje każde ładowanie.
 
 ### 📄 Twoje pliki
 
@@ -183,7 +192,7 @@ Każdy projekt przechowuje w pliku `main.h` wersję framework'a, na której zost
 Na tej wersji jest budowany, a gdy jej brakuje, Forge ją klonuje, więc starsze projekty kompilują się nawet po aktualizacji framework'a.
 Jeśli klonowanie się nie powiedzie, Forge ostrzega i buduje na domyślnej wersji workspace.
 
-Aby sprawdzić inną wersję bez ruszania `main.h`, podaj `-f` przy ładowaniu projektu: zbuduje się z nią jednorazowo i powie o tym.
+Aby sprawdzić inną wersję bez ruszania `main.h`, podaj `-f` przy ładowaniu projektu: buduje się z nią, aż załadujesz projekt bez `-f`, i Forge o tym mówi.
 
 Projekt wewnątrz wersji framework'a, np. jego test kompilacji, ładuje się po ścieżce: `opencplc opencplc/develop/.tests/g081`.
 Nie ma `PRO_FRAMEWORK` i buduje się framework'iem, w którym leży, do `build/opencplc/develop/.tests/g081/`.
@@ -297,8 +306,8 @@ Pisanie, uruchamianie i CI: [🧪 Testy](tests.pl.md).
 
 #### Konfiguracja sprzętu
 
-- `-b --board`: Płytka z framework'a _(`uno`)_. Ustawia chip, pamięć, zegar i warstwę PLC nowego projektu; `-c` i `--plc` to nadpisują.
-- `-c --chip`: Mikrokontroler lub platforma: `STM32G081`, `STM32G0C1`, `STM32WB55`, `HOST`. Bez `-b` projekt działa bez warstwy PLC, tylko HAL i biblioteki standardowe. Przydatne dla Nucleo lub własnego hardware.
+- `-b --board`: Płytka z framework'a _(`uno`)_. Ustawia chip, pamięć, zegar i warstwę PLC nowego projektu; `-c` i `--plc` to nadpisują. Przy istniejącym projekcie wybiera inną płytkę, aż do ładowania bez niej.
+- `-c --chip`: Mikrokontroler lub platforma: `STM32G081`, `STM32G0C1`, `STM32WB55`, `HOST`. Bez `-b` projekt działa bez warstwy PLC, tylko HAL i biblioteki standardowe. Przydatne dla Nucleo lub własnego hardware. Przy istniejącym projekcie wybiera inny układ, aż do ładowania bez niego.
 - `-P --plc`: Dokłada warstwę PLC do projektu bez płytki, na własnym sprzęcie.
 - `-D --dvr`: Drivery framework'a nowego projektu, po przecinku _(`shtc3, hd44780`)_. Kolejne dopisujesz w `PRO_DRIVERS` w `main.h`.
 - `-B --boot`: Nowy projekt działa za bootloaderem: `PRO_BOOT true` w `main.h`, patrz [Bootloader](#-bootloader).
@@ -306,7 +315,7 @@ Pisanie, uruchamianie i CI: [🧪 Testy](tests.pl.md).
 
 #### Konfiguracja kompilacji
 
-- `-f --framework`: Wersja frameworka: `latest`, `develop`, `0.4.3`. Dla nowego projektu staje się `PRO_FRAMEWORK`, dla istniejącego buduje z nią jednorazowo, sama klonuje wersję do `opencplc/`.
+- `-f --framework`: Wersja frameworka: `latest`, `develop`, `0.4.3`. Dla nowego projektu staje się `PRO_FRAMEWORK`, dla istniejącego buduje z nią aż do ładowania bez niej, sama klonuje wersję do `opencplc/`.
 - `-o --opt-level`: Poziom optymalizacji: `O0`, `Og` _(domyślny)_, `O1`, `O2`, `O3`, `Os`. Poziomy `O2`/`O3` wyświetlają ostrzeżenie dla STM32 _(timing, debugowanie)_.
 - `-s --stlink`: Przypisuje numer seryjny ST-Linka do projektu; samo `-s` czyści przypisanie.
 

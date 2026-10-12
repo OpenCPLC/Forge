@@ -1,10 +1,11 @@
 # Changes `opencplc`
 
-## `0.5.0` Projects in Core
+## `0.5.0` Tests
 
-- Project in `opencplc/<version>/` builds with that Core, without `PRO_FRAMEWORK`
 - `make test` runs `.tests/*.c` on computer, `opencplc opencplc/<version>` tests Core itself
-- GitHub runs `make test` and `make` of project repository through `project.yml`
+- GitHub builds and tests project repository through `project.yml`
+- Project in `opencplc/<version>/` builds with that Core, `PRO_FRAMEWORK` not needed
+- `-f`, `-b` and `-c` build on other Core or hardware until plain load, `main.h` untouched
 
 ## `0.4.9` Program from dist
 

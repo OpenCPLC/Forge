@@ -86,7 +86,7 @@ ERR projects/myapp/.tests/test_ramp.c:16 ramp_stops_at_target: no overshoot
 ERR Test programs 1/2, checks 13/14 in 0.5s
 ```
 
-With `T=` the program shows its output even when it passes.
+A run of one program, `T=` or a project with just one, shows its output even when it passes.
 A program that ends early fails, `exit(0)` of a firmware reset too, and one that hangs is cut after a minute.
 `make test` goes through all programs and fails when any of them did.
 A new file in `.tests/` needs no reload.
@@ -101,7 +101,7 @@ A new file in `.tests/` needs no reload.
   They are written by hand or by a script beside them and committed, while a run never writes there: what a program saves stays in its clean folder under `build/`.
 - A `#define` before `#include` may tune the module it includes, such as `LOG_LEVEL`.
   A size or type the rest of Core shares, such as `BUFF_MSG_LIMIT`, belongs in `main.h`, or the test and Core quietly disagree.
-- Core comes compiled for the test from `hal/host`, `lib` and `tst`, and their modules come by name.
+- Core comes compiled for the test from `hal/host` and `lib`, and their modules come by name.
   A module from `plc/`, `brd/`, `dvr/` or `hal/stm32*` comes by its path from Core root, such as `#include "hal/stm32/sys/boot.c"`.
 - An STM32 project with tests gets MinGW beside `arm-gcc`.
 
@@ -119,6 +119,7 @@ jobs:
 ```
 
 It does what you do in a fresh workspace, for every project in the repository, on Windows with the tools Forge installs.
+Each project loads as its `main.h` sets it up, so one that names no board or chip stays out of this workflow.
 Core comes from `PRO_FRAMEWORK`, as on your computer.
 The tag pins the Forge release, so a new Forge never changes the result on its own.
 
@@ -141,7 +142,7 @@ opencplc/develop/.tests/
 ```
 
 A `.c` file directly in `.tests/` is a test program, a folder with `main.h` is a project, and any other folder helps the tests, such as `fake/` and `data/`.
-Core keeps no fakes, since `hal/host` is its model of the chip: the flash there erases, programs and loses power as the chip does, and a test cuts that power with `FlashBudget`.
+Core keeps no fakes, since `hal/host` is its model of the chip: the flash there erases, programs and loses power as the chip does, and a test cuts that power with `FLASH_HostCut`.
 
 ```sh
 opencplc opencplc/develop              # Core itself

@@ -16,7 +16,7 @@ myapp/
 ├─ ctrl/ramp.c
 └─ .tests/
    ├─ test_ramp.c  # program testowy modułu ramp
-   ├─ fake/link.c  # podróbka modułu link, nie program
+   ├─ fake/link.c  # atrapa modułu link, nie program
    └─ data/        # stałe wejścia i oczekiwane wartości, w repo
 ```
 
@@ -86,7 +86,7 @@ ERR projects/myapp/.tests/test_ramp.c:16 ramp_stops_at_target: no overshoot
 ERR Test programs 1/2, checks 13/14 in 0.5s
 ```
 
-Z `T=` program pokazuje swoje wyjście także wtedy, gdy przechodzi.
+Przebieg jednego programu, przez `T=` albo w projekcie z jednym testem, pokazuje jego wyjście także wtedy, gdy przechodzi.
 Program, który skończy się przed czasem, to błąd, także przez `exit(0)` resetu firmware'u, a zawieszony Forge ucina po minucie.
 `make test` przechodzi przez wszystkie programy i kończy się błędem, gdy któryś zawiódł.
 Nowy plik w `.tests/` nie wymaga przeładowania.
@@ -95,13 +95,13 @@ Nowy plik w `.tests/` nie wymaga przeładowania.
 
 - Czekanie przesuwa zegar: `delay()` i `timeout()` robią kroki czasu wirtualnego, więc test timeoutu nie trwa ani chwili.
   `sleep()` trzyma rdzeń, więc czas płynie, a żadne zadanie nie rusza.
-- Moduł, który woła testowany kod, wchodzi tak samo albo jako podróbka całego modułu z podkatalogu `.tests/`, `#include "fake/link.c"`, bo podróbka nosi nazwę swojego modułu.
-  Przy podróbce części modułu Core linker dociągnąłby oryginał z archiwum i zdublował resztę.
+- Moduł, który woła testowany kod, wchodzi tak samo albo jako atrapa całego modułu z podkatalogu `.tests/`, `#include "fake/link.c"`, bo atrapa nosi nazwę swojego modułu.
+  Przy atrapie części modułu Core linker dociągnąłby oryginał z archiwum i zdublował resztę.
 - Stałe wejścia i oczekiwane wartości, np. nagrana ramka albo podpis zrobiony przez Forge, leżą w `data/` i też przychodzą po katalogu, `#include "data/forge.h"`.
   Pisze się je ręcznie albo skryptem obok i commituje, a przebieg nic tam nie zapisuje: to, co program zapisze, zostaje w jego czystym katalogu pod `build/`.
 - `#define` przed `#include` może stroić dołączany moduł, np. `LOG_LEVEL`.
   Rozmiar albo typ wspólny z resztą Core, np. `BUFF_MSG_LIMIT`, należy do `main.h`, bo inaczej test i Core po cichu się rozjadą.
-- Core wchodzi do testu skompilowany z `hal/host`, `lib` i `tst`, a ich moduły test dołącza po nazwie.
+- Core wchodzi do testu skompilowany z `hal/host` i `lib`, a ich moduły test dołącza po nazwie.
   Moduł z `plc/`, `brd/`, `dvr/` albo `hal/stm32*` przychodzi po ścieżce od korzenia Core, np. `#include "hal/stm32/sys/boot.c"`.
 - Projekt STM32 z testami dostaje MinGW obok `arm-gcc`.
 
@@ -119,6 +119,7 @@ jobs:
 ```
 
 Robi to, co Ty w świeżym workspace, dla każdego projektu w repozytorium, na Windowsie z narzędziami Forge.
+Każdy projekt ładuje się tak, jak ustawia go `main.h`, więc taki, który nie podaje płytki ani układu, zostaje poza tym workflow.
 Core przychodzi z `PRO_FRAMEWORK`, jak na Twoim komputerze.
 Tag przypina wydanie Forge, więc nowy Forge nigdy nie zmieni wyniku sam z siebie.
 
@@ -141,7 +142,7 @@ opencplc/develop/.tests/
 ```
 
 Plik `.c` bezpośrednio w `.tests/` to program testowy, katalog z `main.h` to projekt, a każdy inny katalog pomaga testom, np. `fake/` i `data/`.
-Core nie trzyma atrap, bo jego modelem układu jest `hal/host`: tamtejszy flash kasuje, programuje i traci zasilanie jak układ, a test odcina to zasilanie przez `FlashBudget`.
+Core nie trzyma atrap, bo jego modelem układu jest `hal/host`: tamtejszy flash kasuje, programuje i traci zasilanie jak układ, a test odcina to zasilanie przez `FLASH_HostCut`.
 
 ```sh
 opencplc opencplc/develop              # sam Core

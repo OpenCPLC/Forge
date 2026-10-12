@@ -18,10 +18,12 @@ SHELL := cmd.exe
 export PATH := ${TOOLS_PATH};$(PATH)
 MKDIR = if not exist "$(subst /,\,$1)" mkdir "$(subst /,\,$1)"
 RMDIR = if exist "$(subst /,\,$1)" rmdir /s /q "$(subst /,\,$1)"
+RMFILE = if exist "$(subst /,\,$1)" del /q "$(subst /,\,$1)"
 else
 SHELL := /bin/sh
 MKDIR = mkdir -p $1
 RMDIR = rm -rf $1
+RMFILE = rm -f $1
 endif
 
 OPT = -${OPT_LEVEL}

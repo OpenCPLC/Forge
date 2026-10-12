@@ -3,7 +3,7 @@
 """
 One-shot CLI actions.
 
-`info_actions()` handles -v, -F, -f, -hl, -u, -a, -z and -p, each answers without a project.
+`info_actions()` handles -v, -F, -f, -hl, -u, -a, -z, -p and --test, each without a project.
 `info_show()` and `program_image()` act on the resolved model, for -i and --program.
 """
 

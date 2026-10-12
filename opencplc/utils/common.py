@@ -5,7 +5,7 @@
 import sys
 from typing import Any
 from xaeian import Print, Color as c, PATH
-from ..config import DIR_FRAMEWORK
+from ..config import DIR_FRAMEWORK, DIR_TESTS
 from .files import core_version, project_dir
 
 p = Print()
@@ -54,6 +54,8 @@ def validate_project_name(name:str) -> tuple[bool, str]:
   if name.startswith("/") or (len(name) > 1 and name[1] == ":"):
     return False, "Name cannot be absolute path"
   if len(name) > 100: return False, "Name too long (max 100 chars)"
+  if name.split("/")[-1] == DIR_TESTS:
+    return False, f"Name cannot end in {DIR_TESTS}, the folder of tests"
   if name.startswith(f"{DIR_FRAMEWORK}/") and not core_version(name):
     return False, f"Project in Core needs a folder, {DIR_FRAMEWORK}/<version>/<folder>"
   invalid_chars = '<>:"|?*\\'

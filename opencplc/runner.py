@@ -7,7 +7,7 @@ Each starts in a clean folder of its own and gets `TEST_TIMEOUT_s`,
 so a hang fails the run instead of stopping it.
 A program ends with a line counting its checks, `12 OK` or `8 OK, 2 ERR`.
 Each program gets one line, a failed one its output below as it printed it, and the run a total.
-A program asked for alone shows its output whatever the verdict.
+A run of a single program shows its output whatever the verdict.
 """
 
 import os, re, subprocess, time

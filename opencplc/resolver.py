@@ -80,6 +80,8 @@ class Project:
   # Device drivers selected by the board and by `PRO_DRIVERS`
   board_drivers: list[str] = field(default_factory=list)
   project_drivers: list[str] = field(default_factory=list)
+  # -f, -b and -c of the load, which main.h does not hold and the reloads of make keep
+  load_flags: str = ""
 
 def rel_tree(root:str, ext:str) -> dict[str, list[str]]:
   """folder → files under `root`, both workspace-relative."""
@@ -262,13 +264,17 @@ def project_includes(pro_dir:str) -> list[str]:
   return sorted(firmware_tree(pro_dir, ".h"))
 
 # A test program runs on the computer, against Core built for it from these trees alone
-TEST_TREES = ("hal/host", "lib", "tst")
+TEST_TREES = ("hal/host", "lib")
 
 def test_tree(core_dir:str, ext:str) -> dict[str, list[str]]:
   """Core files with `ext` of a test build."""
   found = {}
   for sub in TEST_TREES: found.update(rel_tree(f"{core_dir}/{sub}", ext))
   return found
+
+def tests_of(name:str, pro_dir:str) -> str:
+  """Folder of the test programs: `.tests/` of a project, of the Core itself its own."""
+  return pro_dir if utils.is_core(name) else f"{pro_dir}/{DIR_TESTS}"
 
 def has_tests(test_dir:str) -> bool:
   """`True` when a `.c` lies right in `test_dir`: a program each, deeper folders its helpers."""
@@ -314,10 +320,11 @@ def resolve_project(cfg:dict, paths:dict, forge_cfg:dict) -> Project:
   pro_s = project_sources(pro_dir, ".s") if is_embedded else []
   pro_inc = [] if core_itself else project_includes(pro_dir)
   build_dir = f"{PATH.local(paths['build'])}/{pro_dir}"
-  test_dir = pro_dir if core_itself else f"{pro_dir}/{DIR_TESTS}"
-  # `main.h` of the Core itself is Forge's, in its build folder;
-  # a module comes by name, one beyond the test trees by its path from Core root, `hal/stm32/...`
-  test_inc = [test_dir] + ([build_dir] if core_itself else pro_inc)
+  test_dir = tests_of(name, pro_dir)
+  # `main.h` of the Core itself is Forge's, in its build folder; a module comes by name
+  # from any folder of the project, one beyond the test trees by its path from Core root
+  pro_dirs = sorted({*pro_inc, *(PATH.dirname(f) for f in pro_c)})
+  test_inc = [test_dir] + ([build_dir] if core_itself else pro_dirs)
   test_inc += sorted(test_tree(core_dir, ".h")) + [core_dir]
   # Platform and family give way to the host, the chip and the rest stay as in firmware
   test_defines = ["HOST", "HOST_TEST", *([cfg["define"]] if is_embedded else [])]
@@ -374,4 +381,5 @@ def resolve_project(cfg:dict, paths:dict, forge_cfg:dict) -> Project:
     test_defines=test_defines,
     board_drivers=board_drivers,
     project_drivers=project_drivers,
+    load_flags=cfg.get("load_flags", ""),
   )

@@ -60,15 +60,16 @@ def tests_stay_out_of_firmware(ws):
 
 def test_build_trades_the_platform_for_the_host(ws):
   """Chip, `FORGE_VERSION`, `OpenCPLC` and `BOOT_*` stay, `STM32` and its family give way."""
-  for rel in ("hal/host/sys.c", "tst/test.c", "tst/test.h"):
+  for rel in ("hal/host/sys.c", "lib/sh/test.c", "lib/sh/test.h"):
     (ws / "opencplc" / "1.0.0" / rel).parent.mkdir(parents=True, exist_ok=True)
     (ws / "opencplc" / "1.0.0" / rel).write_text("")
   pro = resolve_uno()
   assert pro.test_defines == ["HOST", "HOST_TEST", "STM32G0C1xx",
     f"FORGE_VERSION={forge_version()}", "OpenCPLC", "BOOT_PAGES=4", "BOOT_CHIP=0x467"]
   assert pro.test_core_sources == ["opencplc/1.0.0/hal/host/sys.c",
-    "opencplc/1.0.0/lib/log/log.c", "opencplc/1.0.0/tst/test.c"]
+    "opencplc/1.0.0/lib/log/log.c", "opencplc/1.0.0/lib/sh/test.c"]
   assert pro.test_include_dirs[0] == "projects/myapp/.tests"
+  assert "projects/myapp/util" in pro.test_include_dirs # `extra.c` by name, it has no header
   assert pro.test_include_dirs[-1] == "opencplc/1.0.0" # a module by its path from Core root
   assert not pro.tests
 

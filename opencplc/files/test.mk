@@ -4,9 +4,10 @@
 # Programs come from `$(wildcard)`, so a new test needs no reload
 
 TEST_DIR := ${TEST_DIR}
-TEST_BUILD := $(BUILD)/test
+# A dot keeps it apart from a program or a project named `test`
+TEST_BUILD := $(BUILD)/.test
 
-# Core of a test: `hal/host`, `lib` and `tst`, relative to `$(OPENCPLC)`
+# Core of a test: `hal/host` and `lib`, relative to `$(OPENCPLC)`
 TEST_CORE_C = ${TEST_CORE_C}
 
 TEST_INCLUDES = ${TEST_INCLUDES}
@@ -34,7 +35,9 @@ $(TEST_BUILD)/opencplc/%.o: $(OPENCPLC)/%.c $(CONFIG_DEPS)
 	@$(call MKDIR,$(patsubst %/,%,$(dir $@)))
 	gcc -c $(TEST_CFLAGS) -MMD -MP -MF"$(@:%.o=%.d)" $< -o $@
 
+# Made anew: `ar` keeps the members of sources gone from Core
 $(TEST_BUILD)/core.a: $(TEST_OBJECTS)
+	@$(call RMFILE,$@)
 	ar rcs $@ $^
 
 $(TEST_BUILD)/%$(TEST_EXT): $(TEST_DIR)/%.c $(TEST_BUILD)/core.a $(CONFIG_DEPS)

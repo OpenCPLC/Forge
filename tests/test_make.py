@@ -13,7 +13,7 @@ from xaeian import file_context
 from opencplc.project import generate, ANSI
 from opencplc.resolver import resolve_project
 from conftest import (
-  resolve_uno, build_workspace, host_model, make_run, make_root, write_file,
+  resolve_uno, build_workspace, host_model, make_run, make_root, write_file, write_harness,
   write_forge_config, fake_tools, age, host_cfg, ws_paths, MAIN_H_HOST,
 )
 
@@ -146,7 +146,7 @@ def stale_main_h_triggers_exactly_one_reload(ws):
 
 @pytest.mark.skipif(not (HAVE_MAKE and HAVE_GCC), reason="make and gcc required")
 def first_make_builds_what_the_load_wrote(ws):
-  """No reload right after a load: it would drop -f, back to the pin of `main.h`."""
+  """No reload right after a load: it would only write the same makefile again."""
   write_forge_config(ws)
   generate(host_model())
   res = make_run(ws, "build")
@@ -186,13 +186,8 @@ def project_in_core_builds_and_reloads_by_its_name(ws):
 @pytest.mark.skipif(not (HAVE_MAKE and HAVE_GCC), reason="make and gcc required")
 def make_test_runs_every_program_and_one_failure_fails_it(ws):
   """`.tests/*.c` against Core built in test mode, each program run by Forge."""
-  core = ws / "opencplc" / "1.0.0"
-  write_file(core / "tst" / "test.h", "extern int checks;\nvoid TEST_Cases(void);\n")
-  write_file(core / "tst" / "test.c", '#include <stdio.h>\n#include "test.h"\nint checks;\n'
-    'int main(void) { TEST_Cases(); printf("%d OK\\n", checks); return 0; }\n')
+  write_harness(ws)
   tests = ws / "projects" / "app" / ".tests"
-  write_file(tests / "test_util.c", '#include "test.h"\n#include "util.h"\n'
-    "void TEST_Cases(void) { checks += lib_util() == 1; }\n")
   generate(host_model())
   res = make_root(ws, "test")
   assert res.returncode == 0, res.stdout + res.stderr
@@ -207,13 +202,36 @@ def make_test_runs_every_program_and_one_failure_fails_it(ws):
 
 @pytest.mark.skipif(not HAVE_MAKE, reason="make required")
 def make_test_on_a_core_without_harness_refuses_at_once(ws):
-  """An older Core has no `tst/`: `make test` says what to change before anything builds."""
+  """An older Core has no harness: `make test` says what to change before anything builds."""
   write_file(ws / "projects" / "app" / ".tests" / "test_util.c", '#include "test.h"\n')
   generate(host_model())
   res = make_root(ws, "test")
   assert res.returncode != 0
   assert "PRO_FRAMEWORK" in res.stdout
-  assert not (ws / "build" / "projects" / "app" / "test").exists()
+  assert not (ws / "build" / "projects" / "app" / ".test").exists()
+
+@pytest.mark.skipif(not HAVE_MAKE, reason="make required")
+def make_test_without_programs_passes_on_any_core(ws):
+  """Nothing to build, nothing to refuse: the workflow of a repository without tests passes."""
+  generate(host_model())
+  res = make_root(ws, "test")
+  assert res.returncode == 0, res.stdout + res.stderr
+  assert "No test programs" in res.stdout
+
+@pytest.mark.skipif(not (HAVE_MAKE and HAVE_GCC), reason="make and gcc required")
+def archive_holds_only_what_core_has(ws):
+  """A module gone from Core leaves the archive too, so its stale object links nowhere."""
+  write_harness(ws)
+  gone = ws / "opencplc" / "1.0.0" / "lib" / "gone.c"
+  write_file(gone, "int gone(void) { return 1; }\n")
+  generate(host_model())
+  assert make_root(ws, "test").returncode == 0
+  gone.unlink()
+  generate(host_model())
+  assert make_root(ws, "test").returncode == 0
+  archive = ws / "build" / "projects" / "app" / ".test" / "core.a"
+  members = subprocess.run(["ar", "t", str(archive)], capture_output=True, text=True).stdout
+  assert "util.o" in members and "gone.o" not in members
 
 @pytest.mark.skipif(not (HAVE_MAKE and HAVE_GCC), reason="make and gcc required")
 def missing_forge_fails_the_reload(ws):

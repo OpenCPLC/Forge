@@ -176,11 +176,12 @@ def pro_map(ws, name:str="myapp") -> dict:
   """Project map as `get_project_list` returns it, holding `name` alone."""
   return {name: str(ws / "projects" / name)}
 
-def load_myapp(ws) -> dict:
-  """cfg of myapp read back from its main.h, as a reload reads it."""
+def load_project(ws, name:str="myapp", **flags) -> dict:
+  """cfg of a project read back from its main.h, as `opencplc <name>` with `flags` reads it."""
   from opencplc.args import Args
   from opencplc.configure import config_load
-  return config_load(Args(name="myapp"), pro_map(ws), ws_paths(), "1.0.0", refs_cfg())
+  args = Args(name=name, **flags)
+  return config_load(args, pro_map(ws, name), ws_paths(name=name), "1.0.0", refs_cfg())
 
 def read_makefile(ws, project:str="myapp") -> str:
   """Makefile Forge generated for `project`."""
@@ -231,6 +232,15 @@ def write_file(path, text:str):
   """Text file at `path`, parent directories made as needed."""
   path.parent.mkdir(parents=True, exist_ok=True)
   path.write_text(text)
+
+def write_harness(ws):
+  """Harness of Core 1.0.0 counting checks, and `.tests/test_util.c` of the app on it."""
+  core = ws / "opencplc" / "1.0.0"
+  write_file(core / "lib" / "sh" / "test.h", "extern int checks;\nvoid TEST_Cases(void);\n")
+  write_file(core / "lib" / "sh" / "test.c", '#include <stdio.h>\n#include "test.h"\nint checks;\n'
+    'int main(void) { TEST_Cases(); printf("%d OK\\n", checks); return 0; }\n')
+  write_file(ws / "projects" / "app" / ".tests" / "test_util.c",
+    '#include "test.h"\n#include "util.h"\nvoid TEST_Cases(void) { checks += lib_util() == 1; }\n')
 
 def fake_tools(ws) -> str:
   """

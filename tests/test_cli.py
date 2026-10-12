@@ -12,6 +12,7 @@ from opencplc.args import Args
 from opencplc.utils import keys
 from conftest import build_workspace, write_forge_config, run_cli, refs_cfg, ship_key_bootloader
 from conftest import frozen_forge, _raise_disk_full, make_board, INI, age, core_test, CORE_TEST
+from conftest import read_makefile
 
 @pytest.fixture()
 def ws(tmp_path, monkeypatch):
@@ -40,11 +41,13 @@ def load_existing_project_by_name(ws, monkeypatch):
   assert run_cli(monkeypatch, "app") == 0
   assert "ACTIVE := projects/app" in (ws / "makefile").read_text()
 
-def project_without_pro_chip_is_rejected(ws, monkeypatch):
-  broken = ws / "projects" / "broken"
-  broken.mkdir()
-  (broken / "main.h").write_text("// no PRO_CHIP here")
-  assert run_cli(monkeypatch, "broken") == 1
+def project_naming_no_hardware_loads_with_a_chip(ws, monkeypatch):
+  any_board = ws / "projects" / "any"
+  any_board.mkdir()
+  (any_board / "main.h").write_text('#define PRO_FRAMEWORK "1.0.0"\n')
+  assert run_cli(monkeypatch, "any") == 1
+  assert run_cli(monkeypatch, "any", "-c", "STM32G081") == 0
+  assert "LOAD_FLAGS := -c STM32G081\n" in read_makefile(ws, "any")
 
 def switching_projects_moves_the_dispatcher(ws, monkeypatch):
   run_cli(monkeypatch, "-n", "a", "-b", "Uno", "-y")
@@ -72,7 +75,24 @@ def info_prints_resolved_config(ws, monkeypatch, capsys):
 def config_flags_on_existing_project_fail(ws, monkeypatch):
   run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-y")
   assert run_cli(monkeypatch, "app", "-o", "O2") == 1
-  assert run_cli(monkeypatch, "app", "-b", "Eco") == 1
+  assert run_cli(monkeypatch, "app", "-m", "128", "36") == 1
+
+def forced_chip_lasts_through_the_reloads_of_make(ws, monkeypatch):
+  """The makefile hands -c to its reloads, a plain load goes back to main.h."""
+  run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-y")
+  assert run_cli(monkeypatch, "app", "-c", "STM32G081") == 0
+  makefile = read_makefile(ws, "app")
+  assert "LOAD_FLAGS := -c STM32G081\n" in makefile
+  assert "$(FORGE) -r $(NAME) $(LOAD_FLAGS)" in makefile
+  assert "PRO_CHIP_STM32G0C1" in (ws / "projects" / "app" / "main.h").read_text()
+  assert run_cli(monkeypatch, "-r", "app", "-c", "STM32G081") == 0 # what the reload rule runs
+  assert "LOAD_FLAGS := -c STM32G081\n" in read_makefile(ws, "app")
+  assert run_cli(monkeypatch, "app") == 0
+  assert "LOAD_FLAGS := \n" in read_makefile(ws, "app")
+
+def core_itself_takes_no_board_or_chip(ws, monkeypatch):
+  core_test(ws)
+  assert run_cli(monkeypatch, "opencplc/1.0.0", "-c", "STM32G081") == 1
 
 def listing_and_numeric_pick(ws, monkeypatch, capsys):
   run_cli(monkeypatch, "-n", "alpha", "-b", "Uno", "-y")
@@ -408,6 +428,24 @@ def new_project_in_core_neither_pins_nor_prints_a_version(ws, monkeypatch):
   assert "PRO_FRAMEWORK" not in main_c + main_h
   assert run_cli(monkeypatch, CORE_TEST) == 0 # and it loads back
 
+def core_holds_more_than_one_project(ws, monkeypatch):
+  """The Core stands on the list for its own tests, which never blocks a project of it."""
+  core_test(ws)
+  assert run_cli(monkeypatch, "-n", "opencplc/1.0.0/.tests/wb55", "-c", "STM32WB55", "-y") == 0
+  assert run_cli(monkeypatch, "-n", "opencplc/1.0.0/.tests", "-c", "STM32G081", "-y") == 1
+
+def reload_inside_tests_of_a_core_targets_the_core(ws, monkeypatch):
+  core_test(ws)
+  tests = ws / "opencplc" / "1.0.0" / ".tests"
+  (tests / "test_log.c").write_text("// log\n")
+  assert run_cli(monkeypatch, "opencplc/1.0.0") == 0
+  run_cli(monkeypatch, "-n", "other", "-b", "Uno", "-y")
+  (tests / "makefile").unlink()
+  monkeypatch.chdir(tests)
+  assert run_cli(monkeypatch, "-r") == 0
+  assert (tests / "makefile").exists()
+  assert "ACTIVE := projects/other" in (ws / "makefile").read_text()
+
 def stlink_of_a_project_in_core_is_keyed_by_its_folder(ws, monkeypatch):
   core_test(ws)
   assert run_cli(monkeypatch, CORE_TEST, "-s", "066AFF49") == 0
@@ -428,10 +466,10 @@ def core_itself_loads_for_its_tests(ws, monkeypatch):
   assert (tests / "makefile").exists()
 
 def editor_finds_the_headers_of_tests(ws, monkeypatch):
-  """`test.h` in `tst/`, modules by their path from Core root, `main.h` of the Core itself."""
+  """`test.h` in `lib/`, modules by their path from Core root, `main.h` of the Core itself."""
   assert run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-y") == 0
   props = (ws / ".vscode" / "c_cpp_properties.json").read_text()
-  assert '/opencplc/1.0.0/tst"' in props and '/opencplc/1.0.0"' in props
+  assert '/opencplc/1.0.0/lib/**"' in props and '/opencplc/1.0.0"' in props
   assert "/build/" not in props
   core_test(ws)
   assert run_cli(monkeypatch, "opencplc/1.0.0") == 0

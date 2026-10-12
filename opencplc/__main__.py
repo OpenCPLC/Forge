@@ -10,11 +10,11 @@ CLI entry point: parses arguments and orchestrates the run.
 
 import os, signal, sys
 from xaeian import Print, Color as c, PATH
-from .config import URL_DEMO, DIR_DEMO, DIR_TESTS
+from .config import URL_DEMO, DIR_DEMO
 from .args import flag, load_args, check_flags
 from .templates import load_templates
 from .project import prepare_project, generate
-from .resolver import resolve_project, has_tests
+from .resolver import resolve_project, has_tests, tests_of
 from .actions import info_actions, info_show, program_image
 from .keygen import keygen
 from .lock import lock_board
@@ -118,7 +118,7 @@ def main():
   stlink_bind(forge_cfg, utils.project_dir(args.name), args.stlink)
   if args.info:
     info_show(resolve_project(cfg, paths, forge_cfg))
-  tests = has_tests(f"{paths['pro']}/{DIR_TESTS}")
+  tests = has_tests(tests_of(args.name, paths["pro"]))
   ensure_toolchains(cfg["platform"] == "STM32", args.yes, tests)
   # the factory programs the full image of `dist`, then locks the board
   if args.program or args.lock is not None:
