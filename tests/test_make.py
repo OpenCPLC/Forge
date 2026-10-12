@@ -226,10 +226,11 @@ def archive_holds_only_what_core_has(ws):
   write_file(gone, "int gone(void) { return 1; }\n")
   generate(host_model())
   assert make_root(ws, "test").returncode == 0
+  archive = ws / "build" / "projects" / "app" / ".test" / "core.a"
+  age(archive, *archive.parent.rglob("*.o")) # reload lands in the same second
   gone.unlink()
   generate(host_model())
   assert make_root(ws, "test").returncode == 0
-  archive = ws / "build" / "projects" / "app" / ".test" / "core.a"
   members = subprocess.run(["ar", "t", str(archive)], capture_output=True, text=True).stdout
   assert "util.o" in members and "gone.o" not in members
 
