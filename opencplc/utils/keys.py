@@ -8,8 +8,9 @@ and never replaces it, so a board flashed from this machine keeps starting what 
 It never leaves the machine, every developer signs with their own.
 
 A product key, `<name>.key`, holds its seed masked with `scrypt` of a password,
-and `<name>.pub` beside it lets a second project take the key without the password.
-A wrong password unmasks another seed, whose public key gives it away at once.
+or bare when it has none, and `<name>.pub` beside it lets a second project take the key
+without the password.
+A wrong password unmasks another seed, whose public key gives it away.
 `OPENCPLC_KEYS` moves the directory, as `OPENCPLC_TOOLS` moves the packages.
 """
 
@@ -22,8 +23,20 @@ p = Print()
 DEV_KEY = "dev.key"                     # seed of the development key, 64 hex digits
 KEYS_ENV = "OPENCPLC_KEYS"              # directory of the keys, over the default one
 PASSWORD_ENV = "OPENCPLC_KEY_PASSWORD"  # CI hands the password over as a secret
+KEY_DIGITS = 64                         # hex digits of one public key in `BOOT_KEYS`
 # 64MB per guess makes a stolen key file slow to try passwords on
 SCRYPT = {"n": 2**16, "r": 8, "p": 1}
+
+def keys_split(keys_hex:str) -> list[str]:
+  """Public keys of `BOOT_KEYS`, written as one string, apart: 64 hex digits each."""
+  return [keys_hex[i:i + KEY_DIGITS] for i in range(0, len(keys_hex), KEY_DIGITS)]
+
+def keys_block(pieces:list[str]) -> list[str]:
+  """`BOOT_KEYS` definition of these public keys in hex: one beside the name, more one a line."""
+  if len(pieces) == 1: return [f'#define BOOT_KEYS "{pieces[0]}"']
+  lines = [f'  "{key}" \\' for key in pieces]
+  lines[-1] = lines[-1].removesuffix(" \\")
+  return ["#define BOOT_KEYS \\"] + lines
 
 def keys_dir() -> str:
   """Windows `%LOCALAPPDATA%/OpenCPLC/keys`, elsewhere `~/.local/share/OpenCPLC/keys`."""
@@ -81,22 +94,31 @@ def product_public(name:str) -> bytes|None:
   return bytes.fromhex(FILE.load(path).strip())
 
 def product_make(name:str, password:str) -> bytes:
-  """New product key `name` under `password`; its public key. An existing name raises."""
-  seed, salt = secrets.token_bytes(32), secrets.token_bytes(16)
+  """
+  New product key `name`, under `password` or bare without one; its public key.
+
+  An existing name raises.
+  """
+  seed = secrets.token_bytes(32)
   public = ed25519.public_key(seed)
-  masked = mask(seed, password, salt, SCRYPT)
-  record = SCRYPT | {"salt": salt.hex(), "seed": masked.hex()}
+  record = {"seed": seed.hex()}
+  if password:
+    salt = secrets.token_bytes(16)
+    record = SCRYPT | {"salt": salt.hex(), "seed": mask(seed, password, salt, SCRYPT).hex()}
   if not write_new(f"{keys_dir()}/{name}.key", json.dumps(record) + "\n"):
     raise ValueError(f"key {name} already exists in {keys_dir()}")
   write_new(f"{keys_dir()}/{name}.pub", public.hex() + "\n")
   return public
 
+def product_record(name:str) -> dict:
+  """Contents of `<name>.key`: the bare seed, or the masked one with what masks it."""
+  return json.loads(FILE.load(f"{keys_dir()}/{name}.key"))
+
 def product_seed(name:str, password:str) -> bytes:
-  """Seed of product key `name`; a wrong password raises."""
-  record = json.loads(FILE.load(f"{keys_dir()}/{name}.key"))
-  masked = bytes.fromhex(record["seed"])
-  salt = bytes.fromhex(record["salt"])
-  seed = mask(masked, password, salt, record)
+  """Seed of product key `name`; a key without a password takes none, a wrong one raises."""
+  record = product_record(name)
+  seed = bytes.fromhex(record["seed"])
+  if "salt" in record: seed = mask(seed, password, bytes.fromhex(record["salt"]), record)
   if ed25519.public_key(seed) != product_public(name):
     raise ValueError(f"wrong password for key {name}")
   return seed
@@ -117,9 +139,12 @@ def signing_seed(public:bytes|None=None) -> bytes:
   Seed that signs for `public`, without it the development one; a key not here raises.
 
   A product key goes first, so signing with it never reads the development key.
+  Only a key with a password asks for it.
   """
   name = product_name(public) if public else None
-  if name: return product_seed(name, password_for(name))
+  if name:
+    password = password_for(name) if "salt" in product_record(name) else ""
+    return product_seed(name, password)
   seed = dev_seed()
   if public is None or ed25519.public_key(seed) == public: return seed
   raise ValueError(f"no private key for {fingerprint(public)}... in {keys_dir()}")

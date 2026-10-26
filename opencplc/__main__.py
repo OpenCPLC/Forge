@@ -56,7 +56,7 @@ def main():
   if info_actions(args, forge_cfg): sys.exit(0)
   # Mutually exclusive modes; mode flags may also carry the project name
   check_flags(args, ("reload", flag.r), ("info", flag.i))
-  # --keygen writes into main.h of a project that exists already
+  # --keygen writes into boot.h of a project that exists already
   check_flags(args, ("new", flag.n), ("delete", flag.d), ("get", flag.g), ("keygen", flag.keygen))
   args.name, args.new = utils.assign_name(args.name, args.new, flag.n)
   args.name, args.reload = utils.assign_name(args.name, args.reload, flag.r)
@@ -105,10 +105,10 @@ def main():
   if args.delete:
     project_delete(args, projects, make_info, forge_cfg)
   paths["pro"] = PATH.resolve(utils.project_dir(args.name), read=False)
-  # the key goes into main.h first, so this very run builds the project under it
+  # the keys go into boot.h first, so this very run builds the project under them
   named = utils.project_key(projects, args.name)
   if args.keygen and named:
-    keygen(args.keygen, PATH.resolve(f"{projects[named]}/main.h", read=False))
+    keygen(args.keygen, named, PATH.resolve(projects[named], read=False))
   if args.new:
     cfg = config_new(args, projects, paths, fw_ver, forge_cfg)
   else:

@@ -17,7 +17,7 @@ class Flag:
   b = f"{Color.GREY}-b --board{Color.END}"
   c = f"{Color.GREY}-c --chip{Color.END}"
   P = f"{Color.GREY}-P --plc{Color.END}"
-  D = f"{Color.GREY}-D --dvr{Color.END}"
+  D = f"{Color.GREY}-D --drv{Color.END}"
   B = f"{Color.GREY}-B --boot{Color.END}"
   m = f"{Color.GREY}-m --memory{Color.END}"
   f = f"{Color.GREY}-f --framework{Color.END}"
@@ -27,6 +27,7 @@ class Flag:
   program = f"{Color.GREY}--program{Color.END}"
   lock = f"{Color.GREY}--lock{Color.END}"
   keygen = f"{Color.GREY}--keygen{Color.END}"
+  upload = f"{Color.GREY}--upload{Color.END}"
   p = f"{Color.GREY}-p --pack{Color.END}"
 
 flag = Flag()
@@ -42,7 +43,7 @@ class Args:
   get: list[str]|None = None
   board: str = ""
   plc: bool = False
-  dvr: str = ""
+  drv: str = ""
   boot: bool = False
   chip: str = ""
   memory: list[int]|None = None
@@ -56,7 +57,8 @@ class Args:
   size: list[str]|None = None
   program: str|bool|None = None
   lock: int|None = None
-  keygen: str|None = None
+  keygen: list[str]|None = None
+  upload: list[str]|None = None
   pack: list[str]|None = None
   test: list[str]|None = None
   assets: str|None = None
@@ -116,10 +118,10 @@ def load_args() -> Args:
     help="Target MCU: STM32G0C1, STM32G081, STM32WB55, HOST", default="")
   parser.add_argument("-P", "--plc", action="store_true",
     help="Add the PLC layer to a project without a board")
-  parser.add_argument("-D", "--dvr", type=str, metavar="DRIVERS", default="",
+  parser.add_argument("-D", "--drv", type=str, metavar="DRIVERS", default="",
     help="Core drivers for a new project, comma separated")
   parser.add_argument("-B", "--boot", action="store_true",
-    help="Run the new project behind the bootloader: PRO_BOOT true")
+    help="Put the new project behind the bootloader of Core: boot.h and its #include in main.h")
   parser.add_argument("-m", "--memory", type=int, nargs="*", metavar=("FLASH", "RAM"),
     help="Override memory size in kB: FLASH RAM [RESERVED]", default=[])
   # Build configuration
@@ -143,15 +145,17 @@ def load_args() -> Args:
   parser.add_argument("-z", "--size", nargs=3, metavar=("ELF", "FLASH_kB", "RAM_kB"),
     help="Report FLASH and RAM usage of an .elf against the chip memory")
   parser.add_argument("-p", "--pack", nargs="+", metavar="FILE",
-    help="Pack the flash image: APP.hex OUT.hex [BOOT [KEY_AT [KEY]]], a makefile step")
+    help="Pack the flash image: APP.hex OUT.hex [BOOT [KEYS NUMBER [dist]]], a makefile step")
   parser.add_argument("--test", nargs="+", metavar="PATH",
     help="Run test programs: BUILD NAME [NAME ...], a makefile step")
   parser.add_argument("--program", type=str, nargs="?", const=True, metavar="FILE",
     help="Send a .hex to the board through the programmer; alone, the one make dist left")
   parser.add_argument("--lock", type=int, nargs="?", const=1, choices=(0, 1, 2), metavar="LEVEL",
     help="Lock board for production: 1 RDP1, 2 for good, 0 unlocks, erasing flash")
-  parser.add_argument("--keygen", type=str, metavar="NAME",
-    help="Make or take product key NAME and write it into main.h of the project")
+  parser.add_argument("--keygen", nargs="+", metavar=("NAME", "COUNT"),
+    help="Make or take product key NAME and COUNT-1 spare ones, add them to BOOT_KEYS")
+  parser.add_argument("--upload", nargs="+", metavar=("FILE", "PORT"),
+    help="Send an update image over the console: FILE [PORT], a makefile step")
   parser.add_argument("-a", "--assets", type=str, nargs="?", const="assets", metavar="DIR",
     help="Download datasheets and reference manuals to DIR")
   parser.add_argument("-u", "--update", type=str, nargs="?", const="latest", metavar="VER",
@@ -181,7 +185,7 @@ def load_args() -> Args:
     get=ns.get or [],
     board=ns.board,
     plc=ns.plc,
-    dvr=ns.dvr,
+    drv=ns.drv,
     boot=ns.boot,
     chip=ns.chip,
     memory=ns.memory or [],
@@ -196,6 +200,7 @@ def load_args() -> Args:
     program=ns.program,
     lock=ns.lock,
     keygen=ns.keygen,
+    upload=ns.upload,
     pack=ns.pack,
     test=ns.test,
     assets=ns.assets,

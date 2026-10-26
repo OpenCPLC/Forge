@@ -9,7 +9,7 @@ from .files import (
 )
 from .text import (
   line_remove, lines_clear,
-  get_vars, find_missing_keys,
+  get_vars, define_string, find_missing_keys,
 )
 from .version import (
   version_real, version_older_than, version_check,
@@ -23,7 +23,7 @@ from .tools import (
 )
 from .hash import hash_string, c_code_enum
 from .common import (
-  is_yes, color_url, color_command, color_image, color_main_h,
+  is_yes, color_url, color_command, color_image, color_pro_file, color_main_h,
   assign_name, validate_project_name,
 )
 
@@ -32,7 +32,7 @@ __all__ = [
   "create_file", "get_project_list", "project_key", "check_write_permission",
   "core_version", "is_core", "project_dir", "project_name", "home_name",
   "line_remove", "lines_clear",
-  "get_vars", "find_missing_keys",
+  "get_vars", "define_string", "find_missing_keys",
   "version_real", "version_older_than", "version_check",
   "version_is_release", "version_active",
   "git_get_refs", "git_clone", "git_clone_missing",
@@ -40,6 +40,6 @@ __all__ = [
   "tools_dir", "template_paths", "ensure_git", "ensure_tools", "verify_compiler",
   "openocd_command", "cube_bin", "cube_cli", "cube_found", "CUBE_URL",
   "hash_string", "c_code_enum",
-  "is_yes", "color_url", "color_command", "color_image", "color_main_h",
+  "is_yes", "color_url", "color_command", "color_image", "color_pro_file", "color_main_h",
   "assign_name", "validate_project_name",
 ]

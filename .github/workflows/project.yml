@@ -1,7 +1,7 @@
 # .github/workflows/project.yml
 
 # A project repository calls it pinned to the release that brings it:
-# `uses: OpenCPLC/Forge/.github/workflows/project.yml@0.5.0`
+# `uses: OpenCPLC/Forge/.github/workflows/project.yml@0.5.1`
 
 name: Project
 
@@ -28,11 +28,11 @@ jobs:
         with:
           python-version: "3.12"
       # Forge of this release: the tag a project pins decides it
-      - run: pip install opencplc==0.5.0
+      - run: pip install opencplc==0.5.1
       - uses: actions/cache@v4
         with:
           path: ~/AppData/Local/OpenCPLC
-          key: opencplc-tools-0.5.0
+          key: opencplc-tools-0.5.1
       # make from Forge's tools, as a new console finds it
       - run: echo "$LOCALAPPDATA\OpenCPLC\make" >> "$GITHUB_PATH"
       # one project or a folder of them, and `**` skips hidden folders such as `.tests/`

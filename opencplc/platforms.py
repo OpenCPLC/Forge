@@ -23,11 +23,11 @@ def get_hal_dirs(hal:str) -> list:
   return HAL_DIRS.get(hal, [hal])
 
 # Bootloader owns `boot_kB` at the start of flash: its code and one page as the mailbox
-# The `key` bootloader owns `boot_key_kB`, its key in the last 32B of the code
-# Both sizes place the slots of shipped devices, so they never change
-# Bootloaders of each family in Core `scr/`, see `boot_stem`
+# The `key` bootloader owns `boot_key_kB`, its keys and the signature check in its code
+# Both sizes place the slots, so a change takes a new bootloader on every board
+# 12kB on G0: the `plain` code with its mailbox on PDB takes more than the 6kB of an 8kB region
 # `dev_id` is `DEV_ID` of the chip, the bootloader matches it against the image header
-# `PRO_BOOT true` halves the rest of `PRO_FLASH_kB` into application and staging slots
+# A project behind the bootloader halves the rest of `PRO_FLASH_kB` into two slots
 CHIPS = {
   "STM32G081": {
     "platform": "STM32", "family": "G0",
@@ -39,7 +39,7 @@ CHIPS = {
     "svd": "stm32g081.svd", "hal": "stm32g0",
     "ld": "stm32g0.ld", "openocd": "stm32g0x",
     "erase": "stm32g0x mass_erase 0",
-    "page_kB": 2, "boot_kB": 8, "boot_key_kB": 32, "dev_id": 0x460,
+    "page_kB": 2, "boot_kB": 12, "boot_key_kB": 32, "dev_id": 0x460,
   },
   "STM32G0C1": {
     "platform": "STM32", "family": "G0",
@@ -51,7 +51,7 @@ CHIPS = {
     "svd": "stm32g0c1.svd", "hal": "stm32g0",
     "ld": "stm32g0.ld", "openocd": "stm32g0x",
     "erase": "stm32g0x mass_erase 0",
-    "page_kB": 2, "boot_kB": 8, "boot_key_kB": 32, "dev_id": 0x467,
+    "page_kB": 2, "boot_kB": 12, "boot_key_kB": 32, "dev_id": 0x467,
   },
   "STM32WB55": {
     "platform": "STM32", "family": "WB",
@@ -80,10 +80,6 @@ CHIPS = {
     "page_kB": 0, "boot_kB": 0, "boot_key_kB": 0, "dev_id": 0,
   },
 }
-
-def boot_stem(hal:str, key:bool) -> str:
-  """Bootloader files of a family in Core, Core-relative and without extension."""
-  return f"scr/boot_{hal}{'_key' if key else ''}"
 
 def parse_chip(name:str) -> dict:
   """Chip table entry with its compiler defines; an unknown chip exits."""

@@ -29,9 +29,13 @@ def color_command(cmd:str) -> str:
   shown = [f"{c.GREY}{arg}{c.END}" if arg.startswith("-") else arg for arg in args]
   return " ".join([f"{c.YELLOW}{program}{c.END}", *shown])
 
+def color_pro_file(name:str, file:str) -> str:
+  """`file` of project `name` as messages point at it: grey folder, blue file."""
+  return f"{c.GREY}{project_dir(name)}/{c.END}{c.BLUE}{file}{c.END}"
+
 def color_main_h(name:str) -> str:
-  """`main.h` of project `name` as messages point at it: grey folder, blue file."""
-  return f"{c.GREY}{project_dir(name)}/{c.END}{c.BLUE}main.h{c.END}"
+  """`main.h` of project `name` as messages point at it."""
+  return color_pro_file(name, "main.h")
 
 def color_image(path:str) -> str:
   """Image file in the color of its kind: hex lime, bin sky, elf violet."""

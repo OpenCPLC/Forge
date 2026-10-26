@@ -8,6 +8,7 @@ debugger and programmer lose flash, the ROM bootloader never starts.
 Under a bootloader it write-protects the pages of the bootloader as well.
 Level 2 is level 1 for good: RDP2 freezes option bytes with WRP and shuts SWD forever.
 Level 0 takes level 1 back, and the chip erases its whole flash on the way.
+It takes off every WRP area as well, also area B, which the firmware takes for its own data.
 A WB takes level 0 through STM32CubeProgrammer, the one `make stack` needs anyway.
 
 Lock stands apart from the bootloader: it asks no key and reads no image,
@@ -32,7 +33,12 @@ BOOT_BITS = {
   "G0": (0x05000000, 0x05000000),     # nBOOT_SEL and nBOOT0 set
   "WB": (0x08000000, 0x0C000000),     # nBOOT0 set, nSWBOOT0 clear
 }
-WRP_FIELD = {"G0": 0x7F, "WB": 0xFF}  # page offset bits in `WRP1AR`, start and end alike
+# WRP areas of each chip, A and B of every bank, and the page bits of their start and end fields
+WRP_AREAS = {
+  "STM32G081": ((0x2C, 0x30), 0x3F),
+  "STM32G0C1": ((0x2C, 0x30, 0x4C, 0x50), 0x7F),
+  "STM32WB55": ((0x2C, 0x30), 0xFF),
+}
 
 FLASH_SR = {"G0": 0x40022010, "WB": 0x58004010}  # status register of each family
 SR_ERRORS = 0x0000C3FB                           # every error flag, `OPTVERR` too
@@ -51,10 +57,11 @@ def option_write(reg:int, value:int, mask:int) -> str:
 def option_writes(pro:Project, level:int) -> list[str]:
   """openocd commands writing option bytes of `level`; WRP covers a bootloader, if any."""
   family = pro.family.removeprefix("STM32")
-  field = WRP_FIELD[family]
+  areas, field = WRP_AREAS[pro.chip]
   wrp_mask = field << 16 | field
   if level == 0: # start past end: no area
-    return [option_write(WRP1AR, field, wrp_mask), option_write(OPTR, RDP[0], 0xFF)]
+    return [*(option_write(area, field, wrp_mask) for area in areas),
+      option_write(OPTR, RDP[0], 0xFF)]
   boot_value, boot_mask = BOOT_BITS[family]
   writes = [option_write(OPTR, boot_value | RDP[level], boot_mask | 0xFF)]
   if not pro.boot: return writes
@@ -98,8 +105,8 @@ def cube_unlock(pro:Project) -> str:
     sys.exit(1)
   connect = ["-c", "port=SWD", "mode=UR"] + ([f"sn={pro.stlink}"] if pro.stlink else [])
   # its progress bar comes in the console code page, `latin-1` takes any byte
-  result = run([cli, *connect, "-ob", "RDP=0xAA", "WRP1A_STRT=0xFF", "WRP1A_END=0x0"],
-    capture=True, encoding="latin-1")
+  areas = ["WRP1A_STRT=0xFF", "WRP1A_END=0x0", "WRP1B_STRT=0xFF", "WRP1B_END=0x0"]
+  result = run([cli, *connect, "-ob", "RDP=0xAA", *areas], capture=True, encoding="latin-1")
   return (result.stdout or "") + (result.stderr or "")
 
 def session_errors(out:str) -> list[str]:

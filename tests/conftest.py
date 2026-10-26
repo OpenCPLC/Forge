@@ -65,17 +65,17 @@ CORE_FILES = [
   "hal/stm32/gpio.c", "hal/stm32/gpio.h",
   "hal/stm32g0/uart.c", "hal/stm32g0/uart.h",
   "lib/log/log.c", "lib/log/log.h",
-  "scr/boot_stm32g0.hex", "scr/boot_stm32wb.hex", # `plain` bootloaders, only their names count
+  ".boot/main.c", ".boot/main.h", # the bootloader program, which Forge compiles under an image
   "plc/plc.c", "plc/plc.h",
   "brd/opencplc.h",
   "brd/uno/opencplc_uno.c", "brd/uno/opencplc_uno.h",
   "brd/eco/opencplc_eco.c", "brd/eco/opencplc_eco.h",
-  "dvr/max31865.c", "dvr/max31865.h",
-  "dvr/shtc3.c", "dvr/shtc3.h",
-  "dvr/temp/sht4x.c", "dvr/temp/sht4x.h",
-  "dvr/acc/ism330.c", "dvr/acc/ism330.h",
+  "drv/max31865.c", "drv/max31865.h",
+  "drv/shtc3.c", "drv/shtc3.h",
+  "drv/temp/sht4x.c", "drv/temp/sht4x.h",
+  "drv/acc/ism330.c", "drv/acc/ism330.h",
 ]
-MAIN_H_UNO = """#define PRO_BOARD_UNO
+MAIN_H_UNO = """#define PRO_BOARD_Uno
 #define PRO_CHIP_STM32G0C1
 #define PRO_PLC true
 #define PRO_FRAMEWORK "1.0.0"
@@ -110,13 +110,7 @@ def build_workspace(ws, core:str="1.0.0", project:str="myapp"):
   (ws / "opencplc.json").write_text("{}")
   return ws
 
-KEY = "8a" * 32 # `PRO_BOOT_KEY` of a test product, the key `dist` signs with
-
-def ship_key_bootloader(ws, hal:str="stm32g0", core:str="1.0.0"):
-  """Core with the `key` bootloader of a family beside the `plain` one."""
-  scr = ws / "opencplc" / core / "scr"
-  scr.mkdir(parents=True, exist_ok=True)
-  (scr / f"boot_{hal}_key.hex").write_text(":00000001FF\n")
+KEY = "8a" * 32 # key `0` of `BOOT_KEYS` of a test product
 
 CORE_TEST = "opencplc/1.0.0/.tests/g081"
 
@@ -132,6 +126,18 @@ def add_define(ws, line:str, project:str="myapp"):
   """One more `#define` at the end of the project `main.h`, where Forge reads it as well."""
   main_h = ws / "projects" / project / "main.h"
   main_h.write_text(main_h.read_text().rstrip("\n") + f"\n{line}\n")
+
+def add_boot_define(ws, line:str, project:str="myapp"):
+  """One more `#define` at the end of the project `boot.h`, where Forge reads it as well."""
+  boot_h = ws / "projects" / project / "boot.h"
+  boot_h.write_text(boot_h.read_text().rstrip("\n") + f"\n{line}\n")
+
+def edit_main_h(ws, old:str, new:str, project:str="myapp"):
+  """`old` in the project `main.h` replaced by `new`; text it lacks fails the test."""
+  main_h = ws / "projects" / project / "main.h"
+  text = main_h.read_text()
+  assert old in text, f"{old!r} not in {main_h}"
+  main_h.write_text(text.replace(old, new))
 
 def uno_cfg(name:str="myapp", core:str="1.0.0") -> dict:
   """cfg of an Uno project, as `config_new` would build it from the manifest."""
@@ -160,9 +166,18 @@ def ws_paths(core:str="1.0.0", name:str="myapp") -> dict:
     "fw": f"opencplc/{core}", "pro": f"projects/{name}",
   }
 
+def key_boot(keys:str=KEY) -> dict:
+  """cfg entries of a project behind the `key` bootloader of `keys`, as its boot.h gives them."""
+  return {"boot": True, "boot_keys": keys}
+
 def resolve_key_uno():
-  """Resolved Uno model under the `key` bootloader."""
-  return resolve_project(uno_cfg() | {"boot": True, "boot_key": KEY}, ws_paths(), {})
+  """Resolved Uno model behind the `key` bootloader of `KEY`."""
+  return resolve_project(uno_cfg() | key_boot(), ws_paths(), {})
+
+def resolve_key_wb55():
+  """Resolved WB55 model in 818kB behind the `key` bootloader of `KEY`."""
+  cfg = uno_cfg() | parse_chip("STM32WB55") | key_boot() | {"flash_kB": 818}
+  return resolve_project(cfg, ws_paths(), {})
 
 def resolve_uno(forge_cfg=None):
   """Resolved Uno model over the synthetic workspace."""
@@ -173,8 +188,9 @@ def refs_cfg() -> dict:
   return {"available-versions": ["1.0.0"], "stlink": {}}
 
 def pro_map(ws, name:str="myapp") -> dict:
-  """Project map as `get_project_list` returns it, holding `name` alone."""
-  return {name: str(ws / "projects" / name)}
+  """Project map as `get_project_list` returns it: `name` and the projects right in `projects/`."""
+  found = {d.name: str(d) for d in (ws / "projects").iterdir() if (d / "main.h").exists()}
+  return {name: str(ws / "projects" / name)} | found
 
 def load_project(ws, name:str="myapp", **flags) -> dict:
   """cfg of a project read back from its main.h, as `opencplc <name>` with `flags` reads it."""
@@ -326,11 +342,16 @@ def write_app_image(path, origin:int, size:int, header:bool=True, trailer:int=72
   save_hex(app, path)
 
 def write_boot_image(path, data:bytes):
-  """Bootloader hex as Core ships it: `data` from the start of flash."""
+  """Bootloader hex as its build links it: `data` from the start of flash."""
   from opencplc.utils.hexfile import Memory, save_hex
   boot = Memory()
   boot.add(0x08000000, data)
   save_hex(boot, path)
+
+def signed_by(public:bytes, update:bytes, size:int) -> bool:
+  """`True` when the trailer of `update` holds the signature of its `size` bytes by `public`."""
+  from opencplc.utils import ed25519
+  return ed25519.verify(public, update[:size], update[size + 8:size + 72])
 
 def build_program(folder, name:str, body:str):
   """Test program `name` from C `body`, where `make test` leaves one."""

@@ -9,7 +9,7 @@ from opencplc import __version__
 from conftest import REPO_ROOT
 
 WORKFLOW = f"{REPO_ROOT}/.github/workflows/project.yml"
-DOCS = [f"{REPO_ROOT}/tests.md", f"{REPO_ROOT}/tests.pl.md"]
+DOCS = [f"{REPO_ROOT}/.wiki/tests.md", f"{REPO_ROOT}/.wiki/tests.pl.md"]
 
 def project_workflow_installs_its_own_release():
   # the wheel job tests a copy of `tests/` alone
@@ -18,7 +18,8 @@ def project_workflow_installs_its_own_release():
   assert set(re.findall(r"\d+\.\d+\.\d+", FILE.load(WORKFLOW))) == {__version__}
 
 def docs_pin_the_workflow_of_this_release():
-  if not FILE.exists(DOCS[0]): pytest.skip("no source tree")
+  # the wiki is a repository of its own, so a clone of Forge comes without it
+  if not FILE.exists(DOCS[0]): pytest.skip("no wiki")
   # a project copies its `test.yml` from here, so an old tag would stay with it
   for path in DOCS:
     assert set(re.findall(r"project\.yml@(\S+)", FILE.load(path))) == {__version__}, path

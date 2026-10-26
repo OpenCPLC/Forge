@@ -15,6 +15,7 @@ from .config import URL_DL, URL_FORGE, URL_CORE, EXE_NAME, DIR_FRAMEWORK
 from .args import flag
 from .resolver import Project
 from .pack import pack_command
+from .upload import upload
 from .runner import run_tests
 from .workspace import ensure_refs
 from . import utils, __version__
@@ -80,8 +81,8 @@ def update_forge(args):
 
 # Flags of a project run, where -f is an override, not a download
 PROJECT_FLAGS = ("name", "new", "demo", "reload", "delete", "get", "board", "chip", "plc",
-  "dvr", "boot", "memory", "opt_level", "project_list", "info", "version", "framework_versions",
-  "size", "pack", "test", "program", "lock", "keygen", "hash_list", "update", "assets")
+  "drv", "boot", "memory", "opt_level", "project_list", "info", "version", "framework_versions",
+  "size", "pack", "upload", "test", "program", "lock", "keygen", "hash_list", "update", "assets")
 
 def framework_fetch(args, forge_cfg:dict) -> bool:
   """
@@ -113,6 +114,9 @@ def info_actions(args, forge_cfg:dict) -> bool:
     ran = True
   if args.pack:
     pack_command(args.pack)
+    ran = True
+  if args.upload:
+    upload(args.upload)
     ran = True
   if args.test:
     sys.exit(run_tests(args.test[0], args.test[1:]))
@@ -156,24 +160,19 @@ def info_actions(args, forge_cfg:dict) -> bool:
 
 def dist_image(pro:Project, yes:bool) -> str:
   """
-  --program alone: the .hex `make dist` left, in the project, or in Core for the bootloader.
+  --program alone: the .hex `make dist` left in the project.
 
   `dist` with a new `TAG` keeps the older images, so of several the newest goes, once confirmed.
   """
-  if pro.bootloader:
-    image = PATH.resolve(f"{pro.core_dir}/{pro.bootloader}.hex", read=False)
-    where = PATH.dirname(image)
-    images = [image] if FILE.exists(image) else []
-  else:
-    where = pro.pro_dir
-    images = DIR.file_list(where, exts=[".hex"], deep=False)
+  images = DIR.file_list(pro.pro_dir, exts=[".hex"], deep=False)
+  where = PATH.local(pro.pro_dir)
   if not images:
-    p.err(f"No .hex image in {c.GREY}{PATH.local(where)}{c.END}")
+    p.err(f"No .hex image in {c.GREY}{where}{c.END}")
     p.run(f"Make one with {utils.color_command('make dist')}")
     sys.exit(1)
   images.sort(key=FILE.mtime, reverse=True)
   if len(images) > 1:
-    p.inf(f"Images in {c.GREY}{PATH.local(where)}{c.END}, newest first:")
+    p.inf(f"Images in {c.GREY}{where}{c.END}, newest first:")
     for image in images:
       stamp = datetime.fromtimestamp(FILE.mtime(image))
       p.dot(f"{PATH.basename(image)} {c.GREY}({stamp:%Y-%m-%d %H:%M:%S}){c.END}")

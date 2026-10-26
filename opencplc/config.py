@@ -31,6 +31,9 @@ Framework version rules:
 # Workspace layout, fixed by Forge; Demo holds ordinary projects, cloned as a whole
 DIR_PROJECTS = "projects"
 DIR_TESTS = ".tests" # at the top of a project, or of a Core for its own tests
+DIR_BOOT = ".boot" # the bootloader program of a Core, compiled under an image, never a project
+BOOT_H = "boot.h" # settings of the bootloader of a project, which its main.h includes
+BOOT_LINE = f'#include "{BOOT_H}"' # the line of main.h that puts a project behind the bootloader
 DIR_DEMO = "projects/demo"
 DIR_FRAMEWORK = "opencplc"
 DIR_BUILD = "build"

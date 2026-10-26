@@ -5,15 +5,15 @@ _estack = ORIGIN(RAM) + LENGTH(RAM);
 _Min_Heap_Size = 0x200;
 _Min_Stack_Size = 0x400;
 
-/* RAM opens with 8 bytes no image owns: the bootloader leaves its report there */
+/* RAM opens with 16 bytes no image owns: the bootloader leaves its report there */
 MEMORY
 {
-  RAM(xrw)        : ORIGIN = 0x20000008, LENGTH = ${RAM}K - 8
+  RAM(xrw)        : ORIGIN = 0x20000010, LENGTH = ${RAM}K - 16
   FLASH(rx)       : ORIGIN = ${FLASH_ORIGIN}, LENGTH = ${FLASH}K
   RAM_SHARED(xrw) : ORIGIN = 0x20030000, LENGTH = 10K
 }
 
-_boot_report = ORIGIN(RAM) - 8;
+_bld_report = ORIGIN(RAM) - 16;
 
 SECTIONS
 {
@@ -140,11 +140,5 @@ SECTIONS
     FILL(0xFFFFFFFF);
     LONG(0xFFFFFFFF);
     . += 72 - 4;
-  } >FLASH
-
-  /* Key of a `key` bootloader, the last bytes of its code region where Forge writes it.
-     Any other image has no such section, so nothing moves. */
-  .boot_key ORIGIN(FLASH) + LENGTH(FLASH) - 32 : {
-    KEEP(*(.boot_key))
   } >FLASH
 }

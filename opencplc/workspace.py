@@ -10,7 +10,7 @@ keeps the Core checkout present and answers what projects exist here.
 
 import os, sys, json
 from xaeian import Print, Color as c, Ico, FILE, DIR, JSON, PATH, replace_end, set_context
-from .config import URL_CORE, DIR_PROJECTS, DIR_FRAMEWORK, DIR_BUILD, DIR_TESTS
+from .config import URL_CORE, DIR_PROJECTS, DIR_FRAMEWORK, DIR_BUILD, DIR_TESTS, DIR_BOOT
 from .args import flag
 from .project import write_dispatcher
 from . import utils
@@ -179,7 +179,9 @@ def project_inventory(name:str|None) -> dict[str, str]:
   core = utils.core_version(name or "")
   if not core: return projects
   home = f"{DIR_FRAMEWORK}/{core}"
-  projects |= {f"{home}/{key}": path for key, path in utils.get_project_list(home).items()}
+  # `.boot/` has a `main.h` for the bootloader build alone, never loaded as a project
+  found = utils.get_project_list(home)
+  projects |= {f"{home}/{key}": path for key, path in found.items() if key != DIR_BOOT}
   tests = PATH.resolve(utils.project_dir(home), read=False)
   if DIR.exists(tests): projects[home] = tests # the Core itself is a project of its tests
   return projects

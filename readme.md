@@ -1,7 +1,7 @@
 ## OpenCPLC ⚒️ Forge
 
 **Forge** is a console app that makes working with **OpenCPLC** easier.
-Its job is to set up your environment so you 👨‍💻developer can focus on building apps instead of fighting with configs and compilation.
+Its job is to set up your environment so you developer can focus on building apps instead of fighting with configs and compilation.
 Available as a **Python [`pip`](https://pypi.org/project/opencplc)** package or standalone **`opencplc.exe`** from 🚀[Releases](https://github.com/OpenCPLC/Forge/releases) _(in that case add its location to system `PATH` manually)_.
 
 ```bash
@@ -94,7 +94,7 @@ Your application runs as a VRTS thread next to the PLC thread and the debugger t
 Add your own modules as more files in the project directory and its subfolders.
 
 `main.h` holds the configuration Forge reads on every load.
-The `PRO_*` definitions describe the board, chip, PLC layer, framework version, memory sizes and the bootloader _(`PRO_BOOT`)_, while `LOG_LEVEL` and `SYS_CLOCK_FREQ` are yours to change.
+The `PRO_*` definitions describe the board, chip, PLC layer, framework version and memory sizes, while `LOG_LEVEL` and `SYS_CLOCK_FREQ` are yours to change.
 Extra framework drivers go there too: `#define PRO_DRIVERS "shtc3, hd44780"`.
 
 Here _(roughly)_ ends **Forge**'s job, and further work goes like a typical **embedded systems** project using [**✨Make**](#-make).
@@ -120,7 +120,8 @@ Full list of targets:
 - `make test`: Builds every `.tests/*.c` into a program for the computer and runs it, see [Tests](#-tests); `make test T=name` runs one
 - **`make clean`** or `make clr`: Removes built files for the project
 - `make clean_all` or `make clr_all`: Removes built files for all projects
-- `make dist`: Copies `-dist.hex` to the project folder, under the bootloader `-dist.bin` too; `make dist TAG=1.2.0` names them `<name>-1.2.0.hex` and `.bin`
+- `make dist`: Packs the release into the project folder: the `.hex` for the programmer, under the bootloader the `.bin` for updates too; `make dist TAG=1.2.0` names them `<name>-1.2.0.hex` and `.bin`
+- `make update`: Sends the update image of the build over the console, as a device takes one _(under the bootloader, with `CMD_BOOT ON`)_; `FILE=` sends another image, `PORT=` names the console
 - **`make erase`**: Completely wipes microcontroller memory _(**erase** full chip; on STM32WB the radio stack stays)_
 - `make stack`: Flashes the radio stack of the second core _(STM32WB)_; `make stack FUS=1` also provisions a factory board, once and irreversibly
 
@@ -136,10 +137,10 @@ RAM 34.3kB / 36kB (95%)
 
 ## 🥾 Bootloader
 
-A project with `#define PRO_BOOT true` in `main.h` runs behind the Core bootloader and takes updates without a programmer; `-B` sets it for a new project.
-`--keygen` makes it start only images signed with the product key.
+A project whose `main.h` includes `boot.h` runs behind the bootloader of Core, which Forge builds with it, and takes updates without a programmer; `-B` sets it up for a new project.
+`opencplc --keygen acme 3` adds product keys to `BOOT_KEYS` in `boot.h`, and from then on the bootloader starts only images signed with them.
 `--lock` closes the board to the programmer for production, with or without a bootloader.
-Both and their security: [🥾 Bootloader and 🔒 lock](https://github.com/OpenCPLC/Forge/blob/main/boot-lock.md).
+Both and their security: [🥾 Bootloader and 🔒 lock](https://github.com/OpenCPLC/Forge/wiki/bootlock).
 
 ## ⚙️ Config
 
@@ -225,9 +226,9 @@ Only `plc = true` is binding, such a board does not build without its layer.
 Without a board `main.h` holds `PRO_BOARD_None`, and `PRO_PLC` decides the rest:
 `-c <chip>` alone is bare metal _(HAL and libraries only)_, `-c <chip> -P` adds the PLC layer on your own hardware, where peripheral mapping and `PLC_Main` are yours to write.
 
-Device drivers live in `dvr/`, outside the PLC layer, so any project can use them.
-Folders under `dvr/` group them by kind, `temp/` for thermometers, `acc/` for accelerometers, `disp/` for displays; a driver is named by its file, wherever it sits.
-A board takes the ones its manifest names; a project adds more with `--dvr` at creation or in `main.h`: `#define PRO_DRIVERS "shtc3, hd44780"`.
+Device drivers live in `drv/`, outside the PLC layer, so any project can use them.
+Folders under `drv/` group them by kind, `temp/` for thermometers, `acc/` for accelerometers, `disp/` for displays; a driver is named by its file, wherever it sits.
+A board takes the ones its manifest names; a project adds more with `--drv` at creation or in `main.h`: `#define PRO_DRIVERS "shtc3, hd44780"`.
 Only the named drivers reach the build.
 
 The main **Forge** function is preparing files needed for a project:
@@ -291,7 +292,7 @@ The Host platform provides stub implementations for hardware-dependent modules _
 Every `.c` file directly in `.tests/` at the top of a project is a test program, which `make test` builds and runs on the computer, in an STM32 project too.
 A test includes the module it checks, so it runs the firmware code itself.
 One workflow file runs the same on GitHub on every push.
-Writing, running and CI: [🧪 Tests](https://github.com/OpenCPLC/Forge/blob/main/tests.md).
+Writing, running and CI: [🧪 Tests](https://github.com/OpenCPLC/Forge/wiki/tests).
 
 ## 🚩 Flags
 
@@ -312,8 +313,8 @@ Full list:
 - `-b --board`: Board from the framework _(`uno`)_. It sets the chip, the memory, the clock and the PLC layer of a new project; `-c` and `--plc` override that. On an existing project it picks another board until a load without it.
 - `-c --chip`: Microcontroller or platform: `STM32G081`, `STM32G0C1`, `STM32WB55`, `HOST` _(compile for PC)_. Without `-b --board`, the project runs without the PLC layer, only HAL and standard framework libraries. Useful for Nucleo boards or custom hardware. On an existing project it picks another chip until a load without it.
 - `-P --plc`: Adds the PLC layer to a project without a board, on your own hardware.
-- `-D --dvr`: Framework drivers of a new project, comma separated _(`shtc3, hd44780`)_. Later ones go into `PRO_DRIVERS` in `main.h`.
-- `-B --boot`: Runs the new project behind the bootloader: `PRO_BOOT true` in `main.h`, see [Bootloader](#-bootloader).
+- `-D --drv`: Framework drivers of a new project, comma separated _(`shtc3, hd44780`)_. Later ones go into `PRO_DRIVERS` in `main.h`.
+- `-B --boot`: Runs the new project behind the bootloader of Core: `boot.h` beside `main.h` and its `#include`, see [Bootloader](#-bootloader).
 - `-m --memory`: Memory in kB: `FLASH RAM [RESERVED]`. `RESERVED` is the memory allocated for config and EEPROM, subtracted from FLASH in the linker file `flash.ld`. _(STM32 only)_
 
 #### Build config
@@ -334,8 +335,10 @@ Full list:
 - `-a --assets`: Downloads helper materials for design _(docs, diagrams)_. Optionally accepts a folder name as destination.
 - `-u --update`: Replaces the Forge executable with the given version _(default: `latest`)_; a `pip` install updates through `pip` instead.
 - `--program`: Sends a `.hex` to the board through the programmer. Alone, it takes the one `make dist` left in the active project; of several, the newest, after confirmation.
-- `--keygen`: Makes or takes product key **`NAME`** and writes it into `main.h`, see [Bootloader](https://github.com/OpenCPLC/Forge/blob/main/boot-lock.md).
-- `--lock`: Locks the board for production: RDP1 by default, `2` for good, `0` unlocks, erasing the flash, see [Lock](https://github.com/OpenCPLC/Forge/blob/main/boot-lock.md).
+- `--keygen`: Makes or takes product key **`NAME`** with spare ones, **`COUNT`** keys in all _(default 1)_, and adds their public parts to `BOOT_KEYS` in `boot.h` of the active project; the password is optional, see [Bootloader](https://github.com/OpenCPLC/Forge/wiki/bootlock).
+- `--upload`: Sends an update image over the console, **`FILE`** and optionally **`PORT`**; `make update` uses it.
+- `--lock`: Locks the board for production: RDP1 by default, `2` for good, `0` unlocks, erasing the flash, see [Lock](https://github.com/OpenCPLC/Forge/wiki/bootlock).
+- `-p --pack`: Packs the image for flash: under the bootloader with it in front and CRC and signature behind, the update binary beside; `make` uses it after linking.
 - `-z --size`: Reports FLASH and RAM usage of an `.elf`; `make` uses it after linking.
 - `--test`: Runs the test programs, each in a clean folder of its own with a minute to finish; `make test` uses it.
 - `-y --yes`: Auto-confirms all prompts _(non-interactive mode)_.
@@ -373,7 +376,7 @@ opencplc -n myapp -b uno                    # project for OpenCPLC Uno board
 opencplc -n myapp -b uno -m 128 36          # project for Uno with 128kB/36kB memory
 opencplc -n myapp -c STM32G081 --plc        # own hardware with PLC layer (no peripheral mapping)
 opencplc -n myapp -c STM32G081              # bare-metal project for STM32G081 (e.g. Nucleo)
-opencplc -n myapp -c STM32G081 --dvr shtc3  # bare metal with the shtc3 driver
+opencplc -n myapp -c STM32G081 --drv shtc3  # bare metal with the shtc3 driver
 opencplc -n myapp -c host                   # desktop project (Windows/Linux)
 
 # Managing projects

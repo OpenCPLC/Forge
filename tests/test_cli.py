@@ -10,7 +10,7 @@ import opencplc.workspace as ws_mod
 from opencplc import actions, lock, project
 from opencplc.args import Args
 from opencplc.utils import keys
-from conftest import build_workspace, write_forge_config, run_cli, refs_cfg, ship_key_bootloader
+from conftest import build_workspace, write_forge_config, run_cli, refs_cfg
 from conftest import frozen_forge, _raise_disk_full, make_board, INI, age, core_test, CORE_TEST
 from conftest import read_makefile
 
@@ -206,7 +206,7 @@ def bare_metal_writes_a_void_board(ws, monkeypatch):
 def drivers_flag_seeds_pro_drivers(ws, monkeypatch):
   assert run_cli(monkeypatch, "-n", "app", "-c", "STM32G081", "-D", "shtc3", "-y") == 0
   assert 'PRO_DRIVERS "shtc3"' in (ws / "projects" / "app" / "main.h").read_text()
-  assert "dvr/shtc3.c" in (ws / "projects" / "app" / "makefile").read_text()
+  assert "drv/shtc3.c" in (ws / "projects" / "app" / "makefile").read_text()
 
 def board_brings_its_own_plc_layer(ws, monkeypatch):
   assert run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-y") == 0
@@ -239,20 +239,25 @@ def chip_flag_overrides_the_board_manifest(ws, monkeypatch):
   assert "SYS_CLOCK_FREQ 59904000" in main_h  # the clock still belongs to the board
   assert run_cli(monkeypatch, "app") == 0     # and it loads back the same way
 
-def boot_flag_seeds_pro_boot_and_the_slot(ws, monkeypatch):
+def boot_flag_writes_boot_h_and_its_include(ws, monkeypatch):
   assert run_cli(monkeypatch, "-n", "app", "-c", "STM32G0C1", "-B", "-y") == 0
-  assert "PRO_BOOT true" in (ws / "projects" / "app" / "main.h").read_text()
-  make = (ws / "projects" / "app" / "makefile").read_text()
-  assert "-DBOOT_SLOT_PAGES=126" in make and "BOOT := true" in make # (512 - 8) / 2 = 252kB
-  assert "ORIGIN = 0x08002000, LENGTH = 252K" in (ws / "projects" / "app" / "flash.ld").read_text()
-  assert run_cli(monkeypatch, "app", "-B") == 1 # `PRO_BOOT` is edited in main.h afterwards
+  pro = ws / "projects" / "app"
+  assert '#include "boot.h"' in (pro / "main.h").read_text()
+  assert (pro / "boot.h").read_text().startswith("// app/boot.h\n")
+  make = read_makefile(ws, "app")
+  assert "-DBOOT_SLOT_PAGES=125" in make and "BOOT := true" in make # (512 - 12) / 2 = 250kB
+  assert "ORIGIN = 0x08003000, LENGTH = 250K" in (pro / "flash.ld").read_text()
+  assert run_cli(monkeypatch, "app", "-B") == 1 # the `#include` is edited in main.h afterwards
+  assert run_cli(monkeypatch, "-n", "plain", "-c", "STM32G0C1", "-y") == 0
+  plain = ws / "projects" / "plain"
+  assert "boot.h" not in (plain / "main.h").read_text() and not (plain / "boot.h").exists()
 
 def a_new_boot_project_says_what_the_flag_costs(ws, monkeypatch, capsys):
   """The flag halves the flash, so creation says so; a later load stays quiet."""
   assert run_cli(monkeypatch, "-n", "app", "-c", "STM32G0C1", "-B", "-y") == 0
-  assert "252" in capsys.readouterr().out
+  assert "250" in capsys.readouterr().out
   assert run_cli(monkeypatch, "app") == 0
-  assert "252" not in capsys.readouterr().out
+  assert "250" not in capsys.readouterr().out
 
 def boot_flag_needs_an_stm32_chip(ws, monkeypatch):
   assert run_cli(monkeypatch, "-n", "sim", "-c", "HOST", "-B", "-y") == 1
@@ -374,15 +379,19 @@ def program_alone_without_an_image_points_at_dist(ws, monkeypatch, capsys):
   assert run_cli(monkeypatch, "--program") == 1
   assert "No .hex image" in capsys.readouterr().out
 
-def keygen_writes_the_key_and_the_same_run_builds_under_it(ws, monkeypatch):
-  ship_key_bootloader(ws)
-  monkeypatch.setenv(keys.KEYS_ENV, str(ws / "keys"))
+def keygen_writes_the_keys_and_the_same_run_builds_behind_the_key_bootloader(ws, monkeypatch):
+  """A project without the bootloader goes behind it with its first keys."""
   monkeypatch.setenv(keys.PASSWORD_ENV, "correct horse")
   assert run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-y") == 0
-  assert run_cli(monkeypatch, "app", "--keygen", "acme") == 0
-  public = keys.product_public("acme").hex()
-  assert f'#define PRO_BOOT_KEY "{public}"' in (ws / "projects" / "app" / "main.h").read_text()
-  assert "boot_stm32g0_key.hex" in (ws / "projects" / "app" / "makefile").read_text()
+  assert run_cli(monkeypatch, "app", "--keygen", "acme", "2") == 0
+  pro = ws / "projects" / "app"
+  publics = [keys.product_public(name).hex() for name in ("acme", "acme-1")]
+  assert '#include "boot.h"' in (pro / "main.h").read_text()
+  assert all(key in (pro / "boot.h").read_text() for key in publics)
+  make = read_makefile(ws, "app")
+  assert f"BOOT_KEYS := {''.join(publics)}" in make
+  assert f"BOOT_DEV_KEY := {keys.dev_public().hex()}" in make
+  assert "ORIGIN = 0x08008000" in (pro / "flash.ld").read_text()
 
 def project_in_core_builds_with_that_core(ws, monkeypatch):
   """No `PRO_FRAMEWORK`: the folder names the Core, the workspace default plays no part."""
@@ -433,6 +442,12 @@ def core_holds_more_than_one_project(ws, monkeypatch):
   core_test(ws)
   assert run_cli(monkeypatch, "-n", "opencplc/1.0.0/.tests/wb55", "-c", "STM32WB55", "-y") == 0
   assert run_cli(monkeypatch, "-n", "opencplc/1.0.0/.tests", "-c", "STM32G081", "-y") == 1
+
+def bootloader_program_of_core_is_no_project(ws):
+  """`.boot/` has a `main.h` for the bootloader build alone, so it stays off the list."""
+  core_test(ws)
+  projects = ws_mod.project_inventory("opencplc/1.0.0")
+  assert CORE_TEST in projects and "opencplc/1.0.0/.boot" not in projects
 
 def reload_inside_tests_of_a_core_targets_the_core(ws, monkeypatch):
   core_test(ws)

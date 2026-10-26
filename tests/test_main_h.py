@@ -2,7 +2,8 @@
 
 """Contract: values written into generated files can be read back unchanged."""
 
-from opencplc.utils import get_vars
+from opencplc.utils import get_vars, lines_clear
+from opencplc.configure import boot_included
 from conftest import load_template, render, parse_main_h, parse_dispatcher
 
 UNO_SUBS = {
@@ -15,14 +16,14 @@ UNO_SUBS = {
   "${PRO_FRAMEWORK}": "1.0.2",
   "${FLASH}": 492,
   "${RAM}": 144,
-  "${BOOT}": "false",
   "${OPT_LEVEL}": "Og",
   "${LOG_LEVEL}": "LOG_LEVEL_INF",
   "${FREQ}": 59904000,
 }
 
 def embedded_main_h_roundtrip():
-  info = parse_main_h(render(load_template("main.h"), UNO_SUBS))
+  text = render(load_template("main.h"), UNO_SUBS)
+  info = parse_main_h(text)
   assert info["PRO_BOARD"] == "Uno"
   assert info["PRO_CHIP"] == "STM32G0C1"
   assert info["PRO_PLC"] == "true"
@@ -30,7 +31,7 @@ def embedded_main_h_roundtrip():
   assert info["PRO_FRAMEWORK"] == "1.0.2"
   assert info["PRO_FLASH_kB"] == "492"
   assert info["PRO_RAM_kB"] == "144"
-  assert info["PRO_BOOT"] == "false"
+  assert boot_included(lines_clear(text.splitlines(), "//")) # dropped for a project without -B
   assert info["PRO_OPT_LEVEL"] == "Og"
   assert info["LOG_LEVEL"] == "LOG_LEVEL_INF"
   assert info["SYS_CLOCK_FREQ"] == "59904000"
@@ -84,7 +85,7 @@ def dispatcher_roundtrip():
 
 def generated_c_follows_the_c_style():
   """Separators exactly 99 chars, lines within 95, no trailing whitespace."""
-  for name in ("main.c", "main-none.c", "host/main.c", "main.h", "host/main.h"):
+  for name in ("main.c", "main-none.c", "host/main.c", "main.h", "boot.h", "host/main.h"):
     for i, line in enumerate(load_template(name).replace("\r\n", "\n").split("\n"), 1):
       where = f"{name}:{i}"
       if line.startswith("//-"):

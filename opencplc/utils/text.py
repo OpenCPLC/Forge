@@ -66,6 +66,18 @@ def get_vars(
         return {}
   return result
 
+def define_string(lines:list[str], name:str) -> str|None:
+  """
+  String `#define name`, its pieces joined as C joins them: `"ab" "cd"` gives `abcd`.
+
+  A line ending in a backslash goes on in the next one.
+  `None` without such a definition.
+  """
+  text = "\n".join(lines).replace("\\\n", " ")
+  match = re.search(rf"^\s*#define\s+{re.escape(name)}\s+(.*)$", text, re.M)
+  if not match: return None
+  return "".join(re.findall(r'"([^"]*)"', match.group(1)))
+
 def find_missing_keys(template:dict, subject:dict, prefix:str="") -> list[str]:
   """Dotted paths of keys present in `template` but missing in `subject`, nested dicts included."""
   missing = []

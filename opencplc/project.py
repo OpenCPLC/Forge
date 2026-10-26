@@ -9,13 +9,14 @@ makefile and flash.ld in the project, workspace dispatcher, VS Code configuratio
 An unchanged file keeps its bytes and its mtime.
 """
 
-import re, platform, subprocess
+import os, re, platform, subprocess
 from datetime import datetime
-from xaeian import Print, Color as c, FILE, DIR, PATH, replace_end
+from xaeian import Print, Color as c, FILE, DIR, PATH, replace_end, replace_map
 from xaeian.cmd import which
-from .config import OPT_DEFAULT, LOG_LEVEL_DEFAULT
+from .config import OPT_DEFAULT, LOG_LEVEL_DEFAULT, BOOT_H, BOOT_LINE
 from .templates import load_templates
-from .resolver import Project, flash_layout, forge_version
+from .resolver import Project, flash_layout, forge_version, FLASH_BASE
+from .utils import keys
 from . import utils
 
 p = Print()
@@ -94,7 +95,7 @@ def stack_command(pro:Project) -> str:
     source = f"install it from {utils.color_url(utils.CUBE_URL)}"
     reload = f"reload with {utils.color_command('opencplc -r')}"
     return f"echo {missing}, {source} and {reload}&& exit 1"
-  script = f'{bash_exe()} "$(OPENCPLC)/scr/{pro.stack_script}"'
+  script = f'{bash_exe()} "$(OPENCPLC)/bin/{pro.stack_script}"'
   return f"{script} $(if $(STLINK),--sn=$(STLINK)) $(if $(FUS),--fus) $(if $(FAST),--fast)"
 
 def test_rules(pro:Project, block:str) -> str:
@@ -116,8 +117,18 @@ def test_rules(pro:Project, block:str) -> str:
     "echo No test programs in ${TEST_COLORED})\n\n.PHONY: test")
 
 def config_inputs(pro:Project) -> list[str]:
-  """Reload inputs of the project makefile, anchored in `$(PROJECT)`."""
-  return ["$(PROJECT)/main.h"] + [anchored(d, pro.pro_dir, "PROJECT") for d in pro.project_dirs]
+  """Reload inputs of the project makefile, anchored in `$(PROJECT)`: its settings and folders."""
+  dirs = [anchored(d, pro.pro_dir, "PROJECT") for d in pro.project_dirs]
+  return ["$(PROJECT)/main.h", f"$(PROJECT)/{BOOT_H}"] + dirs
+
+def boot_h_text(name:str) -> str:
+  """`boot.h` of a new project `name`: no setting yet, so a `plain` bootloader."""
+  subs = {"${NAME}": utils.home_name(name), "${DATE}": datetime.now().strftime("%Y-%m-%d")}
+  return replace_map(load_templates()["boot.h"].strip(), subs)
+
+def dev_key(pro:Project) -> str:
+  """Development key the bootloader of builds takes in place of every key, "" for `plain`."""
+  return keys.dev_public().hex() if pro.boot_keys else ""
 
 def include_flags(pro:Project, dirs:list[str]) -> list[str]:
   """-I flags anchored in `$(PROJECT)`, `$(BUILD)` or `$(OPENCPLC)`, resolved by Make."""
@@ -172,7 +183,6 @@ def prepare_project(cfg:dict, paths:dict):
     "${LOG_LEVEL}": cfg.get("log_level", LOG_LEVEL_DEFAULT),
     "${BOARD}": cfg["board_title"] or "None",
     "${PLC}": "true" if cfg.get("plc") else "false",
-    "${BOOT}": "true" if cfg.get("boot") else "false",
     "${DRIVERS}": ", ".join(cfg.get("project_drivers", [])),
     "${CHIP}": cfg.get("chip", "").upper(),
     "${FLASH}": cfg["flash_kB"],
@@ -200,7 +210,10 @@ def prepare_project(cfg:dict, paths:dict):
   if not FILE.exists(f"{paths['pro']}/main.h"):
     main_h = tpl.get("main.h", templates["main.h"])
     drop = ([] if cfg["project_drivers"] else ["PRO_DRIVERS"]) + pinless
+    drop += [] if cfg.get("boot") else [BOOT_LINE]
     utils.create_file("main.h", without(main_h, drop), paths["pro"], subs, color=c.BLUE)
+  if cfg.get("boot") and not FILE.exists(f"{paths['pro']}/{BOOT_H}"):
+    utils.create_file(BOOT_H, boot_h_text(cfg["pro_name"]), paths["pro"], color=c.BLUE)
 
 def generate(pro:Project, activate:bool=True):
   """
@@ -214,12 +227,18 @@ def generate(pro:Project, activate:bool=True):
   tpl = templates.get(pro.hal, {})
   is_windows = platform.system() == "Windows"
   up_path = PATH.rel(".", pro.pro_dir)
+  drive = os.path.splitdrive(PATH.resolve("."))[0] # empty off Windows
+  boot_image = "$(BUILD)/boot/boot.hex" if pro.boot else ""
+  # a `plain` bootloader holds no key, so `dist` packs the one of builds
+  boot_dist_image = "$(BUILD)/boot-dist/boot.hex" if pro.boot_keys else boot_image
   subs = {
     "${NAME}": pro.name,
     "${LOAD_FLAGS}": pro.load_flags,
     "${TARGET}": pro.target,
     "${STLINK}": pro.stlink,
     "${UP_PATH}": up_path,
+    "${DRIVE}": drive.upper(),
+    "${DRIVE_LOWER}": drive.lower(),
     "${CORE_DIR}": pro.core_dir,
     "${PRO_DIR}": pro.pro_dir,
     "${BUILD_DIR}": pro.build_dir,
@@ -240,14 +259,17 @@ def generate(pro:Project, activate:bool=True):
     "${FLASH}": pro.image_kB,
     "${FLASH_ORIGIN}": f"0x{pro.flash_origin:08X}",
     "${BOOT}": "true" if pro.boot else "false",
-    "${BOOT_IMAGE}": f"$(OPENCPLC)/{pro.boot_image}" if pro.boot_image else "",
-    "${BOOT_ELF}": pro.boot_elf,
-    # the bootloader project hands its hex and elf to Core, an application to the project
-    "${DIST_HEX}": f"$(OPENCPLC)/{pro.bootloader}.hex" if pro.bootloader
-      else "$(PROJECT)/$(DIST).hex",
-    "${DIST_ELF}": f"$(OPENCPLC)/{pro.bootloader}.elf" if pro.bootloader else "",
-    "${BOOT_KEY}": pro.boot_key,
-    "${BOOT_KEY_AT}": f"0x{pro.boot_key_at:08X}" if pro.boot_key_at else "",
+    "${BOOT_IMAGE}": boot_image,
+    "${BOOT_DIST_IMAGE}": boot_dist_image,
+    "${BOOT_ELF}": f"{pro.build_dir}/boot/boot.elf" if pro.boot else "",
+    "${BOOT_kB}": pro.boot_kB,
+    "${BOOT_C}": mk_list(rel_from(pro.boot_c_sources, pro.core_dir)),
+    "${BOOT_S}": mk_list(rel_from(pro.boot_asm_sources, pro.core_dir)),
+    "${BOOT_INCLUDES}": mk_list(include_flags(pro, pro.boot_include_dirs)),
+    "${BOOT_DEFS}": " ".join(f"-D{d}" for d in pro.boot_defines),
+    "${BOOT_DEV_KEY}": dev_key(pro),
+    "${BOOT_KEYS}": pro.boot_keys,
+    "${SIGNING_KEY}": pro.signing_key if pro.boot_keys else "",
     "${RAM}": pro.ram_kB,
     "${FREQ}": pro.freq_Hz,
     "${HAL}": pro.hal,
@@ -278,6 +300,10 @@ def generate(pro:Project, activate:bool=True):
   if pro.linker:
     ld_template = templates["flash"].get(pro.linker, templates["flash"]["stm32g0.ld"])
     utils.create_file("flash.ld", ld_template, pro.pro_dir, subs)
+    # The bootloader links in the build folder, so a reload after `make clean` brings it back
+    if pro.boot:
+      region = {"${FLASH_ORIGIN}": f"0x{FLASH_BASE:08X}", "${FLASH}": pro.boot_kB}
+      utils.create_file("boot.ld", ld_template, pro.build_dir, subs | region)
   # the Core itself has tests alone, and no `main.h`: Forge writes one into its build
   if utils.is_core(pro.name):
     makefile = tpl["core.mk"]
@@ -285,6 +311,7 @@ def generate(pro:Project, activate:bool=True):
   else:
     makefile = tpl.get("project.mk", templates["project.mk"])
   makefile = makefile.replace("${TEST}", test_rules(pro, templates["test.mk"]))
+  makefile = makefile.replace("${BOOT_RULES}", templates["boot.mk"].strip() if pro.boot else "")
   # CubeProgrammer joins PATH of `make stack` only from its default home, elsewhere PATH has it
   keep_cube = bool(pro.stack_script and subs["${CUBE_PATH}"])
   utils.create_file("makefile", makefile, pro.pro_dir, recipe_safe(subs),
@@ -301,7 +328,7 @@ def generate(pro:Project, activate:bool=True):
   # cortex-debug takes its tools from PATH where Forge has no packages to point at
   launch = tpl.get("launch.json", templates["launch.json"])
   drop = [] if pro.stlink else ["openOCDPreConfigLaunchCommands"]
-  drop += [] if pro.boot_elf else ["symbolFiles"]
+  drop += [] if pro.boot else ["symbolFiles"]
   drop += [] if is_windows else ["TOOLS_ARM_DIR", "TOOLS_OPENOCD_EXE"]
   utils.create_file("launch.json", without(launch, drop), ".vscode", subs)
   utils.create_file("tasks.json", templates["tasks.json"], ".vscode", subs)

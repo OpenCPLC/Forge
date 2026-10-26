@@ -2,15 +2,18 @@
 
 """Generators: project makefile, dispatcher, idempotency, preserved mtime."""
 
-import json, re, time
+import json, os, re, time
 from pathlib import Path
 import pytest
 from xaeian import file_context, Color as c
 from opencplc import actions, utils, project
 from opencplc.project import generate, prepare_project
 from opencplc.resolver import resolve_project
+from opencplc.utils import keys
 from conftest import build_workspace, uno_cfg, wb55_cfg, ws_paths, parse_dispatcher, resolve_uno
-from conftest import KEY, ship_key_bootloader, resolve_key_uno, read_makefile
+from conftest import KEY, key_boot, resolve_key_uno, read_makefile
+
+BUILD = Path("build/projects/myapp") # build folder of myapp, the bootloader files in it
 
 @pytest.fixture()
 def ws(tmp_path):
@@ -33,6 +36,21 @@ def project_makefile_and_linker_land_in_the_project(ws):
   assert "stm32g0x mass_erase 0" in make
   assert (ws / "projects" / "myapp" / "flash.ld").exists()
 
+def drive_goes_upper_case_whichever_spelling_make_starts_on(ws):
+  """`.d` files keep the paths they got, so `c:` of VS Code and `C:` of a console must agree."""
+  generate(resolve_uno())
+  drive = os.path.splitdrive(str(ws))[0]
+  anchor = f"$(patsubst {drive.lower()}%,{drive.upper()}%,$(abspath $(THIS_MAKEFILE)))"
+  assert f"MAKEFILE_PATH := {anchor}" in read_makefile(ws)
+
+def top_build_asks_its_own_build_so_fresh_files_stay_quiet(ws):
+  """A new bootloader alone repacks the image, and the elf, hex and bin say nothing."""
+  generate(resolve_uno())
+  make = read_makefile(ws)
+  assert '"$(MAKE)" --no-print-directory -q build && echo Nothing' in make
+  assert '|| "$(MAKE)" --no-print-directory build' in make
+  assert '--no-print-directory $(ARTIFACTS)' not in make
+
 def dispatcher_points_at_the_active_project(ws):
   generate(resolve_uno())
   root = (ws / "makefile").read_text()
@@ -52,18 +70,20 @@ def one_flash_rule_and_the_debugger_load_the_packed_image(ws):
     assert launch["loadFiles"] == ["build/projects/myapp/myapp-dist.hex"]
     assert launch["executable"].endswith("myapp.elf") # symbols stay with the elf
 
-def dist_packs_the_programmer_file_and_the_update_one_again(ws):
+def dist_packs_the_image_again_with_the_bootloader_of_dist(ws):
   """
   Two files: the full image for a bare chip, the image alone for `UPDATE`.
 
-  Packed again rather than copied, so under the `key` bootloader `PRO_BOOT_KEY` signs them.
+  Packed again rather than copied: under the `key` bootloader the product key signs them,
+  behind the bootloader that holds the product keys.
   """
   generate(resolve_uno())
   make = read_makefile(ws)
   dist = make[make.index("\ndist:"):make.index("\nclean:")]
-  packed = "--pack $(BUILD)/$(TARGET).hex $(DIST_HEX) $(BOOT_IMAGE) $(BOOT_KEY_AT) $(BOOT_KEY)"
+  assert dist.startswith("\ndist: build $(BOOT_DIST_IMAGE)\n")
+  packed = ("--pack $(BUILD)/$(TARGET).hex $(PROJECT)/$(DIST).hex $(BOOT_DIST_IMAGE) "
+    "$(if $(BOOT_KEYS),$(BOOT_KEYS) $(SIGNING_KEY) dist)")
   assert packed in dist
-  assert dist.count("COPY") == 1 and dist.index("ifneq ($(DIST_ELF),)") < dist.index("COPY")
   assert dist.index("ifeq ($(BOOT),true)") < dist.index("Full image") < dist.index("Update image")
   assert dist.index("Update image") < dist.index("\nelse\n") < dist.index("Flash image")
 
@@ -147,29 +167,58 @@ def plain_project_links_at_the_start_of_flash(ws):
   assert "-DBOOT_CHIP=0x467" in make # every build, the bootloader one too
   assert "BOOT_IMAGE := \n" in make
   assert "$(FORGE) --pack $< $@ $(BOOT_IMAGE)" in make
+  assert "boot.elf" not in make and "update:" not in make
+  assert not (ws / BUILD / "boot.ld").exists()
 
-def boot_project_links_into_its_slot_and_flashes_one_packed_image(ws):
+def boot_project_links_into_its_slot_and_builds_the_bootloader_under_it(ws):
   generate(resolve_project(uno_cfg() | {"boot": True}, ws_paths(), {}))
   ld = (ws / "projects" / "myapp" / "flash.ld").read_text()
-  assert "ORIGIN = 0x08002000, LENGTH = 242K" in ld
+  assert "ORIGIN = 0x08003000, LENGTH = 240K" in ld
   make = read_makefile(ws)
-  assert "BOOT := true" in make and "FLASH_kB := 242" in make
-  assert "BOOT_IMAGE := $(OPENCPLC)/scr/boot_stm32g0.hex" in make
-  assert "BOOT_KEY_AT := \n" in make and "BOOT_KEY := \n" in make
-  assert "-DBOOT_SLOT_PAGES=121" in make
+  assert "BOOT := true" in make and "FLASH_kB := 240" in make
+  assert "-DBOOT_SLOT_PAGES=120" in make
+  # the `plain` bootloader holds no key, so `dist` packs the one of builds
+  assert "BOOT_IMAGE := $(BUILD)/boot/boot.hex\n" in make and "BOOT_KEYS := \n" in make
+  assert "BOOT_DIST_IMAGE := $(BUILD)/boot/boot.hex\n" in make
+  assert "BOOT_kB := 10\n" in make and "BOOT_C = .boot/main.c \\\n" in make
+  assert "$(BUILD)/boot/boot.elf:" in make and "\nupdate: build\n" in make
+  assert "BOOT_DEV_KEY := \n" in make # a `plain` bootloader takes no key
+  # `main.h` of Core `.boot/` first, then `boot.h` of the project
+  assert "BOOT_INCLUDES = -I$(OPENCPLC)/.boot \\\n-I$(PROJECT) \\\n" in make
+  # the region less its mailbox page, linked at the start of flash
+  boot_ld = (ws / BUILD / "boot.ld").read_text()
+  assert "ORIGIN = 0x08000000, LENGTH = 10K" in boot_ld
 
-def key_project_packs_the_key_bootloader_and_names_its_key_slot(ws):
-  ship_key_bootloader(ws)
+def key_bootloader_of_builds_takes_the_development_key(ws):
+  """A board on the desk takes what this computer builds and keeps its floors in the slot."""
   generate(resolve_key_uno())
   ld = (ws / "projects" / "myapp" / "flash.ld").read_text()
   assert "ORIGIN = 0x08008000, LENGTH = 230K" in ld
   make = read_makefile(ws)
-  assert "BOOT_IMAGE := $(OPENCPLC)/scr/boot_stm32g0_key.hex" in make
-  assert "BOOT_KEY_AT := 0x080077E0" in make and f"BOOT_KEY := {KEY}" in make
+  assert "BOOT_IMAGE := $(BUILD)/boot/boot.hex\n" in make
+  assert "BOOT_DIST_IMAGE := $(BUILD)/boot-dist/boot.hex\n" in make
+  assert f"BOOT_KEYS := {KEY}\n" in make and "SIGNING_KEY := 0\n" in make
   assert "-DBOOT_PAGES=16" in make and "-DBOOT_SLOT_PAGES=115" in make
-  assert "$(FORGE) --pack $< $@ $(BOOT_IMAGE) $(BOOT_KEY_AT)\n" in make
-  # a rebuilt bootloader packs again
+  assert "-DBOOT_KEYS" not in make # both programs read the keys from boot.h
+  # a build signs with the development key, the one the bootloader of builds takes
+  assert "--pack $< $@ $(BOOT_IMAGE) $(if $(BOOT_KEYS),$(BOOT_KEYS) $(SIGNING_KEY))\n" in make
   assert "-dist.hex: $(BUILD)/$(TARGET).hex $(BOOT_IMAGE)\n" in make
+  assert "BOOT_kB := 30\n" in make
+  assert "ORIGIN = 0x08000000, LENGTH = 30K" in (ws / BUILD / "boot.ld").read_text()
+  assert f"BOOT_DEV_KEY := {keys.dev_public().hex()}\n" in make
+  # the flag goes to the objects of `boot/` alone, `boot-dist/` takes the product keys
+  desk = make[make.index("$(BUILD)/boot/%.o: $(OPENCPLC)/%.c"):]
+  dist = make[make.index("$(BUILD)/boot-dist/%.o: $(OPENCPLC)/%.c"):]
+  assert "$(BOOT_DEV)" in desk.split("\n\n")[0] and "$(BOOT_DEV)" not in dist.split("\n\n")[0]
+
+def boot_h_of_the_project_reloads_the_makefile(ws):
+  generate(resolve_key_uno())
+  assert "$(wildcard $(PROJECT)/main.h $(PROJECT)/boot.h " in read_makefile(ws)
+
+def dist_signs_with_the_key_pro_signing_key_names(ws):
+  cfg = uno_cfg() | key_boot(KEY * 2) | {"signing_key": 1}
+  generate(resolve_project(cfg, ws_paths(), {}))
+  assert "SIGNING_KEY := 1\n" in read_makefile(ws)
 
 def stack_rule_takes_cube_from_its_default_home(ws, monkeypatch):
   monkeypatch.setattr(utils, "cube_bin", lambda: "C:/Program Files/cube/bin")
@@ -204,53 +253,32 @@ def chip_without_radio_stack_gets_no_cube(ws, monkeypatch):
 
 def no_placeholder_outlives_generation(ws):
   """Make reads a stray `${KEY}` as an empty variable, so a missing color would vanish silently."""
-  files = ("projects/myapp/makefile", "makefile", "projects/myapp/flash.ld",
-    ".vscode/launch.json", ".vscode/c_cpp_properties.json")
-  for cfg in (uno_cfg(), uno_cfg() | {"boot": True}, wb55_cfg()):
+  files = ["projects/myapp/makefile", "makefile", "projects/myapp/flash.ld",
+    ".vscode/launch.json", ".vscode/c_cpp_properties.json"]
+  for cfg in (uno_cfg(), uno_cfg() | {"boot": True}, uno_cfg() | key_boot(), wb55_cfg(),
+    wb55_cfg() | key_boot()):
     generate(resolve_project(cfg, ws_paths(), {}))
-    for name in files:
+    for name in files + ([f"{BUILD.as_posix()}/boot.ld"] if cfg.get("boot") else []):
       assert not re.findall(r"\$\{[A-Z_]+\}", (ws / name).read_text()), name
 
 def the_dispatcher_forwards_every_project_target(ws):
   """Anything a project declares in `.PHONY` is reachable from the workspace root."""
-  generate(resolve_uno())
-  phony = lambda text: set(text.split(".PHONY:")[1].split("\n")[0].split())
+  def phony(text:str) -> set:
+    return {t for ln in text.splitlines() if ln.startswith(".PHONY:") for t in ln.split()[1:]}
+  generate(resolve_key_uno())
   assert phony(read_makefile(ws)) - phony((ws / "makefile").read_text()) == set()
 
-def core_without_the_bootloader_hex_exits(ws):
-  (ws / "opencplc" / "1.0.0" / "scr" / "boot_stm32g0.hex").unlink()
-  with pytest.raises(SystemExit):
-    resolve_project(uno_cfg() | {"boot": True}, ws_paths(), {})
+def program_alone_takes_the_image_dist_left_in_the_project(ws):
+  (ws / "projects" / "myapp" / "myapp-1.0.hex").write_text(":00000001FF\n")
+  found = actions.dist_image(resolve_uno(), yes=False)
+  assert Path(found) == ws / "projects" / "myapp" / "myapp-1.0.hex"
 
-def bootloader_project_links_its_code_region_and_dists_into_core(ws):
-  """`BOOT_KEY` marks it: the region less the mailbox page, whatever `PRO_FLASH_kB` says."""
-  for key, length, stem in ((False, "6K", "boot_stm32g0"), (True, "30K", "boot_stm32g0_key")):
-    cfg = uno_cfg() | {"flash_kB": 492, "bootloader": True, "boot_key_build": key}
-    generate(resolve_project(cfg, ws_paths(), {}))
-    ld = (ws / "projects" / "myapp" / "flash.ld").read_text()
-    assert f"ORIGIN = 0x08000000, LENGTH = {length}" in ld
-    make = read_makefile(ws)
-    assert f"DIST_HEX = $(OPENCPLC)/scr/{stem}.hex\n" in make
-    assert f"DIST_ELF := $(OPENCPLC)/scr/{stem}.elf\n" in make
-
-def program_alone_finds_the_bootloader_image_in_core(ws):
-  """The bootloader project dists into Core, so `--program` alone looks there."""
-  cfg = uno_cfg() | {"flash_kB": 492, "bootloader": True, "boot_key_build": False}
-  found = actions.dist_image(resolve_project(cfg, ws_paths(), {}), yes=False)
-  assert Path(found) == ws / "opencplc" / "1.0.0" / "scr" / "boot_stm32g0.hex"
-
-def application_dists_into_its_project(ws):
+def debugger_takes_the_symbols_of_the_bootloader_the_build_makes(ws):
+  """`make` before the debugger builds the bootloader under the image, its elf with it."""
   generate(resolve_uno())
-  make = read_makefile(ws)
-  assert "DIST_HEX = $(PROJECT)/$(DIST).hex\n" in make and "DIST_ELF := \n" in make
-
-def debugger_takes_the_bootloader_symbols_when_core_ships_them(ws):
-  cfg = uno_cfg() | {"boot": True}
-  generate(resolve_project(cfg, ws_paths(), {}))
   launch = json.loads((ws / ".vscode" / "launch.json").read_text())["configurations"][0]
   assert "symbolFiles" not in launch
-  (ws / "opencplc" / "1.0.0" / "scr" / "boot_stm32g0.elf").write_bytes(b"")
-  generate(resolve_project(cfg, ws_paths(), {}))
+  generate(resolve_key_uno())
   launch = json.loads((ws / ".vscode" / "launch.json").read_text())["configurations"][0]
   assert launch["symbolFiles"] == [{"file": "build/projects/myapp/myapp.elf"},
-    {"file": "opencplc/1.0.0/scr/boot_stm32g0.elf"}]
+    {"file": "build/projects/myapp/boot/boot.elf"}]

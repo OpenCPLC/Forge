@@ -13,11 +13,12 @@ Both paths return the same cfg dict that `resolve_project()` consumes.
 
 import re, sys
 from xaeian import Print, Color as c, Ico, FILE, DIR, PATH
-from .config import URL_CORE, DIR_TESTS, OPT_DEFAULT, LOG_LEVEL_DEFAULT
+from .config import URL_CORE, DIR_TESTS, BOOT_H, BOOT_LINE, OPT_DEFAULT, LOG_LEVEL_DEFAULT
 from .args import flag
 from .platforms import parse_chip
 from .boards import Board, load_boards, board_pick, board_list, parse_drivers
 from .workspace import ensure_refs
+from .utils import keys
 from . import utils
 
 p = Print()
@@ -115,15 +116,18 @@ def config_new(args, projects:dict, paths:dict, fw_ver:str, forge_cfg:dict) -> d
     user_kB = args.memory[2] if len(args.memory) > 2 else 0
     cfg["flash_kB"] = args.memory[0] - user_kB
     cfg["ram_kB"] = args.memory[1]
-  return cfg | {
+  cfg |= {
     "pro_name": args.name,
     "pro_ver": fw_ver,
     "fw_ver": fw_ver,
     "opt_level": args.opt_level or OPT_DEFAULT,
     "log_level": LOG_LEVEL_DEFAULT,
     "boot": args.boot,
-    "project_drivers": parse_drivers(args.dvr),
+    "boot_keys": "",
+    "signing_key": 0,
+    "project_drivers": parse_drivers(args.drv),
   }
+  return cfg
 
 def flags_reject(args):
   """
@@ -136,25 +140,34 @@ def flags_reject(args):
   if args.memory: used.append((flag.m, "PRO_FLASH_kB / PRO_RAM_kB"))
   if args.opt_level: used.append((flag.o, "PRO_OPT_LEVEL"))
   if args.plc: used.append((flag.P, "PRO_PLC"))
-  if args.dvr: used.append((flag.D, "PRO_DRIVERS"))
-  if args.boot: used.append((flag.B, "PRO_BOOT"))
+  if args.drv: used.append((flag.D, "PRO_DRIVERS"))
+  if args.boot: used.append((flag.B, BOOT_LINE))
   if not used: return
   used_flag, define = used[0]
   p.err(f"Flag {used_flag} only configures a new project")
   p.run(f"Edit {c.SKY}{define}{c.END} in {c.BLUE}main.h{c.END}, then reload with {flag.r}")
   sys.exit(1)
 
-# `PRO_BOOT` takes `PRO_BOOT_KEY` along, `BOOT_KEY` is the switch of the bootloader project
-MAIN_H_DEFINES = ["PRO_FRAMEWORK", "PRO_FLASH_kB", "PRO_RAM_kB", "PRO_OPT_LEVEL",
-  "PRO_PLC", "PRO_BOOT", "PRO_DRIVERS", "LOG_LEVEL", "SYS_CLOCK_FREQ", "BOOT_KEY"]
+# Settings of main.h Forge reads: the application and how Forge builds and signs it
+MAIN_H_DEFINES = [
+  "PRO_FRAMEWORK", "PRO_FLASH_kB", "PRO_RAM_kB", "PRO_OPT_LEVEL", "PRO_PLC", "PRO_DRIVERS",
+  "PRO_SIGNING_KEY",
+  "LOG_LEVEL", "SYS_CLOCK_FREQ",
+]
+KEY_LIMIT = 1 << 16 # key numbers fit 16 bits of the image header
+DEFINE = re.compile(r"\s*#define\s+(\w+)")
+BOOT_INCLUDE = re.compile(rf'\s*#include\s+"{re.escape(BOOT_H)}"')
 
 def main_h_defines(lines:list[str]) -> dict:
   """`#define` entries Forge reads from main.h, its comments cleared already."""
-  info = utils.get_vars(lines, ["PRO_BOARD", "PRO_CHIP"], "_", "#define", required=False)
-  return info | utils.get_vars(lines, MAIN_H_DEFINES, " ", "#define", required=False)
+  # Board and chip are flags without a value
+  flags = [ln for ln in lines if re.fullmatch(r"\s*#define\s+PRO_(BOARD|CHIP)_\w+\s*", ln)]
+  info = utils.get_vars(flags, ["PRO_BOARD", "PRO_CHIP"], "_", "#define", required=False)
+  info |= utils.get_vars(lines, MAIN_H_DEFINES, " ", "#define", required=False)
+  return info
 
-def read_main_h(args, projects:dict) -> dict:
-  """`#define` entries of an existing project; exits when the file is missing or unusable."""
+def read_main_h(args, projects:dict) -> tuple[dict, list[str]]:
+  """`#define` entries of an existing project and its lines cleared; a bad main.h exits."""
   key = utils.project_key(projects, args.name)
   if key is None:
     p.err(f"Project {c.MAGNTA}{args.name}{c.END} does not exist")
@@ -171,7 +184,8 @@ def read_main_h(args, projects:dict) -> dict:
   if not lines:
     p.err(f"File {shown} is empty or unreadable")
     sys.exit(1)
-  info = main_h_defines(utils.lines_clear(lines, "//"))
+  lines = utils.lines_clear(lines, "//")
+  info = main_h_defines(lines)
   # in Core the folder names the version, a pin would lie on a checkout of another one
   in_core = bool(utils.core_version(key))
   if in_core and info.get("PRO_FRAMEWORK"):
@@ -184,16 +198,70 @@ def read_main_h(args, projects:dict) -> dict:
     p.run(f"Open it and add the Core version, {c.SKY}#define PRO_FRAMEWORK \"<version>\"{c.END}, "
       f"versions listed by {flag.F}")
     sys.exit(1)
-  return info
+  return info, lines
 
-def boot_key(info:dict) -> str:
-  """`PRO_BOOT_KEY` as 64 lowercase hex digits, "" without one; any other value exits."""
-  key = info.get("PRO_BOOT_KEY", "").strip().lower()
-  if key and not re.fullmatch(r"[0-9a-f]{64}", key):
-    p.err(f"Definition {c.SKY}PRO_BOOT_KEY{c.END} in {c.BLUE}main.h{c.END} "
-      "needs the public key as 64 hex digits")
+def main_h_number(info:dict, name:str) -> int:
+  """Number `name` of main.h, `0` without it; anything but a number below `KEY_LIMIT` exits."""
+  value = info.get(name, "0").strip()
+  if not value.isdigit() or int(value) >= KEY_LIMIT:
+    p.err(f"Definition {c.SKY}{name}{c.END} in {c.BLUE}main.h{c.END} "
+      f"needs a number below {KEY_LIMIT}")
     sys.exit(1)
-  return key
+  return int(value)
+
+def boot_included(lines:list[str]) -> bool:
+  """`True` when main.h includes `boot.h`: the project runs behind the bootloader."""
+  return any(BOOT_INCLUDE.match(ln) for ln in lines)
+
+def read_boot_h(name:str, pro_dir:str) -> list[str]:
+  """Lines of `boot.h` of project `name`, comments cleared; a missing file exits."""
+  path = PATH.resolve(f"{pro_dir}/{BOOT_H}", read=False)
+  if not FILE.exists(path):
+    p.err(f"File {utils.color_main_h(name)} includes {c.BLUE}{BOOT_H}{c.END}, "
+      "which the project lacks")
+    p.run(f"Create it beside main.h, empty for a {c.SKY}plain{c.END} bootloader, "
+      f"or remove the {c.SKY}#include{c.END}")
+    sys.exit(1)
+  return utils.lines_clear(utils.load_lines(path) or [], "//")
+
+def layer_reject(lines:list[str], prefix:str, shown:str, home:str):
+  """A `#define` of `prefix` in the file `shown` exits, as it belongs in `home`."""
+  for ln in lines:
+    match = DEFINE.match(ln)
+    if not match or not match.group(1).startswith(prefix): continue
+    p.err(f"Definition {c.SKY}{match.group(1)}{c.END} in {shown} belongs in {c.BLUE}{home}{c.END}")
+    p.run(f"Move it to {c.BLUE}{home}{c.END} of the project")
+    sys.exit(1)
+
+def layers_check(name:str, main_lines:list[str], boot_lines:list[str]):
+  """`PRO_` settings stay in main.h for the application, `BOOT_` ones in boot.h for both."""
+  layer_reject(main_lines, "BOOT_", utils.color_main_h(name), BOOT_H)
+  layer_reject(boot_lines, "PRO_", utils.color_pro_file(name, BOOT_H), "main.h")
+
+def boot_keys(lines:list[str]) -> str:
+  """`BOOT_KEYS` of boot.h as C joins them, "" without; anything but whole keys exits."""
+  written = utils.define_string(lines, "BOOT_KEYS")
+  if written is None: return ""
+  if not re.fullmatch(r"(?:[0-9a-fA-F]{64})+", written):
+    p.err(f"Definition {c.SKY}BOOT_KEYS{c.END} in {c.BLUE}{BOOT_H}{c.END} "
+      "needs public keys of 64 hex digits each")
+    sys.exit(1)
+  return written
+
+def boot_rules(cfg:dict):
+  """A bootloader needs an STM32 chip, and `PRO_SIGNING_KEY` one of the keys of `BOOT_KEYS`."""
+  if not cfg["boot"]: return
+  if cfg["platform"] != "STM32":
+    p.err(f"Chip {c.PINK}{cfg['chip']}{c.END} runs no bootloader")
+    p.run(f"Open {utils.color_main_h(cfg['pro_name'])} and remove {c.SKY}{BOOT_LINE}{c.END}")
+    sys.exit(1)
+  count = len(keys.keys_split(cfg["boot_keys"]))
+  if cfg["signing_key"] and cfg["signing_key"] >= count:
+    p.err(f"{c.SKY}PRO_SIGNING_KEY{c.END} {c.GOLD}{cfg['signing_key']}{c.END} "
+      f"is past the {c.GOLD}{count}{c.END} keys of {c.SKY}BOOT_KEYS{c.END}")
+    command = f"opencplc --keygen <name> {cfg['signing_key'] + 1}"
+    p.run(f"Add keys with {utils.color_command(command)}")
+    sys.exit(1)
 
 def resolve_version(args, pro_ver:str, paths:dict, fw_ver:str, forge_cfg:dict) -> str:
   """
@@ -236,7 +304,7 @@ def config_core(name:str, core:str) -> dict:
   return parse_chip("HOST") | board_fields(None) | {
     "pro_name": name, "pro_ver": core, "fw_ver": core,
     "opt_level": OPT_DEFAULT, "log_level": LOG_LEVEL_DEFAULT,
-    "boot": False, "boot_key": "", "bootloader": False, "boot_key_build": False,
+    "boot": False, "boot_keys": "", "signing_key": 0,
     "plc": False, "project_drivers": [], "freq_Hz": 0,
   }
 
@@ -253,7 +321,10 @@ def config_load(args, projects:dict, paths:dict, fw_ver:str, forge_cfg:dict) -> 
       p.err(f"Core {c.VIOLET}{args.name}{c.END} has no {c.GREY}{DIR_TESTS}/{c.END}")
       sys.exit(1)
     return config_core(args.name, utils.core_version(args.name))
-  info = read_main_h(args, projects)
+  info, lines = read_main_h(args, projects)
+  boot = boot_included(lines)
+  boot_lines = read_boot_h(args.name, projects[args.name]) if boot else []
+  layers_check(args.name, lines, boot_lines)
   core = utils.core_version(args.name)
   pro_ver = core or info["PRO_FRAMEWORK"]
   cfg = {
@@ -261,10 +332,9 @@ def config_load(args, projects:dict, paths:dict, fw_ver:str, forge_cfg:dict) -> 
     "pro_ver": pro_ver,
     "opt_level": info.get("PRO_OPT_LEVEL", OPT_DEFAULT),
     "log_level": info.get("LOG_LEVEL", LOG_LEVEL_DEFAULT),
-    "boot": info.get("PRO_BOOT", "").strip().lower() == "true",
-    "boot_key": boot_key(info),
-    "bootloader": "BOOT_KEY" in info, # the switch marks the bootloader project itself
-    "boot_key_build": info.get("BOOT_KEY", "").strip().lower() in ("on", "true", "1"),
+    "boot": boot,
+    "boot_keys": boot_keys(boot_lines),
+    "signing_key": main_h_number(info, "PRO_SIGNING_KEY"),
     "project_drivers": parse_drivers(info.get("PRO_DRIVERS", "")),
   }
   use_ver = core or resolve_version(args, pro_ver, paths, fw_ver, forge_cfg)
@@ -279,14 +349,22 @@ def config_load(args, projects:dict, paths:dict, fw_ver:str, forge_cfg:dict) -> 
     cfg["flash_kB"] = int(info.get("PRO_FLASH_kB", cfg["flash_kB"]))
     cfg["ram_kB"] = int(info.get("PRO_RAM_kB", cfg["ram_kB"]))
     cfg["freq_Hz"] = int(info.get("SYS_CLOCK_FREQ", cfg["freq_Hz"]))
+  boot_rules(cfg)
   return cfg
 
 def main_h_hardware(name:str, board:str, chip:str, plc:str, paths:dict) -> dict:
   """Board and chip main.h of project `name` names; `plc` is its `PRO_PLC`."""
   hardware = hardware_config(board, chip, plc == "true", paths)
+  # C tells boards apart by the name as Core spells it: `PRO_BOARD_UNO` includes no `Uno`
+  title = hardware["board_title"]
+  if board and board != title:
+    p.err(f"Definition {c.SKY}PRO_BOARD_{board}{c.END} spells board "
+      f"{c.TURQUS}{title}{c.END} otherwise than Core")
+    p.run(f"Open {utils.color_main_h(name)} and set {c.SKY}#define PRO_BOARD_{title}{c.END}")
+    sys.exit(1)
   # A main.h without `PRO_PLC` leaves the layer to the board, as at creation
   if hardware["plc"] and plc not in ("", "true"):
-    p.err(f"Board {c.TURQUS}{hardware['board_title']}{c.END} runs on the PLC layer")
+    p.err(f"Board {c.TURQUS}{title}{c.END} runs on the PLC layer")
     p.run(f"Open {utils.color_main_h(name)} and set {c.SKY}#define PRO_PLC true{c.END}")
     sys.exit(1)
   return hardware

@@ -14,6 +14,7 @@ def load_templates() -> dict:
       "project.mk": FILE.load("project.mk"),
       "workspace.mk": FILE.load("workspace.mk"),
       "test.mk": FILE.load("test.mk"),
+      "boot.mk": FILE.load("boot.mk"),
       "flash": {
         "stm32g0.ld": FILE.load("flash/stm32g0.ld"),
         "stm32wb.ld": FILE.load("flash/stm32wb.ld"),
@@ -24,6 +25,7 @@ def load_templates() -> dict:
       "settings.json": FILE.load("settings.json"),
       "extensions.json": FILE.load("extensions.json"),
       "main.h": FILE.load("main.h"),
+      "boot.h": FILE.load("boot.h"),
       "main.c": FILE.load("main.c"),
       "main-none.c": FILE.load("main-none.c"),
       "host": {

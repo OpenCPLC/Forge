@@ -1,5 +1,13 @@
 # Changes `opencplc`
 
+## `0.5.1` One bootloader
+
+- Bootloader of Core built with each image that includes `boot.h`
+- `--keygen NAME COUNT` adds product key and spare ones to `boot.h`
+- Builds sign with development key, `make dist` with product key
+- `make update` sends image over console
+- `--lock 0` clears every write protection
+
 ## `0.5.0` Tests
 
 - `make test` runs `.tests/*.c` on computer, `opencplc opencplc/<version>` tests Core itself

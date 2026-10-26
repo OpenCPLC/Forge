@@ -1,28 +1,58 @@
 # opencplc/keygen.py
 
 """
-`--keygen <name>`: product key of a project, made or taken, written into its main.h.
+`--keygen NAME [COUNT]`: product keys of an application, made or taken, added to its `boot.h`.
 
-Key lands right under `PRO_BOOT` as `PRO_BOOT_KEY`, with `PRO_BOOT_EPOCH 0` below it,
-and `PRO_BOOT` turns true: `key` without a bootloader means nothing.
-A project with a key keeps it, a new one would cut off devices in the field.
+`COUNT` keys go in, `NAME` and its spare ones `NAME-1`, `NAME-2`...,
+so the same command in another application of the product writes the same list.
+Keys are numbered from `0` in the order of `BOOT_KEYS`, so a new one always goes at the end:
+a key changed or taken out would cut off the devices in the field that trust it.
+A project without the bootloader gets its `boot.h` and the `#include` of it in main.h.
 """
 
 import os, re, sys, getpass
 from xaeian import Print, Color as c, FILE
-from .utils import keys
+from .args import flag
+from .config import BOOT_H, BOOT_LINE
+from .configure import boot_included, boot_keys, layers_check
+from .project import boot_h_text
+from .utils import keys, lines_clear
+from . import utils
 
 p = Print()
 
 NAME = re.compile(r"[A-Za-z0-9_-]+")
 DEV_NAME = keys.DEV_KEY.removesuffix(".key") # `dev`, the development key file
 PASSWORD_MIN = 8
+COUNT_MAX = 16 # past a handful, spare keys only add text to the bootloader
+KEYS_NOTE = "// Product keys, numbered from `0`: `--keygen` adds the next one at the end"
+KEYS_DEFINE = re.compile(r"\s*#define\s+BOOT_KEYS\b")
+INCLUDE = re.compile(r"\s*#include\b")
 
-def new_password(name:str) -> str:
-  """Password of a new key: `OPENCPLC_KEY_PASSWORD`, or typed twice."""
+#--------------------------------------------------------------------------------------------- Keys
+
+def key_names(args:list[str]) -> list[str]:
+  """Names of `--keygen NAME [COUNT]`: `NAME`, then `NAME-1` up to `NAME-<COUNT-1>`."""
+  if len(args) > 2:
+    p.err(f"Flag {flag.keygen} takes NAME and an optional COUNT")
+    sys.exit(1)
+  name, count = args[0], args[1] if len(args) > 1 else "1"
+  # Windows file names ignore case, so `DEV` would land on the development key
+  if not NAME.fullmatch(name) or name.lower() == DEV_NAME:
+    p.err(f"Key name {c.MAGNTA}{name}{c.END} takes letters, digits, `-` and `_`, "
+      f"`{DEV_NAME}` is reserved")
+    sys.exit(1)
+  if not count.isdigit() or not 1 <= int(count) <= COUNT_MAX:
+    p.err(f"Key count {c.MAGNTA}{count}{c.END} takes a number from 1 to {COUNT_MAX}")
+    sys.exit(1)
+  return [name] + [f"{name}-{i}" for i in range(1, int(count))]
+
+def new_password(names:list[str]) -> str:
+  """Password of new keys: `OPENCPLC_KEY_PASSWORD`, or typed twice; empty for none."""
   if os.environ.get(keys.PASSWORD_ENV): return os.environ[keys.PASSWORD_ENV]
-  password = getpass.getpass(f"Password of new key {name}: ")
-  if len(password) < PASSWORD_MIN:
+  shown = ", ".join(names)
+  password = getpass.getpass(f"Password of new keys {shown}, empty for none: ")
+  if password and len(password) < PASSWORD_MIN:
     p.err(f"Password shorter than {PASSWORD_MIN} characters")
     sys.exit(1)
   if getpass.getpass("Repeat password: ") != password:
@@ -30,51 +60,109 @@ def new_password(name:str) -> str:
     sys.exit(1)
   return password
 
-def with_key(main_h:str, public:bytes) -> str:
-  """main.h with the key under `PRO_BOOT`; a project that has one exits."""
-  nl = "\r\n" if "\r\n" in main_h else "\n"
+def lost_pub_reject(name:str):
+  """A `.key` left without its `.pub` exits: a new key of that name would replace it."""
+  if not FILE.exists(f"{keys.keys_dir()}/{name}.key"): return
+  p.err(f"Key {c.GOLD}{name}{c.END} lost {c.BLUE}{name}.pub{c.END} "
+    f"beside {c.BLUE}{name}.key{c.END} in {c.CREAM}{keys.keys_dir()}{c.END}")
+  p.run(f"Recreate {c.BLUE}{name}.pub{c.END} with one line: the key from "
+    f"{c.SKY}BOOT_KEYS{c.END} of a bootloader that trusts it")
+  sys.exit(1)
+
+def keys_ready(names:list[str]) -> dict[str, bytes]:
+  """Public key of every name: taken from this computer, the missing ones made, one password."""
+  publics = {name: keys.product_public(name) for name in names}
+  new = [name for name, public in publics.items() if public is None]
+  for name in new: lost_pub_reject(name)
+  taken = [name for name in names if name not in new]
+  if taken:
+    p.inf(f"Keys {c.GOLD}{', '.join(taken)}{c.END} taken from {c.CREAM}{keys.keys_dir()}{c.END}")
+  if not new: return publics
+  password = new_password(new)
+  for name in new: publics[name] = keys.product_make(name, password)
+  p.ok(f"Keys {c.GOLD}{', '.join(new)}{c.END} made in {c.CREAM}{keys.keys_dir()}{c.END}")
+  if password:
+    p.wrn("Keep two offline copies of the .key files and their password, "
+      "the spare keys away from the first")
+  else:
+    p.wrn("Keys without a password: a .key file alone signs, "
+      "keep it and its copy offline on encrypted drives")
+  return publics
+
+#-------------------------------------------------------------------------------------------- Files
+
+def text_load(path:str) -> str:
+  """Text of `path`, its line endings as they are."""
+  return FILE.load(path, binary=True).decode("utf-8")
+
+def text_save(path:str, text:str):
+  """`text` into `path`, its line endings as they are; a file holding it keeps its mtime."""
+  data = text.encode("utf-8")
+  if not FILE.exists(path) or FILE.load(path, binary=True) != data: FILE.save(path, data)
+
+def newline(text:str) -> str:
+  """Line ending of `text`: CRLF when it has one, LF otherwise."""
+  return "\r\n" if "\r\n" in text else "\n"
+
+def files_check(name:str, main_h:str, boot_h:str):
+  """main.h and boot.h a load would refuse stop here, before any password is asked."""
+  main_lines = lines_clear(main_h.splitlines(), "//")
+  boot_lines = lines_clear(boot_h.splitlines(), "//")
+  layers_check(name, main_lines, boot_lines)
+  boot_keys(boot_lines)
+
+def keys_put(lines:list[str], block:list[str]):
+  """`block` in place of `BOOT_KEYS` in `lines` of boot.h, without one before its guard closes."""
+  start = next((i for i, ln in enumerate(lines) if KEYS_DEFINE.match(ln)), None)
+  if start is not None:
+    stop = start
+    while stop + 1 < len(lines) and lines[stop].rstrip().endswith("\\"): stop += 1
+    lines[start:stop + 1] = block
+    return
+  endif = [i for i, ln in enumerate(lines) if ln.strip().startswith("#endif")]
+  at = endif[-1] if endif else len(lines)
+  lines[at:at] = [KEYS_NOTE] + block + [""]
+
+def include_put(lines:list[str]):
+  """`#include "boot.h"` in `lines` of main.h, behind its last include; one there stays."""
+  if boot_included(lines_clear(lines, "//")): return
+  at = max((i for i, ln in enumerate(lines) if INCLUDE.match(ln)), default=-1)
+  lines.insert(at + 1, BOOT_LINE)
+
+def with_keys(boot_h:str, publics:list[bytes]) -> tuple[str, list[int]]:
+  """
+  boot.h with the keys of `publics` it lacks at the end of `BOOT_KEYS`,
+  and the number of every key of `publics`.
+
+  Keys boot.h holds stay as written, so a boot.h that has them all comes back unchanged.
+  """
+  nl = newline(boot_h)
+  lines = boot_h.split(nl)
+  pieces = keys.keys_split(boot_keys(lines_clear(lines, "//")))
+  known = [piece.lower() for piece in pieces]
+  new = [k for k in dict.fromkeys(pub.hex() for pub in publics) if k not in known]
+  if new: keys_put(lines, keys.keys_block(pieces + new))
+  return nl.join(lines), [(known + new).index(pub.hex()) for pub in publics]
+
+def with_include(main_h:str) -> str:
+  """main.h that includes `boot.h`; one that does comes back unchanged."""
+  nl = newline(main_h)
   lines = main_h.split(nl)
-  if any(re.match(r"\s*#define\s+PRO_BOOT_KEY\b", line) for line in lines):
-    p.err(f"Project has {c.SKY}PRO_BOOT_KEY{c.END} already, "
-      "new key would cut off devices in the field")
-    sys.exit(1)
-  # commented key of earlier tries gives way
-  commented = re.compile(r"\s*//\s*#define\s+PRO_BOOT_(KEY|EPOCH)\b")
-  lines = [line for line in lines if not commented.match(line)]
-  boot = re.compile(r"\s*#define\s+PRO_BOOT\s")
-  at = next((i for i, line in enumerate(lines) if boot.match(line)), None)
-  if at is None:
-    p.err(f"File {c.BLUE}main.h{c.END} has no {c.SKY}PRO_BOOT{c.END} definition, "
-      "the key goes right below it")
-    p.run(f"Add {c.SKY}#define PRO_BOOT true{c.END} to it and run again")
-    sys.exit(1)
-  lines[at:at + 1] = ["#define PRO_BOOT true",
-    f'#define PRO_BOOT_KEY "{public.hex()}"', "#define PRO_BOOT_EPOCH 0"]
+  include_put(lines)
   return nl.join(lines)
 
-def keygen(name:str, main_h_path:str):
-  """Product key `name` made, or taken when this machine has it, and written into main.h."""
-  # Windows file names ignore case, so `DEV` would land on the development key
-  if not NAME.fullmatch(name) or name.lower() == DEV_NAME:
-    p.err(f"Key name {c.MAGNTA}{name}{c.END} takes letters, digits, `-` and `_`, "
-      f"`{DEV_NAME}` is reserved")
-    sys.exit(1)
-  text = FILE.load(main_h_path, binary=True).decode("utf-8")
-  public = keys.product_public(name)
-  if public is None:
-    with_key(text, bytes(32)) # its refusals come before any password: a key already, no `PRO_BOOT`
-    if FILE.exists(f"{keys.keys_dir()}/{name}.key"):
-      p.err(f"Key {c.GOLD}{name}{c.END} lost {c.BLUE}{name}.pub{c.END} "
-        f"beside {c.BLUE}{name}.key{c.END} in {c.CREAM}{keys.keys_dir()}{c.END}")
-      p.run(f"Recreate {c.BLUE}{name}.pub{c.END} with one line: the {c.SKY}PRO_BOOT_KEY{c.END} "
-        "hex of a project signed with this key")
-      sys.exit(1)
-    public = keys.product_make(name, new_password(name))
-    p.ok(f"Key {c.GOLD}{name}{c.END} made in {c.CREAM}{keys.keys_dir()}{c.END}")
-    p.wrn(f"Keep two offline copies of {c.BLUE}{name}.key{c.END} and its password: "
-      "losing either ends updates of every device")
-  else:
-    p.inf(f"Key {c.GOLD}{name}{c.END} taken from {c.CREAM}{keys.keys_dir()}{c.END}")
-  FILE.save(main_h_path, with_key(text, public).encode("utf-8"))
-  p.ok(f"{c.SKY}PRO_BOOT_KEY{c.END} {c.GOLD}{keys.fingerprint(public)}{c.GREY}...{c.END} "
-    f"written into {c.BLUE}main.h{c.END}")
+#------------------------------------------------------------------------------------------ Command
+
+def keygen(args:list[str], name:str, pro_dir:str):
+  """`--keygen NAME [COUNT]` on project `name`: keys made or taken, held by its boot.h."""
+  names = key_names(args)
+  main_path, boot_path = f"{pro_dir}/main.h", f"{pro_dir}/{BOOT_H}"
+  main_h = text_load(main_path)
+  boot_h = text_load(boot_path) if FILE.exists(boot_path) else boot_h_text(name)
+  files_check(name, main_h, boot_h)
+  publics = keys_ready(names)
+  boot_h, numbers = with_keys(boot_h, list(publics.values()))
+  text_save(boot_path, boot_h)
+  text_save(main_path, with_include(main_h))
+  held = (f"{c.GOLD}{key}{c.END} as {c.GOLD}{n}{c.END}" for key, n in zip(names, numbers))
+  p.ok(f"{c.SKY}BOOT_KEYS{c.END} of {utils.color_pro_file(name, BOOT_H)} holds {', '.join(held)}")

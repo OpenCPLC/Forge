@@ -10,6 +10,7 @@
 #define MAIN_H_
 
 #include <xdef.h>
+#include "boot.h"
 
 #define PRO_BOARD_${BOARD}
 #define PRO_CHIP_${CHIP}
@@ -17,7 +18,6 @@
 #define PRO_FRAMEWORK "${PRO_FRAMEWORK}"
 #define PRO_FLASH_kB ${FLASH}
 #define PRO_RAM_kB ${RAM}
-#define PRO_BOOT ${BOOT}
 #define PRO_OPT_LEVEL "${OPT_LEVEL}"
 #define PRO_DRIVERS "${DRIVERS}"
 

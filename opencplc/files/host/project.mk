@@ -5,9 +5,10 @@ NAME := ${NAME}
 LOAD_FLAGS := ${LOAD_FLAGS}
 TARGET := ${TARGET}
 
-# Paths anchored to this file, so `make -C` works from any directory
+# Paths anchored to this file, so `make -C` works from any directory, on the drive in upper case:
+# VS Code starts make on `c:`, a console on `C:`, and `.d` files keep the spelling they got
 THIS_MAKEFILE := $(lastword $(MAKEFILE_LIST))
-MAKEFILE_PATH := $(abspath $(THIS_MAKEFILE))
+MAKEFILE_PATH := $(patsubst ${DRIVE_LOWER}%,${DRIVE}%,$(abspath $(THIS_MAKEFILE)))
 PROJECT := $(patsubst %/,%,$(dir $(MAKEFILE_PATH)))
 WORKSPACE := $(abspath $(PROJECT)/${UP_PATH})
 OPENCPLC := $(WORKSPACE)/${CORE_DIR}

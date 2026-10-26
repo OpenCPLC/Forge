@@ -9,21 +9,20 @@ FLASH_kB := ${FLASH}
 RAM_kB := ${RAM}
 BOOT := ${BOOT}
 
-# Paths anchored to this file, so `make -C` works from any directory
+# Paths anchored to this file, so `make -C` works from any directory, on the drive in upper case:
+# VS Code starts make on `c:`, a console on `C:`, and `.d` files keep the spelling they got
 THIS_MAKEFILE := $(lastword $(MAKEFILE_LIST))
-MAKEFILE_PATH := $(abspath $(THIS_MAKEFILE))
+MAKEFILE_PATH := $(patsubst ${DRIVE_LOWER}%,${DRIVE}%,$(abspath $(THIS_MAKEFILE)))
 PROJECT := $(patsubst %/,%,$(dir $(MAKEFILE_PATH)))
 WORKSPACE := $(abspath $(PROJECT)/${UP_PATH})
 OPENCPLC := $(WORKSPACE)/${CORE_DIR}
 BUILD := $(WORKSPACE)/${BUILD_DIR}
-# Bootloader packed in front of the image, empty without one
+# Bootloader packed in front of the image, the one of builds and the one of `dist`, empty without
 BOOT_IMAGE := ${BOOT_IMAGE}
-# Where `dist` puts the flash image: the project, or Core for the bootloader with its elf
-DIST_HEX = ${DIST_HEX}
-DIST_ELF := ${DIST_ELF}
-# `key` bootloader: where its key goes and the key `dist` signs with, both empty without one
-BOOT_KEY_AT := ${BOOT_KEY_AT}
-BOOT_KEY := ${BOOT_KEY}
+BOOT_DIST_IMAGE := ${BOOT_DIST_IMAGE}
+# `key` bootloader: its public keys and the number of the key `dist` signs with
+BOOT_KEYS := ${BOOT_KEYS}
+SIGNING_KEY := ${SIGNING_KEY}
 
 ifeq ($(OS),Windows_NT)
 SHELL := cmd.exe
@@ -33,14 +32,12 @@ export PATH := ${TOOLS_PATH};$(PATH)
 MKDIR = if not exist "$(subst /,\,$1)" mkdir "$(subst /,\,$1)"
 RMDIR = if exist "$(subst /,\,$1)" rmdir /s /q "$(subst /,\,$1)"
 RMFILE = if exist "$(subst /,\,$1)" del /q "$(subst /,\,$1)"
-COPY = copy /y "$(subst /,\,$1)" "$(subst /,\,$2)" >nul
 TOUCH = type nul > "$(subst /,\,$1)"
 else
 SHELL := /bin/sh
 MKDIR = mkdir -p $1
 RMDIR = rm -rf $1
 RMFILE = rm -f $1
-COPY = cp $1 $2
 TOUCH = touch $1
 endif
 
@@ -134,16 +131,19 @@ $(BUILD)/%.bin: $(BUILD)/%.elf
 
 # Whole flash in one file for the programmer
 # Under the bootloader: bootloader in front, CRC in the trailer, update binary beside
-# Under the `key` one the development key signs the image and goes into the bootloader
-# New bootloader in Core packs again, without a clean
+# Under the `key` one the development key signs the image, the one the bootloader of builds holds
+# New bootloader packs again, without a clean
 $(BUILD)/$(TARGET)-dist.hex: $(BUILD)/$(TARGET).hex $(BOOT_IMAGE)
-	@cd $(WORKSPACE) && $(FORGE) --pack $< $@ $(BOOT_IMAGE) $(BOOT_KEY_AT)
+	@cd $(WORKSPACE) && $(FORGE) --pack $< $@ $(BOOT_IMAGE) $(if $(BOOT_KEYS),$(BOOT_KEYS) $(SIGNING_KEY))
+
+${BOOT_RULES}
 
 ARTIFACTS := $(BUILD)/$(TARGET).elf $(BUILD)/$(TARGET).hex $(BUILD)/$(TARGET).bin \
   $(BUILD)/$(TARGET)-dist.hex
 
 # Only top make with `build` as its goal says it
 # Run in the project that is this one, under the dispatcher that one, behind `dist` nobody
+# The inner make takes `build` too: artifacts named as goals would each say they are up to date
 ifeq ($(MAKELEVEL),0)
 ifeq ($(filter-out build,$(MAKECMDGOALS)),)
 BUILD_SAYS := yes
@@ -152,7 +152,7 @@ endif
 
 ifeq ($(BUILD_SAYS),yes)
 build:
-	@"$(MAKE)" --no-print-directory -q $(ARTIFACTS) && echo Nothing to be done for ${GOLD}build${END}|| "$(MAKE)" --no-print-directory $(ARTIFACTS)
+	@"$(MAKE)" --no-print-directory -q build && echo Nothing to be done for ${GOLD}build${END}|| "$(MAKE)" --no-print-directory build
 else
 build: $(ARTIFACTS)
 endif
@@ -177,16 +177,14 @@ stack:
 
 # `make dist TAG=1.2.0` gives <target>-1.2.0.hex, the flash image for a programmer
 # Under the bootloader the hex is the full image, <target>-1.2.0.bin the image alone for an update
-# Packed again rather than copied: under the `key` bootloader `PRO_BOOT_KEY` signs, not the build
+# Packed again with the bootloader of `dist`: under `key` the product key signs the image,
+# and the bootloader holds the product keys and keeps its floors in OTP
 # Stamp touched, so a new file in the project does not force a reload on the next make
 DIST := $(TARGET)$(if $(TAG),-$(TAG))
 
-dist: build
-	@cd $(WORKSPACE) && $(FORGE) --pack $(BUILD)/$(TARGET).hex $(DIST_HEX) $(BOOT_IMAGE) $(BOOT_KEY_AT) $(BOOT_KEY)
-ifneq ($(DIST_ELF),)
-	@$(call COPY,$(BUILD)/$(TARGET).elf,$(DIST_ELF))
-	@echo Bootloader ${LIME}$(notdir $(DIST_HEX))${END} and ${VIOLET}$(notdir $(DIST_ELF))${END} to Core
-else ifeq ($(BOOT),true)
+dist: build $(BOOT_DIST_IMAGE)
+	@cd $(WORKSPACE) && $(FORGE) --pack $(BUILD)/$(TARGET).hex $(PROJECT)/$(DIST).hex $(BOOT_DIST_IMAGE) $(if $(BOOT_KEYS),$(BOOT_KEYS) $(SIGNING_KEY) dist)
+ifeq ($(BOOT),true)
 	@echo Full image ${LIME}$(DIST).hex${END} to ${PROJECT_COLORED}
 	@echo Update image ${SKY}$(DIST).bin${END} to ${PROJECT_COLORED}
 else
