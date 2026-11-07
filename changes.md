@@ -1,5 +1,10 @@
 # Changes `opencplc`
 
+## `0.5.2` Ignore
+
+- `ignore` in `opencplc.json` leaves projects off `-l`, patterns as in `.gitignore`
+- `.tests/` with own `main.h` belongs to project above: left off `-l`, `-r` inside it reloads project
+
 ## `0.5.1` One bootloader
 
 - Bootloader of Core built with each image that includes `boot.h`

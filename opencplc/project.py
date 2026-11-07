@@ -1,21 +1,26 @@
 # opencplc/project.py
 
 """
-Project generators.
+Files of a project, from its skeleton to its removal.
 
 `prepare_project()` creates skeleton files a project keeps for life: main.c and main.h.
 `generate()` renders everything Forge owns from the resolved `Project` model:
 makefile and flash.ld in the project, workspace dispatcher, VS Code configuration.
 An unchanged file keeps its bytes and its mtime.
+`project_delete()` takes the project away, its ST-Link binding and the dispatcher target too.
 """
 
-import os, re, platform, subprocess
+import os, re, sys, platform, subprocess
 from datetime import datetime
-from xaeian import Print, Color as c, FILE, DIR, PATH, replace_end, replace_map
+from xaeian import Print, Color as c, FILE, DIR, PATH, replace_end
 from xaeian.cmd import which
-from .config import OPT_DEFAULT, LOG_LEVEL_DEFAULT, BOOT_H, BOOT_LINE
+from .config import BOOT_H, BOOT_LINE
 from .templates import load_templates
-from .resolver import Project, flash_layout, forge_version, FLASH_BASE
+from .platforms import FLASH_BASE
+from .model import Config, Project
+from .headers import boot_h_text
+from .resolver import flash_layout, forge_version
+from .workspace import persist_config
 from .utils import keys
 from . import utils
 
@@ -121,11 +126,6 @@ def config_inputs(pro:Project) -> list[str]:
   dirs = [anchored(d, pro.pro_dir, "PROJECT") for d in pro.project_dirs]
   return ["$(PROJECT)/main.h", f"$(PROJECT)/{BOOT_H}"] + dirs
 
-def boot_h_text(name:str) -> str:
-  """`boot.h` of a new project `name`: no setting yet, so a `plain` bootloader."""
-  subs = {"${NAME}": utils.home_name(name), "${DATE}": datetime.now().strftime("%Y-%m-%d")}
-  return replace_map(load_templates()["boot.h"].strip(), subs)
-
 def dev_key(pro:Project) -> str:
   """Development key the bootloader of builds takes in place of every key, "" for `plain`."""
   return keys.dev_public().hex() if pro.boot_keys else ""
@@ -140,80 +140,105 @@ def include_flags(pro:Project, dirs:list[str]) -> list[str]:
     flags.append("-I" + anchored(d, *base) if base else "-I$(WORKSPACE)/" + d)
   return flags
 
-def project_header(cfg:dict, paths:dict, new:bool=False):
+def project_header(cfg:Config, new:bool=False):
   """
   Print which project and configuration this run works on.
 
   A new project under the bootloader says what that costs.
   The flag halves flash it can use and nothing else on screen would show it.
   """
-  shown = utils.home_name(cfg["pro_name"])
-  path_prefix = replace_end(PATH.local(paths["pro"]), shown, "")
+  shown = utils.home_name(cfg.name)
+  path_prefix = replace_end(utils.project_dir(cfg.name), shown, "")
   p.inf(f"Project {c.GREY}{path_prefix}{c.END}{c.BLUE}{shown}{c.END}")
   is_windows = platform.system() == "Windows"
-  plc_msg = f" {c.TURQUS}PLC{c.END}" if cfg.get("plc") else ""
-  if cfg.get("board"):
-    chip_msg = f"{c.TURQUS}{cfg['board_title']}{c.END}{plc_msg}"
-  elif cfg["platform"] == "STM32":
-    chip_msg = f"{c.PINK}{cfg['chip']}{c.END}{plc_msg}"
+  plc_msg = f" {c.TURQUS}PLC{c.END}" if cfg.plc else ""
+  if cfg.board:
+    chip_msg = f"{c.TURQUS}{cfg.board_title}{c.END}{plc_msg}"
+  elif cfg.chip.platform == "STM32":
+    chip_msg = f"{c.PINK}{cfg.chip.name}{c.END}{plc_msg}"
   else:
     host_os = "Windows" if is_windows else "Linux"
-    chip_msg = f"{c.PINK}{cfg['platform']}{c.END} {c.GREY}({host_os}){c.END}"
-  p.gap(f"using framework version {c.VIOLET}{cfg['fw_ver']}{c.END} configured for {chip_msg}")
-  if new and cfg.get("boot"):
+    chip_msg = f"{c.PINK}{cfg.chip.platform}{c.END} {c.GREY}({host_os}){c.END}"
+  p.gap(f"using framework version {c.VIOLET}{cfg.fw_ver}{c.END} configured for {chip_msg}")
+  if new and cfg.boot:
     origin, slot_kB, _ = flash_layout(cfg)
-    p.gap(f"bootloader takes {c.GOLD}{cfg['boot_kB']}{c.END}kB, "
+    p.gap(f"bootloader takes {c.GOLD}{cfg.chip.boot_kB}{c.END}kB, "
       f"image at {c.GOLD}0x{origin:08X}{c.END} in one of two {c.GOLD}{slot_kB}{c.END}kB slots")
 
-def prepare_project(cfg:dict, paths:dict):
+def prepare_project(cfg:Config):
   """Create the project skeleton: its directory plus main.c/main.h when missing."""
   templates = load_templates()
-  is_embedded = cfg["platform"] == "STM32"
-  tpl = templates.get(cfg["hal"], {})
-  project_header(cfg, paths, new=not FILE.exists(f"{paths['pro']}/main.h"))
-  if utils.is_core(cfg["pro_name"]): return # the Core itself: its tests are all there is
-  DIR.ensure(paths["pro"])
-  if cfg.get("plc"):
-    DIR.ensure(f"{paths['fw']}/plc")
+  chip = cfg.chip
+  tpl = templates.get(chip.hal, {})
+  pro_dir = utils.project_dir(cfg.name)
+  project_header(cfg, new=not FILE.exists(f"{pro_dir}/main.h"))
+  if utils.is_core(cfg.name): return # the Core itself: its tests are all there is
+  DIR.ensure(pro_dir)
+  if cfg.plc:
+    DIR.ensure(f"{utils.core_dir(cfg.fw_ver)}/plc")
   subs = {
-    "${NAME}": utils.home_name(cfg["pro_name"]),
+    "${NAME}": utils.home_name(cfg.name),
     "${DATE}": datetime.now().strftime("%Y-%m-%d"),
-    "${PRO_FRAMEWORK}": cfg["pro_ver"],
-    "${OPT_LEVEL}": cfg.get("opt_level", OPT_DEFAULT if is_embedded else "O2"),
-    "${LOG_LEVEL}": cfg.get("log_level", LOG_LEVEL_DEFAULT),
-    "${BOARD}": cfg["board_title"] or "None",
-    "${PLC}": "true" if cfg.get("plc") else "false",
-    "${DRIVERS}": ", ".join(cfg.get("project_drivers", [])),
-    "${CHIP}": cfg.get("chip", "").upper(),
-    "${FLASH}": cfg["flash_kB"],
-    "${RAM}": cfg["ram_kB"],
-    "${FREQ}": cfg.get("freq_Hz", 64000000),
-    "${PLATFORM}": cfg["platform"],
-    "${UART_NBR}": cfg["uart"]["nbr"],
-    "${UART_TX}": cfg["uart"]["tx"],
-    "${UART_RX}": cfg["uart"]["rx"],
-    "${UART_DMA}": cfg["uart"]["dma"],
-    "${LED_PORT}": cfg["led"]["port"],
-    "${LED_PIN}": cfg["led"]["pin"],
-    "${LED_NAME}": cfg["led"]["name"],
+    "${PRO_FRAMEWORK}": cfg.pro_ver,
+    "${OPT_LEVEL}": cfg.opt_level,
+    "${LOG_LEVEL}": cfg.log_level,
+    "${BOARD}": cfg.board_title or "None",
+    "${PLC}": "true" if cfg.plc else "false",
+    "${DRIVERS}": ", ".join(cfg.project_drivers),
+    "${CHIP}": chip.name,
+    "${FLASH}": cfg.flash_kB,
+    "${RAM}": cfg.ram_kB,
+    "${FREQ}": cfg.freq_Hz,
+    "${PLATFORM}": chip.platform,
+    "${UART_NBR}": chip.uart["nbr"],
+    "${UART_TX}": chip.uart["tx"],
+    "${UART_RX}": chip.uart["rx"],
+    "${UART_DMA}": chip.uart["dma"],
+    "${LED_PORT}": chip.led["port"],
+    "${LED_PIN}": chip.led["pin"],
+    "${LED_NAME}": chip.led["name"],
   }
   # a project in Core builds with the Core it lies in, so it neither pins nor prints a version
-  pinless = ["PRO_FRAMEWORK"] if utils.core_version(cfg["pro_name"]) else []
-  if not FILE.exists(f"{paths['pro']}/main.c"):
-    if is_embedded:
+  pinless = ["PRO_FRAMEWORK"] if utils.core_version(cfg.name) else []
+  if not FILE.exists(f"{pro_dir}/main.c"):
+    if chip.platform == "STM32":
       # A board on the PLC layer ships `PLC_Main`; the rest starts from the plain skeleton
-      on_plc = cfg.get("board") and cfg.get("plc")
+      on_plc = cfg.board and cfg.plc
       main_c = templates["main.c"] if on_plc else templates["main-none.c"]
     else:
       main_c = tpl.get("main.c", templates["main-none.c"])
-    utils.create_file("main.c", without(main_c, pinless), paths["pro"], subs, color=c.BLUE)
-  if not FILE.exists(f"{paths['pro']}/main.h"):
+    utils.create_file("main.c", without(main_c, pinless), pro_dir, subs, color=c.BLUE)
+  if not FILE.exists(f"{pro_dir}/main.h"):
     main_h = tpl.get("main.h", templates["main.h"])
-    drop = ([] if cfg["project_drivers"] else ["PRO_DRIVERS"]) + pinless
-    drop += [] if cfg.get("boot") else [BOOT_LINE]
-    utils.create_file("main.h", without(main_h, drop), paths["pro"], subs, color=c.BLUE)
-  if cfg.get("boot") and not FILE.exists(f"{paths['pro']}/{BOOT_H}"):
-    utils.create_file(BOOT_H, boot_h_text(cfg["pro_name"]), paths["pro"], color=c.BLUE)
+    drop = ([] if cfg.project_drivers else ["PRO_DRIVERS"]) + pinless
+    drop += [] if cfg.boot else [BOOT_LINE]
+    utils.create_file("main.h", without(main_h, drop), pro_dir, subs, color=c.BLUE)
+  if cfg.boot and not FILE.exists(f"{pro_dir}/{BOOT_H}"):
+    utils.create_file(BOOT_H, boot_h_text(cfg.name), pro_dir, color=c.BLUE)
+
+def project_delete(args, projects:dict, make_info:dict|None, forge_cfg:dict):
+  """Remove the project folder, its ST-Link binding and, when active, the dispatcher target."""
+  key = utils.project_key(projects, args.name)
+  if key is None:
+    p.err(f"Project {c.MAGNTA}{args.name}{c.END} does not exist")
+    sys.exit(1)
+  if utils.is_core(key):
+    p.err(f"{c.BLUE}{key}{c.END} is a Core, its tests stay with it")
+    sys.exit(1)
+  try:
+    active = PATH.local(projects[key])
+    if forge_cfg["stlink"].pop(utils.project_dir(key), None) is not None:
+      persist_config(forge_cfg)
+    DIR.remove(projects[key], force=True)
+    if make_info and make_info.get("ACTIVE") == active:
+      write_dispatcher("")
+      p.inf("Active project removed - "
+        f"select another with {utils.color_command('opencplc <name>')}")
+    p.ok(f"Project {c.BLUE}{args.name}{c.END} deleted")
+    sys.exit(0)
+  except Exception as e:
+    p.err(f"Failed to delete: {e}")
+    sys.exit(1)
 
 def generate(pro:Project, activate:bool=True):
   """

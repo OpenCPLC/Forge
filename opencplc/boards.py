@@ -60,7 +60,7 @@ def parse_board(ini_path:str, name:str, board_dir:str) -> Board:
   missing = [k for k in REQUIRED if k not in section]
   if missing: raise ValueError(f"missing field '{missing[0]}'")
   chip = next((k for k in CHIPS if k.upper() == str(section["chip"]).upper()), None)
-  if chip is None or CHIPS[chip]["platform"] != "STM32":
+  if chip is None or CHIPS[chip].platform != "STM32":
     raise ValueError(f"unknown chip '{section['chip']}'")
   title = str(section["name"])
   if not TITLE_RX.match(title):

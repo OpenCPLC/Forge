@@ -6,40 +6,39 @@ import pytest
 from opencplc.platforms import CHIPS, parse_chip, get_hal_dirs
 
 def parse_chip_is_case_insensitive():
-  assert parse_chip("stm32g0c1")["chip"] == "STM32G0C1"
+  assert parse_chip("stm32g0c1").name == "STM32G0C1"
 
 def parse_chip_builds_defines():
-  cfg = parse_chip("STM32G081")
-  assert cfg["defines"] == ["STM32", "STM32G0", "STM32G081xx"]
+  assert parse_chip("STM32G081").defines == ["STM32", "STM32G0", "STM32G081xx"]
   host = parse_chip("HOST")
-  assert host["defines"][0] == "HOST"
-  assert host["platform"] == "Host"
+  assert host.defines[0] == "HOST"
+  assert host.platform == "Host"
 
 def parse_chip_unknown_exits():
   with pytest.raises(SystemExit):
     parse_chip("STM32F103")
 
-def every_chip_has_erase_and_hal():
-  for name, cfg in CHIPS.items():
-    assert "erase" in cfg, name
-    assert get_hal_dirs(cfg["hal"]), name
+def every_stm32_chip_has_erase_and_hal():
+  for name, chip in CHIPS.items():
+    assert chip.name == name and get_hal_dirs(chip.hal), name
+    assert chip.erase or chip.platform != "STM32", name
 
 def every_stm32_chip_reserves_whole_bootloader_pages():
   """Whole pages for the bootloader: code pages plus the mailbox page; the host has none."""
-  for name, cfg in CHIPS.items():
-    if cfg["platform"] != "STM32":
-      assert cfg["boot_kB"] == 0, name
+  for name, chip in CHIPS.items():
+    if chip.platform != "STM32":
+      assert chip.boot_kB == 0, name
       continue
-    assert cfg["page_kB"] > 0 and cfg["boot_kB"] % cfg["page_kB"] == 0, name
-    assert cfg["boot_kB"] >= 2 * cfg["page_kB"], name
+    assert chip.page_kB > 0 and chip.boot_kB % chip.page_kB == 0, name
+    assert chip.boot_kB >= 2 * chip.page_kB, name
 
 def wb55_flash_stops_below_the_wireless_stack():
   """CPU1 must not be offered flash that belongs to CPU2."""
   stack_start_kB = 0xD0 * 4 # SFSA 0xD0, pages of 4kB
   assert 0x08000000 + stack_start_kB * 1024 == 0x080D0000
-  assert CHIPS["STM32WB55"]["flash_kB"] == stack_start_kB
+  assert CHIPS["STM32WB55"].flash_kB == stack_start_kB
 
 def wb55_erase_clears_cpu1_flash_alone():
   """`mass_erase` fails beside the wireless stack, so pages go one by one up to CPU2 flash."""
   wb = CHIPS["STM32WB55"]
-  assert wb["erase"] == f"flash erase_address 0x08000000 0x{wb['flash_kB'] * 1024:X}"
+  assert wb.erase == f"flash erase_address 0x08000000 0x{wb.flash_kB * 1024:X}"

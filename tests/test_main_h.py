@@ -3,7 +3,7 @@
 """Contract: values written into generated files can be read back unchanged."""
 
 from opencplc.utils import get_vars, lines_clear
-from opencplc.configure import boot_included
+from opencplc.headers import boot_included
 from conftest import load_template, render, parse_main_h, parse_dispatcher
 
 UNO_SUBS = {
@@ -100,7 +100,7 @@ def bare_metal_led_comes_from_the_chip_table():
   out = render(load_template("main-none.c"), subs)
   assert ".port = GPIOB," in out and ".pin = 0," in out
   assert "// Nucleo-WB55RG green `LD2`" in out
-  for name, cfg in CHIPS.items():
-    assert "led" in cfg, name
-  assert CHIPS["STM32WB55"]["led"]["port"] == "GPIOB" # LD2 is PB0, not PA5
-  assert CHIPS["STM32G0C1"]["led"]["port"] == "GPIOA"
+  for name, chip in CHIPS.items():
+    assert set(chip.led) == {"port", "pin", "name"}, name
+  assert CHIPS["STM32WB55"].led["port"] == "GPIOB" # LD2 is PB0, not PA5
+  assert CHIPS["STM32G0C1"].led["port"] == "GPIOA"

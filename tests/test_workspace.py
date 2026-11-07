@@ -36,6 +36,16 @@ def project_recognized_from_subdir(tmp_path):
   (pro / "main.h").write_text("")
   assert project_from_path(str(sub), str(tmp_path / "projects")) == "app"
 
+def tests_folder_belongs_to_its_project(tmp_path):
+  """`.tests/main.h` sets the tests of the project up, so `-r` inside them reloads the project."""
+  tests = tmp_path / "projects" / "app" / ".tests"
+  (tests / "fake").mkdir(parents=True)
+  for folder in (tests.parent, tests):
+    (folder / "main.h").write_text("")
+  root = str(tmp_path / "projects")
+  assert project_from_path(str(tests), root) == "app"
+  assert project_from_path(str(tests / "fake"), root) == "app"
+
 def path_outside_root_gives_none(tmp_path):
   other = tmp_path / "elsewhere"
   other.mkdir()

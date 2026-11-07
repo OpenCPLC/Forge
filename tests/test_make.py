@@ -14,7 +14,7 @@ from opencplc.project import generate, ANSI
 from opencplc.resolver import resolve_project
 from conftest import (
   resolve_uno, build_workspace, host_model, make_run, make_root, write_file, write_harness,
-  write_forge_config, fake_tools, age, host_cfg, ws_paths, MAIN_H_HOST,
+  write_forge_config, fake_tools, age, host_cfg, MAIN_H_HOST,
 )
 
 HAVE_MAKE = shutil.which("make") is not None
@@ -172,7 +172,7 @@ def project_in_core_builds_and_reloads_by_its_name(ws):
   name = "opencplc/1.0.0/.tests/app"
   write_file(ws / name / "main.h", MAIN_H_HOST.replace('#define PRO_FRAMEWORK "1.0.0"\n', ""))
   write_file(ws / name / "main.c", '#include "sys.h"\nint main(void) { return sys_tick(); }\n')
-  generate(resolve_project(host_cfg(name), ws_paths() | {"pro": name}, {}))
+  generate(resolve_project(host_cfg(name)))
   first = make_root(ws)
   assert first.returncode == 0, first.stdout + first.stderr
   build = ws / "build" / name

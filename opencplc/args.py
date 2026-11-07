@@ -1,52 +1,34 @@
 # opencplc/args.py
 
-"""Command line: flags, their colored names for messages and the parsed `Args`."""
+"""
+Command line: every flag declared once by `option()`.
+
+That one call adds the flag to the parser and keeps its colored name for messages,
+`flag.n` for `-n --new`; the parsed values come as `Args`, a field per flag.
+"""
 
 import argparse, sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from types import SimpleNamespace
 from xaeian import Color, Print
 
 p = Print()
 
-class Flag:
-  """Colored flag display strings."""
-  n = f"{Color.GREY}-n --new{Color.END}"
-  r = f"{Color.GREY}-r --reload{Color.END}"
-  d = f"{Color.GREY}-d --delete{Color.END}"
-  g = f"{Color.GREY}-g --get{Color.END}"
-  b = f"{Color.GREY}-b --board{Color.END}"
-  c = f"{Color.GREY}-c --chip{Color.END}"
-  P = f"{Color.GREY}-P --plc{Color.END}"
-  D = f"{Color.GREY}-D --drv{Color.END}"
-  B = f"{Color.GREY}-B --boot{Color.END}"
-  m = f"{Color.GREY}-m --memory{Color.END}"
-  f = f"{Color.GREY}-f --framework{Color.END}"
-  o = f"{Color.GREY}-o --opt-level{Color.END}"
-  i = f"{Color.GREY}-i --info{Color.END}"
-  F = f"{Color.GREY}-F --framework-versions{Color.END}"
-  program = f"{Color.GREY}--program{Color.END}"
-  lock = f"{Color.GREY}--lock{Color.END}"
-  keygen = f"{Color.GREY}--keygen{Color.END}"
-  upload = f"{Color.GREY}--upload{Color.END}"
-  p = f"{Color.GREY}-p --pack{Color.END}"
-
-flag = Flag()
-
 @dataclass
 class Args:
-  """Parsed command line; every flag has a neutral default."""
+  """Parsed command line; every field holds the default of its flag until the flag is given."""
   name: str = ""
   new: str|bool = False
   demo: bool = False
   reload: bool = False
   delete: str|bool = False
-  get: list[str]|None = None
+  get: list[str] = field(default_factory=list)
   board: str = ""
   plc: bool = False
   drv: str = ""
   boot: bool = False
   chip: str = ""
-  memory: list[int]|None = None
+  memory: list[int] = field(default_factory=list)
   framework: str = ""
   opt_level: str = ""
   project_list: bool = False
@@ -68,10 +50,6 @@ class Args:
   hash_title: str = ""
   hash_define: bool = False
 
-def fmt(prog):
-  """Help formatter with wider columns."""
-  return argparse.RawDescriptionHelpFormatter(prog, max_help_position=34, width=100)
-
 EXAMPLE_USED = """
 example used:
   opencplc -n myapp -b uno        Create new project for OpenCPLC Uno
@@ -87,129 +65,104 @@ class Parser(argparse.ArgumentParser):
   def format_help(self):
     return "\n" + super().format_help().rstrip() + "\n\n"
 
-def load_args() -> Args:
-  """Parse `sys.argv` into `Args`."""
-  parser = Parser(
-    description=f"{Color.TEAL}OpenCPLC Forge{Color.GREY}:{Color.END} "
-      "Project configuration and build tool",
-    formatter_class=fmt,
-    add_help=False,
-    usage=argparse.SUPPRESS,
-    epilog=EXAMPLE_USED,
-  )
-  # Project selection
-  parser.add_argument("name", type=str, nargs="?", default="",
-    help="Project name or number from list")
-  # Project actions
-  parser.add_argument("-n", "--new", type=str, nargs="?", const=True, metavar="NAME",
-    help="Create new project (optionally with NAME)")
-  parser.add_argument("-e", "--demo", action="store_true",
-    help="Download Demo projects into projects/demo")
-  parser.add_argument("-r", "--reload", action="store_true",
-    help="Reload the active project, or the one in the current directory")
-  parser.add_argument("-d", "--delete", type=str, nargs="?", const=True, metavar="NAME",
-    help="Delete project and its files")
-  parser.add_argument("-g", "--get", nargs="+", metavar=("URL", "REF"),
-    help="Clone project from Git repository or download ZIP", default=[])
-  # Hardware configuration
-  parser.add_argument("-b", "--board", type=str, metavar="BOARD",
-    help="Board from the Core (uno); without it the project has no board", default="")
-  parser.add_argument("-c", "--chip", type=str, metavar="CHIP",
-    help="Target MCU: STM32G0C1, STM32G081, STM32WB55, HOST", default="")
-  parser.add_argument("-P", "--plc", action="store_true",
-    help="Add the PLC layer to a project without a board")
-  parser.add_argument("-D", "--drv", type=str, metavar="DRIVERS", default="",
-    help="Core drivers for a new project, comma separated")
-  parser.add_argument("-B", "--boot", action="store_true",
-    help="Put the new project behind the bootloader of Core: boot.h and its #include in main.h")
-  parser.add_argument("-m", "--memory", type=int, nargs="*", metavar=("FLASH", "RAM"),
-    help="Override memory size in kB: FLASH RAM [RESERVED]", default=[])
-  # Build configuration
-  parser.add_argument("-f", "--framework", type=str, metavar="VER",
-    help="Core version (tag/branch) for a new project, over main.h until a load without it, "
-      "or alone: download it", default="")
-  parser.add_argument("-o", "--opt-level", type=str, metavar="LEVEL",
-    help="Optimization level: O0, Og (default), O1, O2, O3, Os", default="")
-  parser.add_argument("-s", "--stlink", type=str, nargs="?", const="", metavar="SERIAL",
-    help="Bind an ST-Link serial to the project; -s alone clears the binding")
-  # Information
-  parser.add_argument("-l", "--list", action="store_true",
-    help="List all projects in current workspace")
-  parser.add_argument("-i", "--info", action="store_true",
-    help="Show detailed project configuration")
-  parser.add_argument("-F", "--framework-versions", action="store_true",
-    help="List Core versions")
-  parser.add_argument("-v", "--version", action="store_true",
-    help="Show OpenCPLC Forge version and exit")
-  # Utilities
-  parser.add_argument("-z", "--size", nargs=3, metavar=("ELF", "FLASH_kB", "RAM_kB"),
-    help="Report FLASH and RAM usage of an .elf against the chip memory")
-  parser.add_argument("-p", "--pack", nargs="+", metavar="FILE",
-    help="Pack the flash image: APP.hex OUT.hex [BOOT [KEYS NUMBER [dist]]], a makefile step")
-  parser.add_argument("--test", nargs="+", metavar="PATH",
-    help="Run test programs: BUILD NAME [NAME ...], a makefile step")
-  parser.add_argument("--program", type=str, nargs="?", const=True, metavar="FILE",
-    help="Send a .hex to the board through the programmer; alone, the one make dist left")
-  parser.add_argument("--lock", type=int, nargs="?", const=1, choices=(0, 1, 2), metavar="LEVEL",
-    help="Lock board for production: 1 RDP1, 2 for good, 0 unlocks, erasing flash")
-  parser.add_argument("--keygen", nargs="+", metavar=("NAME", "COUNT"),
-    help="Make or take product key NAME and COUNT-1 spare ones, add them to BOOT_KEYS")
-  parser.add_argument("--upload", nargs="+", metavar=("FILE", "PORT"),
-    help="Send an update image over the console: FILE [PORT], a makefile step")
-  parser.add_argument("-a", "--assets", type=str, nargs="?", const="assets", metavar="DIR",
-    help="Download datasheets and reference manuals to DIR")
-  parser.add_argument("-u", "--update", type=str, nargs="?", const="latest", metavar="VER",
-    help="Update OpenCPLC Forge to specified version (default: latest)")
-  parser.add_argument("-y", "--yes", action="store_true",
-    help="Auto-confirm all prompts (non-interactive mode)")
-  # Hash utilities
-  parser.add_argument("-hl", "--hash-list", nargs="+", metavar="TAG",
-    help="Generate DJB2 hash enum from tag list")
-  parser.add_argument("-ht", "--hash-title", type=str, metavar="NAME",
-    help="Enum type name for hash generation", default="")
-  parser.add_argument("-hd", "--hash-define", action="store_true",
-    help="Use #define instead of enum for hash output")
-  parser.add_argument("-h", "--help", action="help",
-    help="Show this help message and exit")
+def fmt(prog):
+  """Help formatter with wider columns."""
+  return argparse.RawDescriptionHelpFormatter(prog, max_help_position=34, width=100)
 
+PARSER = Parser(
+  description=f"{Color.TEAL}OpenCPLC Forge{Color.GREY}:{Color.END} "
+    "Project configuration and build tool",
+  formatter_class=fmt,
+  add_help=False,
+  usage=argparse.SUPPRESS,
+  epilog=EXAMPLE_USED,
+)
+flag = SimpleNamespace() # colored names for messages: `flag.n` is `-n --new`, `flag.lock` `--lock`
+
+def option(*names:str, **kwargs):
+  """One flag of the command line: in the parser, and its colored name on `flag`."""
+  PARSER.add_argument(*names, **kwargs)
+  if names[0].startswith("-"):
+    setattr(flag, names[0].lstrip("-"), f"{Color.GREY}{' '.join(names)}{Color.END}")
+
+# Project selection
+option("name", type=str, nargs="?", default="", help="Project name or number from list")
+# Project actions
+option("-n", "--new", type=str, nargs="?", const=True, default=False, metavar="NAME",
+  help="Create new project (optionally with NAME)")
+option("-e", "--demo", action="store_true", help="Download Demo projects into projects/demo")
+option("-r", "--reload", action="store_true",
+  help="Reload the active project, or the one in the current directory")
+option("-d", "--delete", type=str, nargs="?", const=True, default=False, metavar="NAME",
+  help="Delete project and its files")
+option("-g", "--get", nargs="+", metavar=("URL", "REF"), default=[],
+  help="Clone project from Git repository or download ZIP")
+# Hardware configuration
+option("-b", "--board", type=str, metavar="BOARD", default="",
+  help="Board from the Core (uno); without it the project has no board")
+option("-c", "--chip", type=str, metavar="CHIP", default="",
+  help="Target MCU: STM32G0C1, STM32G081, STM32WB55, HOST")
+option("-P", "--plc", action="store_true", help="Add the PLC layer to a project without a board")
+option("-D", "--drv", type=str, metavar="DRIVERS", default="",
+  help="Core drivers for a new project, comma separated")
+option("-B", "--boot", action="store_true",
+  help="Put the new project behind the bootloader of Core: boot.h and its #include in main.h")
+option("-m", "--memory", type=int, nargs="*", metavar=("FLASH", "RAM"), default=[],
+  help="Override memory size in kB: FLASH RAM [RESERVED]")
+# Build configuration
+option("-f", "--framework", type=str, metavar="VER", default="",
+  help="Core version (tag/branch) for a new project, over main.h until a load without it, "
+    "or alone: download it")
+option("-o", "--opt-level", type=str, metavar="LEVEL", default="",
+  help="Optimization level: O0, Og (default), O1, O2, O3, Os")
+option("-s", "--stlink", type=str, nargs="?", const="", metavar="SERIAL",
+  help="Bind an ST-Link serial to the project; -s alone clears the binding")
+# Information
+option("-l", "--list", dest="project_list", action="store_true",
+  help="List all projects in current workspace")
+option("-i", "--info", action="store_true", help="Show detailed project configuration")
+option("-F", "--framework-versions", action="store_true", help="List Core versions")
+option("-v", "--version", action="store_true", help="Show OpenCPLC Forge version and exit")
+# Utilities
+option("-z", "--size", nargs=3, metavar=("ELF", "FLASH_kB", "RAM_kB"),
+  help="Report FLASH and RAM usage of an .elf against the chip memory")
+option("-p", "--pack", nargs="+", metavar="FILE",
+  help="Pack the flash image: APP.hex OUT.hex [BOOT [KEYS NUMBER [dist]]], a makefile step")
+option("--test", nargs="+", metavar="PATH",
+  help="Run test programs: BUILD NAME [NAME ...], a makefile step")
+option("--program", type=str, nargs="?", const=True, metavar="FILE",
+  help="Send a .hex to the board through the programmer; alone, the one make dist left")
+option("--lock", type=int, nargs="?", const=1, choices=(0, 1, 2), metavar="LEVEL",
+  help="Lock board for production: 1 RDP1, 2 for good, 0 unlocks, erasing flash")
+option("--keygen", nargs="+", metavar=("NAME", "COUNT"),
+  help="Make or take product key NAME and COUNT-1 spare ones, add them to BOOT_KEYS")
+option("--upload", nargs="+", metavar=("FILE", "PORT"),
+  help="Send an update image over the console: FILE [PORT], a makefile step")
+option("-a", "--assets", type=str, nargs="?", const="assets", metavar="DIR",
+  help="Download datasheets and reference manuals to DIR")
+option("-u", "--update", type=str, nargs="?", const="latest", metavar="VER",
+  help="Update OpenCPLC Forge to specified version (default: latest)")
+option("-y", "--yes", action="store_true", help="Auto-confirm all prompts (non-interactive mode)")
+# Hash utilities
+option("-hl", "--hash-list", nargs="+", metavar="TAG",
+  help="Generate DJB2 hash enum from tag list")
+option("-ht", "--hash-title", type=str, metavar="NAME", default="",
+  help="Enum type name for hash generation")
+option("-hd", "--hash-define", action="store_true",
+  help="Use #define instead of enum for hash output")
+option("-h", "--help", action="help", help="Show this help message and exit")
+
+def load_args() -> Args:
+  """Parse `sys.argv` into `Args`; no argument at all shows the help."""
   if len(sys.argv) == 1:
-    parser.print_help()
+    PARSER.print_help()
     sys.exit(0)
-  ns = parser.parse_args()
-  return Args(
-    name=ns.name,
-    new=ns.new,
-    demo=ns.demo,
-    reload=ns.reload,
-    delete=ns.delete,
-    get=ns.get or [],
-    board=ns.board,
-    plc=ns.plc,
-    drv=ns.drv,
-    boot=ns.boot,
-    chip=ns.chip,
-    memory=ns.memory or [],
-    framework=ns.framework,
-    opt_level=ns.opt_level,
-    project_list=ns.list,
-    info=ns.info,
-    framework_versions=ns.framework_versions,
-    version=ns.version,
-    stlink=ns.stlink,
-    size=ns.size,
-    program=ns.program,
-    lock=ns.lock,
-    keygen=ns.keygen,
-    upload=ns.upload,
-    pack=ns.pack,
-    test=ns.test,
-    assets=ns.assets,
-    update=ns.update,
-    yes=ns.yes,
-    hash_list=ns.hash_list,
-    hash_title=ns.hash_title,
-    hash_define=ns.hash_define,
-  )
+  return Args(**vars(PARSER.parse_args()))
+
+def given(args:Args) -> set[str]:
+  """Fields of `args` the command line set, away from their defaults."""
+  defaults = vars(Args())
+  return {name for name, value in vars(args).items() if value != defaults[name]}
 
 def check_flags(args, *flags:tuple[str, str]):
   """Exit when mutually exclusive flags are combined. Pass (attr, display) tuples."""

@@ -23,7 +23,7 @@ def ws(tmp_path, monkeypatch):
   monkeypatch.setattr(ws_mod, "_refs_fresh", False)
   monkeypatch.setattr(ws_mod.utils, "ensure_git", lambda yes: None)
   monkeypatch.setattr(ws_mod.utils, "git_get_refs", lambda url, opt="--ref": ["1.0.0"])
-  monkeypatch.setattr(forge, "ensure_toolchains", lambda is_embedded, yes, tests: None)
+  monkeypatch.setattr(forge.utils, "ensure_toolchain", lambda is_embedded, yes, tests: None)
   with file_context(root_path=str(tmp_path)):
     yield tmp_path
 
@@ -100,6 +100,22 @@ def listing_and_numeric_pick(ws, monkeypatch, capsys):
   assert run_cli(monkeypatch, "-l") == 0
   out = capsys.readouterr().out
   assert "alpha" in out and "beta" in out
+
+def listing_and_its_numbers_leave_out_ignored_projects(ws, monkeypatch, capsys):
+  run_cli(monkeypatch, "-n", "demo/blink", "-b", "Uno", "-y")
+  run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-y")
+  (ws / "opencplc.json").write_text(
+    '{"version": "1.0.0", "available-versions": ["1.0.0"], "stlink": {},'
+    ' "ignore": ["demo/", "myapp"]}',
+  )
+  capsys.readouterr()
+  assert run_cli(monkeypatch, "-l") == 0
+  out = capsys.readouterr().out
+  assert "app" in out and "blink" not in out and "myapp" not in out
+  assert run_cli(monkeypatch, "1") == 0
+  assert "ACTIVE := projects/app" in (ws / "makefile").read_text()
+  assert run_cli(monkeypatch, "demo/blink") == 0 # named, a hidden project loads as ever
+  assert "ACTIVE := projects/demo/blink" in (ws / "makefile").read_text()
 
 def delete_active_project_empties_dispatcher(ws, monkeypatch):
   run_cli(monkeypatch, "-n", "gone", "-b", "Uno", "-y")

@@ -2,6 +2,7 @@
 
 """File and directory helpers: listing, mtimes, rendering, project discovery."""
 
+import re
 from datetime import datetime
 from xaeian import Print, Color as c, FILE, DIR, PATH, replace_map
 from ..config import DIR_PROJECTS, DIR_FRAMEWORK, DIR_TESTS
@@ -61,6 +62,8 @@ def get_project_list(path:str) -> dict[str, str]:
   result = {}
   for main_h in DIR.iter_files(path, match="main.h"):
     pro_path = PATH.dirname(main_h)
+    # `.tests/main.h` sets up the test build of the project above, never a project of its own
+    if PATH.basename(pro_path) == DIR_TESTS: continue
     name = PATH.local(pro_path, path)
     if name.lower() not in (n.lower() for n in result):
       result[name] = pro_path
@@ -72,6 +75,29 @@ def project_key(projects:dict[str, str], name:str) -> str|None:
   """Project `name` as `get_project_list` keys it, case aside; `None` when there is none."""
   return next((k for k in projects if k.lower() == name.lower()), None)
 
+# `.gitignore` wildcards as regex: `**/` may span no folder, so `**/app` finds a top `app` too
+WILDCARDS = {"**/": "(?:.*/)?", "**": ".*", "*": "[^/]*", "?": "[^/]"}
+
+def _glob_rx(glob:str) -> str:
+  """Regex of a `.gitignore` pattern over a slash path, matching what lies below it too."""
+  glob = glob.rstrip("/")
+  head = "" if "/" in glob else "(?:.*/)?" # a slash, trailing one aside, ties it to the start
+  tokens = re.split(r"(\*\*/|\*\*|\*|\?)", glob.lstrip("/"))
+  return head + "".join(WILDCARDS.get(t) or re.escape(t) for t in tokens) + "(?:/.*)?"
+
+def ignored(name:str, patterns:list[str]) -> bool:
+  """
+  Project `name` hidden by `patterns` written as in `.gitignore`, case aside.
+
+  A pattern matching the project or a folder above it hides it, one with `!` shows it again.
+  The last match decides.
+  """
+  hidden = False
+  for pattern in patterns:
+    if re.fullmatch(_glob_rx(pattern.removeprefix("!")), name, re.IGNORECASE):
+      hidden = not pattern.startswith("!")
+  return hidden
+
 # A project lives in `projects/`, named from there, or in a Core, named `opencplc/<version>/...`
 # `opencplc/<version>` alone is the Core itself, loaded for its own tests in `.tests/`
 
@@ -79,6 +105,10 @@ def core_version(name:str) -> str:
   """Core version project `name` lies in, "" for a project in `projects/`."""
   parts = name.split("/")
   return parts[1] if len(parts) > 1 and parts[0] == DIR_FRAMEWORK else ""
+
+def core_dir(version:str) -> str:
+  """Workspace folder of Core `version`."""
+  return f"{DIR_FRAMEWORK}/{version}"
 
 def is_core(name:str) -> bool:
   """`True` for the Core itself, `opencplc/<version>`."""

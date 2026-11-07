@@ -21,7 +21,7 @@ import re, sys
 from xaeian import Print, Color as c
 from xaeian.cmd import run
 from .args import flag
-from .resolver import Project
+from .model import Project
 from . import utils
 
 p = Print()

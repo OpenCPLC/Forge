@@ -15,7 +15,7 @@ import sys
 from xaeian import Print, Color as c, PATH
 from xaeian.crc import crc32_iso
 from .args import flag
-from .resolver import FLASH_BASE
+from .platforms import FLASH_BASE
 from .utils import hexfile, keys, ed25519
 from . import utils
 

@@ -7,7 +7,7 @@ import pytest
 from conftest import write_app_image, write_boot_image, signed_by
 from opencplc.pack import pack, pack_command, update_path
 from opencplc.project import ANSI
-from opencplc.resolver import FLASH_BASE
+from opencplc.platforms import FLASH_BASE
 from opencplc.utils.hexfile import load_hex
 from opencplc.utils import keys
 

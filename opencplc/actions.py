@@ -3,7 +3,7 @@
 """
 One-shot CLI actions.
 
-`info_actions()` handles -v, -F, -f, -hl, -u, -a, -z, -p and --test, each without a project.
+`info_actions()` handles -v, -F, -f, -hl, -u, -a, -z, -p, --test and --upload, without a project.
 `info_show()` and `program_image()` act on the resolved model, for -i and --program.
 """
 
@@ -11,9 +11,9 @@ import sys
 from datetime import datetime
 from xaeian import Print, Color as c, Ico, FILE, DIR, PATH, replace_end
 from xaeian.cmd import run
-from .config import URL_DL, URL_FORGE, URL_CORE, EXE_NAME, DIR_FRAMEWORK
-from .args import flag
-from .resolver import Project
+from .config import URL_DL, URL_FORGE, URL_CORE, EXE_NAME
+from .args import flag, given
+from .model import Project
 from .pack import pack_command
 from .upload import upload
 from .runner import run_tests
@@ -79,11 +79,6 @@ def update_forge(args):
     sys.exit(1)
   p.ok(f"Forge updated to {c.VIOLET}{target}{c.END}")
 
-# Flags of a project run, where -f is an override, not a download
-PROJECT_FLAGS = ("name", "new", "demo", "reload", "delete", "get", "board", "chip", "plc",
-  "drv", "boot", "memory", "opt_level", "project_list", "info", "version", "framework_versions",
-  "size", "pack", "upload", "test", "program", "lock", "keygen", "hash_list", "update", "assets")
-
 def framework_fetch(args, forge_cfg:dict) -> bool:
   """
   -f VER alone: clone that Core version, no project involved.
@@ -91,10 +86,10 @@ def framework_fetch(args, forge_cfg:dict) -> bool:
   A way to read a version before `PRO_FRAMEWORK` points at it.
   Already cloned stays as it is.
   """
-  if not args.framework or args.stlink is not None: return False
-  if any(getattr(args, name) for name in PROJECT_FLAGS): return False
+  # beside any other flag -f overrides the Core of a project run, so it downloads only alone
+  if not args.framework or given(args) - {"framework", "yes"}: return False
   ver = args.framework
-  path = PATH.resolve(f"{DIR_FRAMEWORK}/{ver}", read=False)
+  path = PATH.resolve(utils.core_dir(ver), read=False)
   if DIR.exists(path):
     p.ok(f"Framework {c.VIOLET}{ver}{c.END} already in {c.GREY}{PATH.local(path)}{c.END}")
     return True

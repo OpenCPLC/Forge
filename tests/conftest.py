@@ -46,7 +46,7 @@ def render(template:str, subs:dict) -> str:
 
 from opencplc import utils
 from opencplc.utils import keys
-from opencplc.configure import main_h_defines
+from opencplc.headers import main_h_defines
 
 def parse_main_h(text:str) -> dict:
   """Read `PRO_*` definitions the exact way `config_load` does."""
@@ -57,7 +57,10 @@ def parse_dispatcher(text:str) -> str:
   lines = utils.lines_clear(text.splitlines(), "#")
   return utils.get_vars(lines, ["ACTIVE"], ":=", required=False).get("ACTIVE", "")
 
+from dataclasses import replace
 from opencplc.platforms import parse_chip
+from opencplc.boards import Board
+from opencplc.model import Config
 from opencplc.resolver import resolve_project
 
 CORE_FILES = [
@@ -139,49 +142,36 @@ def edit_main_h(ws, old:str, new:str, project:str="myapp"):
   assert old in text, f"{old!r} not in {main_h}"
   main_h.write_text(text.replace(old, new))
 
-def uno_cfg(name:str="myapp", core:str="1.0.0") -> dict:
-  """cfg of an Uno project, as `config_new` would build it from the manifest."""
-  return parse_chip("STM32G0C1") | {
-    "pro_name": name, "pro_ver": core, "fw_ver": core,
-    "opt_level": "Og", "log_level": "LOG_LEVEL_INF",
-    "board": "uno", "board_title": "Uno", "board_dir": f"opencplc/{core}/brd/uno",
-    "board_drivers": ["max31865"],
-    "plc": True,
-    "project_drivers": [], "flash_kB": 492, "ram_kB": 144, "freq_Hz": 59904000,
-  }
+def uno_cfg(name:str="myapp", core:str="1.0.0") -> Config:
+  """Config of an Uno project, as `config_new` would build it from the manifest."""
+  uno = Board(name="uno", title="Uno", dir=f"opencplc/{core}/brd/uno", plc=True,
+    chip="STM32G0C1", flash_kB=492, reserve_kB=0, ram_kB=144, freq_Hz=59904000,
+    drivers=["max31865"])
+  return Config(chip=parse_chip("STM32G0C1"), board=uno, plc=True,
+    flash_kB=492, ram_kB=144, freq_Hz=59904000, name=name, pro_ver=core, fw_ver=core)
 
-def wb55_cfg(name:str="myapp", core:str="1.0.0") -> dict:
-  """cfg of a bare-metal STM32WB55 project, the chip with a radio stack."""
-  return parse_chip("STM32WB55") | {
-    "pro_name": name, "pro_ver": core, "fw_ver": core,
-    "opt_level": "Og", "log_level": "LOG_LEVEL_INF",
-    "board": None, "board_title": "", "board_dir": None, "board_drivers": [],
-    "plc": False, "project_drivers": [], "freq_Hz": 16000000,
-  }
-
-def ws_paths(core:str="1.0.0", name:str="myapp") -> dict:
-  """Workspace paths of `paths_setup`, with `pro` narrowed to the project."""
-  return {
-    "framework": "opencplc", "build": "build",
-    "fw": f"opencplc/{core}", "pro": f"projects/{name}",
-  }
+def wb55_cfg(name:str="myapp", core:str="1.0.0") -> Config:
+  """Config of a bare-metal STM32WB55 project, the chip with a radio stack."""
+  wb55 = parse_chip("STM32WB55")
+  return Config(chip=wb55, board=None, plc=False, flash_kB=wb55.flash_kB, ram_kB=wb55.ram_kB,
+    freq_Hz=16000000, name=name, pro_ver=core, fw_ver=core)
 
 def key_boot(keys:str=KEY) -> dict:
-  """cfg entries of a project behind the `key` bootloader of `keys`, as its boot.h gives them."""
+  """Config fields of a project behind the `key` bootloader of `keys`, as its boot.h gives them."""
   return {"boot": True, "boot_keys": keys}
 
 def resolve_key_uno():
   """Resolved Uno model behind the `key` bootloader of `KEY`."""
-  return resolve_project(uno_cfg() | key_boot(), ws_paths(), {})
+  return resolve_project(replace(uno_cfg(), **key_boot()))
 
 def resolve_key_wb55():
   """Resolved WB55 model in 818kB behind the `key` bootloader of `KEY`."""
-  cfg = uno_cfg() | parse_chip("STM32WB55") | key_boot() | {"flash_kB": 818}
-  return resolve_project(cfg, ws_paths(), {})
+  cfg = replace(uno_cfg(), chip=parse_chip("STM32WB55"), flash_kB=818, **key_boot())
+  return resolve_project(cfg)
 
-def resolve_uno(forge_cfg=None):
+def resolve_uno(stlink:str=""):
   """Resolved Uno model over the synthetic workspace."""
-  return resolve_project(uno_cfg(), ws_paths(), forge_cfg or {})
+  return resolve_project(replace(uno_cfg(), stlink=stlink))
 
 def refs_cfg() -> dict:
   """Workspace config with a cached version list, offline."""
@@ -197,7 +187,7 @@ def load_project(ws, name:str="myapp", **flags) -> dict:
   from opencplc.args import Args
   from opencplc.configure import config_load
   args = Args(name=name, **flags)
-  return config_load(args, pro_map(ws, name), ws_paths(name=name), "1.0.0", refs_cfg())
+  return config_load(args, pro_map(ws, name), "1.0.0", refs_cfg())
 
 def read_makefile(ws, project:str="myapp") -> str:
   """Makefile Forge generated for `project`."""
@@ -219,19 +209,14 @@ def run_cli(monkeypatch, *argv) -> int:
     return int(e.code or 0)
   return 0
 
-def host_cfg(name:str) -> dict:
-  """cfg of a HOST project, a desktop program with no board and no flash."""
-  return parse_chip("HOST") | {
-    "pro_name": name, "pro_ver": "1.0.0", "fw_ver": "1.0.0", "freq_Hz": 0,
-    "opt_level": "O0", "log_level": "LOG_LEVEL_INF",
-    "board": None, "board_title": "", "board_dir": None, "board_drivers": [],
-    "plc": False,
-    "project_drivers": [],
-  }
+def host_cfg(name:str) -> Config:
+  """Config of a HOST project, a desktop program with no board and no flash."""
+  return Config(chip=parse_chip("HOST"), board=None, plc=False, flash_kB=0, ram_kB=0, freq_Hz=0,
+    name=name, pro_ver="1.0.0", fw_ver="1.0.0", opt_level="O0")
 
 def host_model(name:str="app"):
   """Resolved HOST model for a project in the synthetic workspace."""
-  return resolve_project(host_cfg(name), ws_paths(name=name), {})
+  return resolve_project(host_cfg(name))
 
 def make_run(ws, *goals:str, project:str="app"):
   """GNU Make on a project directory, with the reload rule pointed at this interpreter."""

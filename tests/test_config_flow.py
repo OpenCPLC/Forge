@@ -78,3 +78,17 @@ def unknown_keys_are_dropped_on_load(workspace):
   )
   cfg = forge.forge_config(load_templates())
   assert "windows" not in cfg and "paths" not in cfg and "default" not in cfg
+
+def ignore_is_kept_only_when_set(workspace):
+  assert "ignore" not in forge.forge_config(load_templates())
+  (workspace / "opencplc.json").write_text(
+    '{"version": "latest", "stlink": {}, "ignore": ["demo/"]}',
+  )
+  assert forge.forge_config(load_templates())["ignore"] == ["demo/"]
+
+def ignore_other_than_a_list_of_patterns_exits(workspace):
+  (workspace / "opencplc.json").write_text(
+    '{"version": "latest", "stlink": {}, "ignore": "demo/"}',
+  )
+  with pytest.raises(SystemExit):
+    forge.forge_config(load_templates())

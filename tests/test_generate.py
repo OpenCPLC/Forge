@@ -10,7 +10,8 @@ from opencplc import actions, utils, project
 from opencplc.project import generate, prepare_project
 from opencplc.resolver import resolve_project
 from opencplc.utils import keys
-from conftest import build_workspace, uno_cfg, wb55_cfg, ws_paths, parse_dispatcher, resolve_uno
+from dataclasses import replace
+from conftest import build_workspace, uno_cfg, wb55_cfg, parse_dispatcher, resolve_uno
 from conftest import KEY, key_boot, resolve_key_uno, read_makefile
 
 BUILD = Path("build/projects/myapp") # build folder of myapp, the bootloader files in it
@@ -62,8 +63,8 @@ def dispatcher_points_at_the_active_project(ws):
 def one_flash_rule_and_the_debugger_load_the_packed_image(ws):
   """Neither the makefile nor the debugger knows whether a bootloader sits in front."""
   rule = "program $(BUILD)/$(TARGET)-dist.hex verify reset exit"
-  for cfg in (uno_cfg(), uno_cfg() | {"boot": True}):
-    generate(resolve_project(cfg, ws_paths(), {}))
+  for cfg in (uno_cfg(), replace(uno_cfg(), boot=True)):
+    generate(resolve_project(cfg))
     make = read_makefile(ws)
     assert make.count(rule) == 1 and "$(TARGET).elf verify" not in make
     launch = json.loads((ws / ".vscode" / "launch.json").read_text())["configurations"][0]
@@ -129,7 +130,7 @@ def stlink_binds_makefile_and_debugger(ws):
   assert "STLINK := \n" in make
   assert "OPENOCD = openocd -f interface/stlink.cfg -f target/stm32g0x.cfg" in make
   assert "openOCDPreConfigLaunchCommands" not in (ws / ".vscode" / "launch.json").read_text()
-  generate(resolve_uno({"stlink": {"projects/myapp": "ABC123"}}))
+  generate(resolve_uno("ABC123"))
   make = read_makefile(ws)
   assert "STLINK := ABC123" in make
   assert 'stlink.cfg -c "adapter serial ABC123" -f target/stm32g0x.cfg' in make
@@ -139,22 +140,18 @@ def stlink_binds_makefile_and_debugger(ws):
 
 def nested_project_anchors_deeper(ws, tmp_path):
   build_workspace(tmp_path, project="firm/app")
-  cfg = uno_cfg("firm/app")
-  paths = ws_paths(name="firm/app")
-  pro = resolve_project(cfg, paths, {})
-  generate(pro)
+  generate(resolve_project(uno_cfg("firm/app")))
   make = (tmp_path / "projects" / "firm" / "app" / "makefile").read_text()
   assert "WORKSPACE := $(abspath $(PROJECT)/../../..)" in make
   assert "$(WORKSPACE)/build/projects/firm/app" in make
 
 def prepare_creates_skeleton_once(ws, tmp_path):
   cfg = uno_cfg("fresh")
-  paths = ws_paths(name="fresh")
-  prepare_project(cfg, paths)
+  prepare_project(cfg)
   main_c = tmp_path / "projects" / "fresh" / "main.c"
   assert main_c.exists()
   main_c.write_text("// user edit\n")
-  prepare_project(cfg, paths)
+  prepare_project(cfg)
   assert main_c.read_text() == "// user edit\n"
 
 def plain_project_links_at_the_start_of_flash(ws):
@@ -171,7 +168,7 @@ def plain_project_links_at_the_start_of_flash(ws):
   assert not (ws / BUILD / "boot.ld").exists()
 
 def boot_project_links_into_its_slot_and_builds_the_bootloader_under_it(ws):
-  generate(resolve_project(uno_cfg() | {"boot": True}, ws_paths(), {}))
+  generate(resolve_project(replace(uno_cfg(), boot=True)))
   ld = (ws / "projects" / "myapp" / "flash.ld").read_text()
   assert "ORIGIN = 0x08003000, LENGTH = 240K" in ld
   make = read_makefile(ws)
@@ -216,14 +213,14 @@ def boot_h_of_the_project_reloads_the_makefile(ws):
   assert "$(wildcard $(PROJECT)/main.h $(PROJECT)/boot.h " in read_makefile(ws)
 
 def dist_signs_with_the_key_pro_signing_key_names(ws):
-  cfg = uno_cfg() | key_boot(KEY * 2) | {"signing_key": 1}
-  generate(resolve_project(cfg, ws_paths(), {}))
+  cfg = replace(uno_cfg(), signing_key=1, **key_boot(KEY * 2))
+  generate(resolve_project(cfg))
   assert "SIGNING_KEY := 1\n" in read_makefile(ws)
 
 def stack_rule_takes_cube_from_its_default_home(ws, monkeypatch):
   monkeypatch.setattr(utils, "cube_bin", lambda: "C:/Program Files/cube/bin")
   monkeypatch.setattr(utils, "cube_found", lambda: True)
-  generate(resolve_project(wb55_cfg(), ws_paths(), {}))
+  generate(resolve_project(wb55_cfg()))
   make = read_makefile(ws)
   assert "stack: export PATH := C:/Program Files/cube/bin;$(PATH)" in make
   assert "flash_cpu2.sh" in make and "$(if $(FAST),--fast)" in make
@@ -231,7 +228,7 @@ def stack_rule_takes_cube_from_its_default_home(ws, monkeypatch):
 def stack_rule_leaves_cube_elsewhere_to_path(ws, monkeypatch):
   monkeypatch.setattr(utils, "cube_bin", lambda: "")
   monkeypatch.setattr(utils, "cube_found", lambda: True)
-  generate(resolve_project(wb55_cfg(), ws_paths(), {}))
+  generate(resolve_project(wb55_cfg()))
   make = read_makefile(ws)
   assert "stack: export PATH" not in make
   assert "flash_cpu2.sh" in make
@@ -239,7 +236,7 @@ def stack_rule_leaves_cube_elsewhere_to_path(ws, monkeypatch):
 def stack_rule_without_cube_says_where_to_get_it(ws, monkeypatch):
   monkeypatch.setattr(utils, "cube_bin", lambda: "")
   monkeypatch.setattr(utils, "cube_found", lambda: False)
-  generate(resolve_project(wb55_cfg(), ws_paths(), {}))
+  generate(resolve_project(wb55_cfg()))
   make = read_makefile(ws)
   assert "STM32CubeProgrammer" in make and "stm32cubeprog" in make
   assert "flash_cpu2.sh" not in make
@@ -255,10 +252,10 @@ def no_placeholder_outlives_generation(ws):
   """Make reads a stray `${KEY}` as an empty variable, so a missing color would vanish silently."""
   files = ["projects/myapp/makefile", "makefile", "projects/myapp/flash.ld",
     ".vscode/launch.json", ".vscode/c_cpp_properties.json"]
-  for cfg in (uno_cfg(), uno_cfg() | {"boot": True}, uno_cfg() | key_boot(), wb55_cfg(),
-    wb55_cfg() | key_boot()):
-    generate(resolve_project(cfg, ws_paths(), {}))
-    for name in files + ([f"{BUILD.as_posix()}/boot.ld"] if cfg.get("boot") else []):
+  for cfg in (uno_cfg(), replace(uno_cfg(), boot=True), replace(uno_cfg(), **key_boot()),
+    wb55_cfg(), replace(wb55_cfg(), **key_boot())):
+    generate(resolve_project(cfg))
+    for name in files + ([f"{BUILD.as_posix()}/boot.ld"] if cfg.boot else []):
       assert not re.findall(r"\$\{[A-Z_]+\}", (ws / name).read_text()), name
 
 def the_dispatcher_forwards_every_project_target(ws):

@@ -6,7 +6,9 @@ import pytest
 from xaeian import file_context
 from opencplc.args import Args
 from opencplc.configure import config_load, flags_reject, opt_normalize, main_h_number
-from conftest import build_workspace, load_template, render, ws_paths, refs_cfg, pro_map
+from opencplc.platforms import parse_chip
+from dataclasses import replace
+from conftest import build_workspace, load_template, render, refs_cfg, pro_map, host_cfg
 from conftest import KEY, add_define, add_boot_define, edit_main_h, load_project
 
 MAIN_H = {
@@ -28,22 +30,22 @@ def ws(tmp_path):
 
 def existing_project_reads_main_h(ws):
   cfg = load_project(ws)
-  assert cfg["board"] == "uno"
-  assert cfg["chip"] == "STM32G0C1"
-  assert cfg["pro_ver"] == "1.0.0"
-  assert cfg["flash_kB"] == 480
-  assert cfg["ram_kB"] == 140
-  assert cfg["opt_level"] == "O1"
-  assert cfg["log_level"] == "LOG_LEVEL_DBG"
-  assert cfg["freq_Hz"] == 48000000
-  assert cfg["boot"] is True and cfg["boot_keys"] == ""
+  assert cfg.board.name == "uno"
+  assert cfg.chip.name == "STM32G0C1"
+  assert cfg.pro_ver == "1.0.0"
+  assert cfg.flash_kB == 480
+  assert cfg.ram_kB == 140
+  assert cfg.opt_level == "O1"
+  assert cfg.log_level == "LOG_LEVEL_DBG"
+  assert cfg.freq_Hz == 48000000
+  assert cfg.boot is True and cfg.boot_keys == ""
 
 def a_main_h_without_the_include_runs_from_the_start_of_flash(ws):
   """boot.h left without its `#include` puts nothing behind the bootloader."""
   edit_main_h(ws, BOOT_LINE, "")
   add_boot_define(ws, f'#define BOOT_KEYS "{KEY}"')
   cfg = load_project(ws)
-  assert cfg["boot"] is False and cfg["boot_keys"] == ""
+  assert cfg.boot is False and cfg.boot_keys == ""
 
 def main_h_without_pro_framework_exits(ws):
   """No Core version stands in for the one a project names."""
@@ -62,7 +64,7 @@ def boot_keys_come_from_boot_h_joined_as_c_joins_them(ws):
   add_boot_define(ws, f'#define BOOT_KEYS \\\n  "{KEY}" \\\n  "{KEY.upper()}" // product')
   add_define(ws, "#define PRO_SIGNING_KEY 1")
   cfg = load_project(ws)
-  assert cfg["boot_keys"] == KEY + KEY.upper() and cfg["signing_key"] == 1
+  assert cfg.boot_keys == KEY + KEY.upper() and cfg.signing_key == 1
 
 def boot_keys_other_than_whole_keys_of_64_hex_digits_exit(ws):
   boot_h = ws / "projects" / "myapp" / "boot.h"
@@ -118,10 +120,10 @@ def chip_flag_builds_an_existing_project_on_another_chip(ws):
   """-c alone is the bare chip as at creation, memory follows it, and main.h stays as it is."""
   main_h = (ws / "projects" / "myapp" / "main.h").read_text()
   cfg = load_project(ws, chip="STM32G081")
-  assert cfg["chip"] == "STM32G081" and cfg["board"] is None
-  assert cfg["plc"] # `PRO_PLC true` of main.h stands for -P
-  assert (cfg["flash_kB"], cfg["ram_kB"]) == (128, 36) # not the 480kB and 140kB of main.h
-  assert cfg["load_flags"] == "-c STM32G081"
+  assert cfg.chip.name == "STM32G081" and cfg.board is None
+  assert cfg.plc # `PRO_PLC true` of main.h stands for -P
+  assert (cfg.flash_kB, cfg.ram_kB) == (128, 36) # not the 480kB and 140kB of main.h
+  assert cfg.load_flags == "-c STM32G081"
   assert (ws / "projects" / "myapp" / "main.h").read_text() == main_h
 
 def board_flag_puts_a_bare_project_on_a_board(ws):
@@ -129,8 +131,8 @@ def board_flag_puts_a_bare_project_on_a_board(ws):
   pro.mkdir()
   (pro / "main.h").write_text('#define PRO_CHIP_STM32G081\n#define PRO_FRAMEWORK "1.0.0"\n')
   cfg = load_project(ws, "bare", board="uno")
-  assert (cfg["board"], cfg["chip"]) == ("uno", "STM32G0C1") and cfg["plc"]
-  assert cfg["load_flags"] == "-b uno"
+  assert (cfg.board.name, cfg.chip.name) == ("uno", "STM32G0C1") and cfg.plc
+  assert cfg.load_flags == "-b uno"
 
 def main_h_without_hardware_takes_it_from_each_load(ws):
   """One test of flash for every chip: main.h names no board, chip or memory."""
@@ -141,20 +143,20 @@ def main_h_without_hardware_takes_it_from_each_load(ws):
     load_project(ws, "any")
   g081 = load_project(ws, "any", chip="STM32G081")
   wb55 = load_project(ws, "any", chip="STM32WB55")
-  assert (g081["flash_kB"], g081["ram_kB"], g081["load_flags"]) == (128, 36, "-c STM32G081")
-  assert (wb55["flash_kB"], wb55["ram_kB"]) == (832, 192)
-  assert load_project(ws, "any", board="uno")["chip"] == "STM32G0C1"
+  assert (g081.flash_kB, g081.ram_kB, g081.load_flags) == (128, 36, "-c STM32G081")
+  assert (wb55.flash_kB, wb55.ram_kB) == (832, 192)
+  assert load_project(ws, "any", board="uno").chip.name == "STM32G0C1"
 
 def forced_chip_needs_no_board_of_main_h(ws):
   """A board main.h names and this Core lacks stays unlooked-for under -c."""
   main_h = ws / "projects" / "myapp" / "main.h"
   main_h.write_text(main_h.read_text().replace("PRO_BOARD_Uno", "PRO_BOARD_Gone"))
   cfg = load_project(ws, chip="STM32G081")
-  assert cfg["chip"] == "STM32G081" and cfg["load_flags"] == "-c STM32G081"
+  assert cfg.chip.name == "STM32G081" and cfg.load_flags == "-c STM32G081"
 
 def hardware_of_main_h_forced_again_is_a_plain_load(ws):
   cfg = load_project(ws, board="uno")
-  assert cfg["load_flags"] == "" and cfg["flash_kB"] == 480
+  assert cfg.load_flags == "" and cfg.flash_kB == 480
   main_h = ws / "projects" / "myapp" / "main.h"
   main_h.write_text(main_h.read_text().replace("PRO_PLC true", "PRO_PLC false"))
   for flags in ({}, {"board": "uno"}): # Uno runs on the PLC layer, both refuse alike
@@ -173,32 +175,29 @@ def no_flags_pass_the_policy():
 
 def unknown_project_exits(ws):
   with pytest.raises(SystemExit):
-    config_load(Args(name="ghost"), pro_map(ws), ws_paths(), "1.0.0", refs_cfg())
+    config_load(Args(name="ghost"), pro_map(ws), "1.0.0", refs_cfg())
 
 def opt_normalize_clamps_unknown():
-  cfg = {"opt_level": "O9", "platform": "Host"}
+  cfg = replace(host_cfg("app"), opt_level="O9")
   opt_normalize(cfg)
-  assert cfg["opt_level"] == "Og"
+  assert cfg.opt_level == "Og"
 
 def opt_normalize_fixes_case():
-  cfg = {"opt_level": "og", "platform": "Host"}
+  cfg = replace(host_cfg("app"), opt_level="og")
   opt_normalize(cfg)
-  assert cfg["opt_level"] == "Og"
+  assert cfg.opt_level == "Og"
 
 def opt_o2_builds_as_written_on_stm32():
-  cfg = {"opt_level": "O2", "platform": "STM32"}
+  cfg = replace(host_cfg("app"), chip=parse_chip("STM32G081"), opt_level="O2")
   opt_normalize(cfg)
-  assert cfg["opt_level"] == "O2"
+  assert cfg.opt_level == "O2"
 
 def framework_flag_builds_an_existing_project_on_another_core(ws):
   build_workspace(ws, core="2.0.0", project="other")
-  paths = ws_paths(core="2.0.0")
-  cfg = config_load(Args(name="myapp", framework="2.0.0"), pro_map(ws), paths, "2.0.0",
-    refs_cfg() | {"available-versions": ["2.0.0", "1.0.0"]})
-  assert cfg["pro_ver"] == "1.0.0"
-  assert cfg["fw_ver"] == "2.0.0"
-  assert paths["fw"].endswith("opencplc/2.0.0")
-  assert cfg["load_flags"] == "-f 2.0.0"
+  refs = refs_cfg() | {"available-versions": ["2.0.0", "1.0.0"]}
+  cfg = config_load(Args(name="myapp", framework="2.0.0"), pro_map(ws), "2.0.0", refs)
+  assert (cfg.pro_ver, cfg.fw_ver) == ("1.0.0", "2.0.0")
+  assert cfg.load_flags == "-f 2.0.0"
   cfg = config_load(Args(name="myapp", framework="2.0.0", chip="STM32G081"), pro_map(ws),
-    ws_paths(core="2.0.0"), "2.0.0", refs_cfg() | {"available-versions": ["2.0.0", "1.0.0"]})
-  assert cfg["load_flags"] == "-f 2.0.0 -c STM32G081"
+    "2.0.0", refs)
+  assert cfg.load_flags == "-f 2.0.0 -c STM32G081"

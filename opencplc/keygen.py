@@ -14,8 +14,7 @@ import os, re, sys, getpass
 from xaeian import Print, Color as c, FILE
 from .args import flag
 from .config import BOOT_H, BOOT_LINE
-from .configure import boot_included, boot_keys, layers_check
-from .project import boot_h_text
+from .headers import boot_included, boot_keys, layers_check, boot_h_text
 from .utils import keys, lines_clear
 from . import utils
 

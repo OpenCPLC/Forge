@@ -221,6 +221,18 @@ def verify_compiler(is_embedded:bool) -> bool:
   except (OSError, subprocess.TimeoutExpired):
     return False
 
+def ensure_toolchain(is_embedded:bool, yes:bool, tests:bool):
+  """Tools of a build installed when missing, then the compiler seen to run; a dead one exits."""
+  ensure_tools(is_embedded, yes, tests)
+  if verify_compiler(is_embedded): return
+  compiler = "arm-none-eabi-gcc" if is_embedded else "gcc"
+  p.err(f"Compiler {c.YELLOW}{compiler}{c.END} not working")
+  if WINDOWS:
+    p.run(f"Remove {c.CREAM}{tools_dir()}{c.END} and run again, Forge reinstalls them")
+  else:
+    p.run(f"Check that {c.YELLOW}{compiler}{c.END} is installed and on {c.SKY}PATH{c.END}")
+  sys.exit(1)
+
 #---------------------------------------------------------------------------------------- User PATH
 
 def user_path_add(path:str):
@@ -250,47 +262,3 @@ def _broadcast_env_change():
   HWND_BROADCAST, WM_SETTINGCHANGE, SMTO_ABORTIFHUNG = 0xFFFF, 0x001A, 0x0002
   ctypes.windll.user32.SendMessageTimeoutW(HWND_BROADCAST, WM_SETTINGCHANGE, 0, "Environment",
     SMTO_ABORTIFHUNG, 5000, ctypes.byref(ctypes.c_ulong(0)))
-
-#------------------------------------------------------------------------------------------ openocd
-
-def openocd_command(target:str, serial:str="") -> list[str]:
-  """
-  openocd up to the command it runs: ST-Link, the pinned probe, the chip held in reset.
-
-  `--program` runs it directly, the generated makefile spells it out for `flash` and `erase`.
-  """
-  cmd = ["openocd", "-f", "interface/stlink.cfg"]
-  if serial: cmd += ["-c", f"adapter serial {serial}"]
-  return cmd + ["-f", f"target/{target}.cfg",
-    "-c", "reset_config srst_only srst_nogate connect_assert_srst"]
-
-#----------------------------------------------------------------------------------- CubeProgrammer
-
-# `make stack` alone needs it: FUS and the radio stack of CPU2 are beyond openocd.
-# ST hands it out after a login, so Forge never ships it, only finds it.
-CUBE_CLI = "STM32_Programmer_CLI"
-CUBE_BIN = "STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin" # under Program Files
-CUBE_URL = "https://www.st.com/en/development-tools/stm32cubeprog.html"
-
-def cube_bin() -> str:
-  """
-  CubeProgrammer's `bin` in its default Windows home, "" when it is not there.
-
-  The path goes into the makefile as text, so it has to hold for every make that reads it.
-  A 32-bit make reads `%ProgramFiles%` as `Program Files (x86)`.
-  Started from Git Bash, make knows it only as `PROGRAMFILES`.
-  `ProgramW6432` names the 64-bit folder to any process, under one name in every language.
-  """
-  if not WINDOWS: return ""
-  home = os.environ.get("ProgramW6432") or os.environ.get("ProgramFiles", "C:/Program Files")
-  path = f"{home}/{CUBE_BIN}"
-  return PATH.normalize(path) if FILE.exists(f"{path}/{CUBE_CLI}.exe") else ""
-
-def cube_cli() -> str:
-  """CubeProgrammer CLI to run: its default home first, then PATH; "" when neither has it."""
-  if cube_bin(): return f"{cube_bin()}/{CUBE_CLI}"
-  return which(CUBE_CLI) or ""
-
-def cube_found() -> bool:
-  """CubeProgrammer reachable by `make stack`: in its default home or on PATH."""
-  return bool(cube_cli())

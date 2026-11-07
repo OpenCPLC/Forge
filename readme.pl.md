@@ -149,6 +149,7 @@ Zawiera on:
 
 - **`version`**: Domyślna wersja framework'a OpenCPLC dla nowych projektów. Wartość `latest` oznacza najnowszą stabilną wersję.
 - `stlink`: Programator przypisany do projektu, dzięki czemu `make flash` trafia we właściwą płytkę, gdy podłączonych jest kilka ST-Linków. Ustawiasz przez `opencplc myapp -s <serial>`, czyścisz przez `opencplc myapp -s`. Numer seryjny odczytasz z logu OpenOCD przy `make flash`, mając podłączony jeden programator.
+- `ignore`: Projekty pomijane na liście `-l` i w jej numeracji, zapisane wzorcami jak w `.gitignore`, np. `["demo/"]` ukrywa wszystkie dema. Projekt podany z nazwy nadal się ładuje. Klucz dopisujesz ręcznie, gdy jest potrzebny.
 - `available-versions`: Lista wszystkich dostępnych wersji framework'a. Ustawiana automatycznie, używana offline.
 
 Układ workspace jest stały: `projects/` z Twoimi projektami, `opencplc/` z wersjami framework'a i `build/` z plikami zbudowanymi.

@@ -6,7 +6,8 @@ import pytest
 from xaeian import file_context
 from opencplc import lock
 from opencplc.resolver import resolve_project
-from conftest import build_workspace, uno_cfg, ws_paths, resolve_key_uno, resolve_key_wb55
+from dataclasses import replace
+from conftest import build_workspace, uno_cfg, resolve_key_uno, resolve_key_wb55
 from conftest import resolve_uno, wb55_cfg
 from opencplc.platforms import parse_chip
 
@@ -23,7 +24,7 @@ def level_1_on_g0_protects_pages_0_to_14_and_boots_the_flash(ws):
   assert optr == "stm32l4x option_write 0 0x20 0x050000BB 0x050000FF"  # nBOOT_SEL, nBOOT0, RDP1
 
 def plain_bootloader_protects_its_own_smaller_region(ws):
-  pro = resolve_project(uno_cfg() | {"boot": True}, ws_paths(), {})
+  pro = resolve_project(replace(uno_cfg(), boot=True))
   wrp, _ = lock.option_writes(pro, 1)
   assert wrp == "stm32l4x option_write 0 0x2C 0x00040000 0x007F007F" # pages 0 to 4, mailbox 5
 
@@ -46,7 +47,7 @@ def level_0_drops_every_area_and_takes_rdp_back_with_or_without_bootloader(ws):
     assert optr == "stm32l4x option_write 0 0x20 0x000000AA 0x000000FF"
 
 def g081_fields_take_six_bits(ws):
-  pro = resolve_project(wb55_cfg() | parse_chip("STM32G081") | {"flash_kB": 128}, ws_paths(), {})
+  pro = resolve_project(replace(wb55_cfg(), chip=parse_chip("STM32G081"), flash_kB=128))
   *areas, _ = lock.option_writes(pro, 0)
   assert areas == ["stm32l4x option_write 0 0x2C 0x0000003F 0x003F003F",
     "stm32l4x option_write 0 0x30 0x0000003F 0x003F003F"]
@@ -96,7 +97,7 @@ def plain_project_locks_with_no_key(ws, monkeypatch):
     return 0, "0x050000BB\n0x00040000\n" if "stm32l4x option_read 0 0x20" in cmds else ""
   monkeypatch.setattr(lock, "openocd", openocd)
   monkeypatch.setattr(lock, "probe_chip", lambda pro: 0x467)
-  lock.lock_board(resolve_project(uno_cfg() | {"boot": True}, ws_paths(), {}), 1, yes=True)
+  lock.lock_board(resolve_project(replace(uno_cfg(), boot=True)), 1, yes=True)
   assert "catch {stm32l4x option_write 0 0x2C 0x00040000 0x007F007F}" in sessions[0]
 
 def session_clears_flags_catches_writes_and_waits_for_the_flash(ws):

@@ -123,11 +123,11 @@ def none_is_reserved_for_a_project_without_a_board(core):
     parse_board(str(d / f"opencplc_{d.name}.ini"), "none", "x")
 
 def reserve_is_optional_and_comes_off_the_top(core):
-  from opencplc.configure import board_fields
+  from opencplc.configure import hardware_config
   d = make_board(core, "uno", INI + "reserve_kB = 20\n", title="Uno")
   board = parse_board(str(d / "opencplc_uno.ini"), "uno", "x")
   assert (board.flash_kB, board.reserve_kB) == (492, 20)
-  assert board_fields(board)["flash_kB"] == 472
+  assert hardware_config("uno", "", False, str(core)).flash_kB == 472
   d = make_board(core, "big", INI + "reserve_kB = 999\n", title="Big")
   with pytest.raises(ValueError, match="reserve_kB"):
     parse_board(str(d / "opencplc_big.ini"), "big", "x")

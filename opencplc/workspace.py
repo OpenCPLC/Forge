@@ -10,9 +10,8 @@ keeps the Core checkout present and answers what projects exist here.
 
 import os, sys, json
 from xaeian import Print, Color as c, Ico, FILE, DIR, JSON, PATH, replace_end, set_context
-from .config import URL_CORE, DIR_PROJECTS, DIR_FRAMEWORK, DIR_BUILD, DIR_TESTS, DIR_BOOT
+from .config import URL_CORE, DIR_PROJECTS, DIR_FRAMEWORK, DIR_TESTS, DIR_BOOT
 from .args import flag
-from .project import write_dispatcher
 from . import utils
 
 p = Print()
@@ -36,8 +35,10 @@ def project_from_path(path:str, pro_root:str) -> str|None:
   if not PATH.is_under(path, pro_root): return None
   name = PATH.rel(path, pro_root)
   while name:
-    if FILE.exists(f"{pro_root}/{name}/main.h"): return name
-    if PATH.basename(name) == DIR_TESTS and utils.is_core(PATH.dirname(name)): return name
+    tests = PATH.basename(name) == DIR_TESTS
+    # `.tests/` of a project only sets its tests up, whatever `main.h` it holds
+    if tests and utils.is_core(PATH.dirname(name)): return name
+    if not tests and FILE.exists(f"{pro_root}/{name}/main.h"): return name
     name = PATH.dirname(name)
   return None
 
@@ -63,9 +64,14 @@ def forge_config(templates:dict) -> dict:
     p.err(f"Missing key {c.SKY}{missing[0]}{c.END} in {c.ORANGE}opencplc.json{c.END}")
     p.run(f"Add it back, or remove {c.ORANGE}opencplc.json{c.END} to start from defaults")
     sys.exit(1)
-  # Only documented fields survive a save, version list is Forge's own cache
-  cfg = {k: cfg[k] for k in (*template, "available-versions") if k in cfg}
+  # A save keeps only documented fields, `ignore` when set and Forge's own version cache
+  cfg = {k: cfg[k] for k in (*template, "ignore", "available-versions") if k in cfg}
   cfg["stlink"] = cfg["stlink"] if isinstance(cfg["stlink"], dict) else {}
+  ignore = cfg.get("ignore", [])
+  if not isinstance(ignore, list) or not all(isinstance(pattern, str) for pattern in ignore):
+    p.err(f"Key {c.SKY}ignore{c.END} in {c.ORANGE}opencplc.json{c.END} takes a list of patterns")
+    p.run(f'Write it as {c.SKY}"ignore": ["demo/"]{c.END}')
+    sys.exit(1)
   return cfg
 
 def config_text(cfg:dict) -> str:
@@ -105,9 +111,9 @@ def ensure_refs(forge_cfg:dict, yes:bool) -> list[str]:
       sys.exit(1)
   return forge_cfg["available-versions"]
 
-def paths_setup(args, forge_cfg:dict) -> tuple[dict, str]:
+def framework_version(args, forge_cfg:dict) -> str:
   """
-  Workspace paths of the fixed layout and the target framework version.
+  Core version of this run: -f, else the workspace default.
 
   A project in Core builds with the Core it lies in, so -f has no say over it.
   """
@@ -118,24 +124,19 @@ def paths_setup(args, forge_cfg:dict) -> tuple[dict, str]:
       "and builds with it")
     p.run(f"Drop flag {flag.f}")
     sys.exit(1)
-  fw_ver = core or fw_ver
-  paths = {"framework": DIR_FRAMEWORK, "build": DIR_BUILD}
-  paths["fw"] = PATH.resolve(f"{DIR_FRAMEWORK}/{fw_ver}", read=False)
-  paths["pro"] = DIR_PROJECTS
-  return paths, fw_ver
+  return core or fw_ver
 
-def ensure_framework(fw_ver:str, paths:dict, forge_cfg:dict, yes:bool):
+def ensure_framework(fw_ver:str, forge_cfg:dict, yes:bool):
   """Clone the framework when missing and sanity-check its layout."""
+  fw_dir = PATH.resolve(utils.core_dir(fw_ver), read=False)
   # Already cloned versions work offline, even when gone from remote
-  if not DIR.exists(paths["fw"]):
+  if not DIR.exists(fw_dir):
     utils.version_check(fw_ver, ensure_refs(forge_cfg, yes),
       f"{Ico.RUN} Check version list: {flag.F}")
-    utils.git_clone_missing(URL_CORE, paths["fw"], fw_ver, yes)
-  fw_hal = PATH.resolve(f"{paths['fw']}/hal", read=False)
-  fw_lib = PATH.resolve(f"{paths['fw']}/lib", read=False)
-  if not DIR.exists(fw_hal) or not DIR.exists(fw_lib):
+    utils.git_clone_missing(URL_CORE, fw_dir, fw_ver, yes)
+  if not DIR.exists(f"{fw_dir}/hal") or not DIR.exists(f"{fw_dir}/lib"):
     p.err(f"Framework {c.VIOLET}{fw_ver}{c.END} is incomplete or corrupted")
-    p.inf(f"Try removing {c.CREAM}{paths['fw']}{c.END} and run again")
+    p.inf(f"Try removing {c.CREAM}{fw_dir}{c.END} and run again")
     sys.exit(1)
 
 #----------------------------------------------------------------------------------- Active project
@@ -161,15 +162,20 @@ def reload_from_makefile(args, make_info:dict|None):
     p.run(f"Load one with {utils.color_command('opencplc <name>')}")
     sys.exit(1)
 
-def stlink_bind(forge_cfg:dict, pro_id:str, serial:str|None):
-  """Bind (serial) or clear (empty) the ST-Link of a project in opencplc.json; `None` leaves it."""
-  if serial is None: return
+def stlink_bind(forge_cfg:dict, pro_id:str, serial:str|None) -> str:
+  """
+  ST-Link of a project in opencplc.json: `serial` binds one, "" clears it, `None` leaves it.
+
+  Returns the one bound now, "" without.
+  """
+  bound = forge_cfg["stlink"]
   if serial:
-    forge_cfg["stlink"][pro_id] = serial
+    bound[pro_id] = serial
     p.ok(f"ST-Link {c.GOLD}{serial}{c.END} bound to {c.BLUE}{pro_id}{c.END}")
-  elif forge_cfg["stlink"].pop(pro_id, None) is not None:
+  elif serial == "" and bound.pop(pro_id, None) is not None:
     p.ok(f"ST-Link binding of {c.BLUE}{pro_id}{c.END} cleared")
-  persist_config(forge_cfg)
+  if serial is not None: persist_config(forge_cfg)
+  return bound.get(pro_id, "")
 
 #-------------------------------------------------------------------------------- Project inventory
 
@@ -186,14 +192,15 @@ def project_inventory(name:str|None) -> dict[str, str]:
   if DIR.exists(tests): projects[home] = tests # the Core itself is a project of its tests
   return projects
 
-def project_select(args, projects:dict):
-  """-l listing and picking a project by its number on that list."""
+def project_select(args, projects:dict, ignore:list[str]):
+  """-l listing and picking a project by its number on that list, which leaves out `ignore`."""
   if not (args.project_list or (args.name and args.name.isdigit())): return
-  if not projects:
+  listed = {name: path for name, path in projects.items() if not utils.ignored(name, ignore)}
+  if not listed:
     p.wrn("No projects found")
     p.run(f"Create one with {utils.color_command('opencplc -n <name>')}")
     sys.exit(1)
-  for i, (name, path) in enumerate(projects.items(), 1):
+  for i, (name, path) in enumerate(listed.items(), 1):
     if args.project_list:
       path = replace_end(PATH.local(path), name, "")
       nbr = f"{c.GOLD}{str(i).ljust(3)}{c.END}"
@@ -202,27 +209,3 @@ def project_select(args, projects:dict):
       args.name = name
       break
   if args.project_list: sys.exit(0)
-
-def project_delete(args, projects:dict, make_info:dict|None, forge_cfg:dict):
-  """Remove the project folder, its ST-Link binding and, when active, the dispatcher target."""
-  key = utils.project_key(projects, args.name)
-  if key is None:
-    p.err(f"Project {c.MAGNTA}{args.name}{c.END} does not exist")
-    sys.exit(1)
-  if utils.is_core(key):
-    p.err(f"{c.BLUE}{key}{c.END} is a Core, its tests stay with it")
-    sys.exit(1)
-  try:
-    active = PATH.local(projects[key])
-    if forge_cfg["stlink"].pop(utils.project_dir(key), None) is not None:
-      persist_config(forge_cfg)
-    DIR.remove(projects[key], force=True)
-    if make_info and make_info.get("ACTIVE") == active:
-      write_dispatcher("")
-      p.inf("Active project removed - "
-        f"select another with {utils.color_command('opencplc <name>')}")
-    p.ok(f"Project {c.BLUE}{args.name}{c.END} deleted")
-    sys.exit(0)
-  except Exception as e:
-    p.err(f"Failed to delete: {e}")
-    sys.exit(1)

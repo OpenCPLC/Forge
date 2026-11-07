@@ -1,28 +1,31 @@
 # opencplc/__main__.py
 
 """
-CLI entry point: parses arguments and orchestrates the run.
+CLI entry point: parses arguments and runs the stages of one run, a function each.
 
-`workspace` settles root, config, refs and project inventory,
-`configure` reads a project, `resolver` builds its model and `project` writes its files.
-`actions` answers one-shot flags, `keygen` makes product keys, `lock` writes option bytes.
+Modules stack up from the bottom, each importing only those below it:
+`platforms` and `boards` describe the hardware, `model` holds the shapes the modules pass on,
+`headers` reads main.h and boot.h, `workspace` settles root, config, refs and project inventory,
+`configure` makes a `Config`, `resolver` the `Project` model of it, `project` writes its files,
+and the commands act on them: `pack`, `upload`, `runner`, `keygen`, `lock` and `actions`.
 """
 
-import os, signal, sys
+import signal, sys
 from xaeian import Print, Color as c, PATH
-from .config import URL_DEMO, DIR_DEMO
+from .config import URL_DEMO, DIR_DEMO, DIR_PROJECTS
 from .args import flag, load_args, check_flags
 from .templates import load_templates
-from .project import prepare_project, generate
+from .model import Config
+from .project import prepare_project, generate, project_delete
 from .resolver import resolve_project, has_tests, tests_of
 from .actions import info_actions, info_show, program_image
 from .keygen import keygen
 from .lock import lock_board
 from .configure import config_new, config_load, opt_normalize
 from .workspace import (
-  enter_workspace, forge_config, persist_config, ensure_refs, paths_setup,
+  enter_workspace, forge_config, persist_config, ensure_refs, framework_version,
   ensure_framework, makefile_info, reload_from_cwd, reload_from_makefile,
-  project_inventory, project_select, project_delete, stlink_bind,
+  project_inventory, project_select, stlink_bind,
 )
 from . import utils
 
@@ -35,25 +38,13 @@ def handle_sigint(signum, frame):
 
 signal.signal(signal.SIGINT, handle_sigint)
 
-def ensure_toolchains(is_embedded:bool, yes:bool, tests:bool):
-  """Install missing tools, then make sure the compiler actually runs."""
-  utils.ensure_tools(is_embedded, yes, tests)
-  if not utils.verify_compiler(is_embedded):
-    compiler = "arm-none-eabi-gcc" if is_embedded else "gcc"
-    p.err(f"Compiler {c.YELLOW}{compiler}{c.END} not working")
-    if os.name == "nt":
-      p.run(f"Remove {c.CREAM}{utils.tools_dir()}{c.END} and run again, Forge reinstalls them")
-    else:
-      p.run(f"Check that {c.YELLOW}{compiler}{c.END} is installed and on {c.SKY}PATH{c.END}")
-    sys.exit(1)
+def name_project(args, cwd:str, forge_cfg:dict) -> bool:
+  """
+  Project of the run named, after the flags that may carry its name; `True` when scoped to it.
 
-def main():
-  """Parse arguments, settle the workspace and run the requested action."""
-  args = load_args()
-  templates = load_templates()
-  cwd = enter_workspace()
-  forge_cfg = forge_config(templates)
-  if info_actions(args, forge_cfg): sys.exit(0)
+  Without a name, a reload and the commands on a project take the folder of `cwd`,
+  then the active project of the dispatcher.
+  """
   # Mutually exclusive modes; mode flags may also carry the project name
   check_flags(args, ("reload", flag.r), ("info", flag.i))
   # --keygen writes into boot.h of a project that exists already
@@ -64,7 +55,6 @@ def main():
   persist_config(forge_cfg, create=bool(args.new or args.demo)) # a workspace starts here
   if not forge_cfg.get("available-versions"):
     ensure_refs(forge_cfg, args.yes) # first run: the version list must exist
-  make_info = makefile_info()
   # -r <name> and -r inside a project directory touch that project only, never the workspace
   scoped = bool(args.reload and args.name)
   # these act on the active project when no name is given
@@ -72,26 +62,31 @@ def main():
   if not args.name and (args.reload or args.info or acting):
     scoped = reload_from_cwd(args, cwd)
     if not scoped:
-      reload_from_makefile(args, make_info)
-  # after the name is known: a project in Core sets the version
-  paths, fw_ver = paths_setup(args, forge_cfg)
+      reload_from_makefile(args, makefile_info())
+  return scoped
+
+def fetch_project(args, fw_ver:str, forge_cfg:dict):
+  """Core of a new project, the remote project of -g; Demo of -e ends the run."""
   # A new project takes the workspace default Core, an existing one the version it pins
   if args.new:
-    ensure_framework(fw_ver, paths, forge_cfg, args.yes)
+    ensure_framework(fw_ver, forge_cfg, args.yes)
   # Remote project - name read from its main.h when not given
   if args.get:
     if not args.get[0].endswith(".zip"):
       utils.ensure_git(args.yes)
     ref = args.get[1] if len(args.get) > 1 else None
-    args.name = utils.project_remote(args.get[0], paths["pro"], ref, args.name)
+    args.name = utils.project_remote(args.get[0], DIR_PROJECTS, ref, args.name)
   if args.demo:
     utils.ensure_git(args.yes)
     utils.git_clone_missing(URL_DEMO, DIR_DEMO, "main", args.yes)
     p.inf(f"Demo in {c.GREY}{DIR_DEMO}{c.END}, "
       f"load one with {utils.color_command('opencplc demo/<name>')}")
     sys.exit(0)
+
+def pick_project(args, forge_cfg:dict) -> dict:
+  """Projects of the workspace by name, the one of the run picked by -l or its number."""
   projects = project_inventory(args.name)
-  project_select(args, projects)
+  project_select(args, projects, forge_cfg.get("ignore", []))
   if not args.name and not args.reload and not args.info:
     p.err("Project name not given")
     p.run(f"Load one with {utils.color_command('opencplc <name>')}, "
@@ -102,33 +97,54 @@ def main():
     if not valid:
       p.err(f"Invalid project name: {c.MAGNTA}{reason}{c.END}")
       sys.exit(1)
-  if args.delete:
-    project_delete(args, projects, make_info, forge_cfg)
-  paths["pro"] = PATH.resolve(utils.project_dir(args.name), read=False)
+  return projects
+
+def configure_project(args, projects:dict, fw_ver:str, forge_cfg:dict) -> Config:
+  """Config of the project, over the Core that builds it, with its ST-Link."""
   # the keys go into boot.h first, so this very run builds the project under them
   named = utils.project_key(projects, args.name)
   if args.keygen and named:
     keygen(args.keygen, named, PATH.resolve(projects[named], read=False))
   if args.new:
-    cfg = config_new(args, projects, paths, fw_ver, forge_cfg)
+    cfg = config_new(args, projects, fw_ver)
   else:
-    cfg = config_load(args, projects, paths, fw_ver, forge_cfg)
-  ensure_framework(cfg["fw_ver"], paths, forge_cfg, args.yes)
+    cfg = config_load(args, projects, fw_ver, forge_cfg)
+  ensure_framework(cfg.fw_ver, forge_cfg, args.yes)
   opt_normalize(cfg)
-  stlink_bind(forge_cfg, utils.project_dir(args.name), args.stlink)
+  cfg.stlink = stlink_bind(forge_cfg, utils.project_dir(cfg.name), args.stlink)
+  return cfg
+
+def run_project(args, cfg:Config, scoped:bool):
+  """What the flags ask of the project: -i, --program and --lock, or else a load."""
   if args.info:
-    info_show(resolve_project(cfg, paths, forge_cfg))
-  tests = has_tests(tests_of(args.name, paths["pro"]))
-  ensure_toolchains(cfg["platform"] == "STM32", args.yes, tests)
+    info_show(resolve_project(cfg))
+  tests = has_tests(tests_of(cfg.name, utils.project_dir(cfg.name)))
+  utils.ensure_toolchain(cfg.chip.platform == "STM32", args.yes, tests)
   # the factory programs the full image of `dist`, then locks the board
   if args.program or args.lock is not None:
-    model = resolve_project(cfg, paths, forge_cfg)
+    model = resolve_project(cfg)
     if args.program: program_image(model, args.program, args.yes)
     if args.lock is not None: lock_board(model, args.lock, args.yes)
     sys.exit(0)
-  prepare_project(cfg, paths)
-  model = resolve_project(cfg, paths, forge_cfg)
-  generate(model, activate=not scoped)
+  prepare_project(cfg)
+  generate(resolve_project(cfg), activate=not scoped)
+
+def main():
+  """Parse arguments, settle the workspace and run what the flags ask for."""
+  args = load_args()
+  templates = load_templates()
+  cwd = enter_workspace()
+  forge_cfg = forge_config(templates)
+  if info_actions(args, forge_cfg): sys.exit(0)
+  scoped = name_project(args, cwd, forge_cfg)
+  # after the name is known: a project in Core sets the version
+  fw_ver = framework_version(args, forge_cfg)
+  fetch_project(args, fw_ver, forge_cfg)
+  projects = pick_project(args, forge_cfg)
+  if args.delete:
+    project_delete(args, projects, makefile_info(), forge_cfg)
+  cfg = configure_project(args, projects, fw_ver, forge_cfg)
+  run_project(args, cfg, scoped)
 
 if __name__ == "__main__":
   main()
