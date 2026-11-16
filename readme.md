@@ -299,9 +299,9 @@ Writing, running and CI: [🧪 Tests](https://github.com/OpenCPLC/Forge/wiki/tes
 
 ## 🔍 Lint
 
-`make lint` checks a chip build: rules of Forge on VRTS, stack of each thread, values and headers, then cppcheck and gcc analyzer.
-Findings print as compiler warnings with norms behind them, CWE, CERT C or MISRA C, and an exception goes to `lint.yaml` with its reason.
-`rules` of project `lint.yaml` turn on rules a product may want and Forge leaves off, such as `no-heap`.
+`make lint` checks a chip build: Forge rules on VRTS, thread stacks, values and headers, then cppcheck and `gcc -fanalyzer`.
+Findings print like compiler warnings, each citing norms behind its rule, such as CWE, CERT C or MISRA C.
+A project turns on extra rules in its `lint.yaml`, such as `no-heap`, and keeps exceptions there with their reasons.
 Rules, norms and exceptions: [🔍 Lint](https://github.com/OpenCPLC/Forge/wiki/lint).
 
 ## 🚩 Flags

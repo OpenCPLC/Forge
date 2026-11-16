@@ -295,6 +295,13 @@ Test dołącza moduł, który sprawdza, więc wykonuje sam kod firmware'u.
 Jeden plik workflow robi to samo na GitHubie przy każdym pushu.
 Pisanie, uruchamianie i CI: [🧪 Testy](https://github.com/OpenCPLC/Forge/wiki/tests.pl).
 
+## 🔍 Lint
+
+`make lint` sprawdza build dla układu: reguły Forge dla VRTS, stosów wątków, wartości i nagłówków, a potem cppcheck i analizator gcc.
+Zgłoszenia wyglądają jak ostrzeżenia kompilatora i podają normy, na których opiera się reguła, np. CWE, CERT C albo MISRA C.
+Projekt włącza w swoim `lint.yaml` dodatkowe reguły, np. `no-heap`, i zapisuje tam wyjątki z powodami.
+Reguły, normy i wyjątki: [🔍 Lint](https://github.com/OpenCPLC/Forge/wiki/lint.pl).
+
 ## 🚩 Flags
 
 #### Podstawowe
