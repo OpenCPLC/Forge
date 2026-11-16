@@ -110,6 +110,15 @@ def objects_map_into_disjoint_trees(ws):
   assert "$(BUILD)/project/%.o: $(PROJECT)/%.c" in make
   assert "vpath" not in make
 
+def chip_build_compiles_its_warnings_and_its_call_graph_for_lint(ws):
+  generate(resolve_uno())
+  make = read_makefile(ws)
+  assert "WARNINGS = -Wall -Wundef -Wvla" in make
+  assert '-MF"$(@:%.o=%.d)" -fcallgraph-info=su' in make
+  # The stack of each thread needs the CPU, and Core and the project for their `lint.yaml`
+  assert "$(FORGE) -z $@ $(FLASH_kB) $(RAM_kB) cortex-m0plus $(OPENCPLC) $(PROJECT)" in make
+  assert "lint: build\n\t@cd $(WORKSPACE) && $(FORGE) --lint $(NAME) $(LOAD_FLAGS)" in make
+
 def unchanged_regeneration_keeps_bytes_and_mtime(ws):
   generate(resolve_uno())
   files = [

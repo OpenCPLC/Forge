@@ -28,8 +28,9 @@ def keys_dir(tmp_path, monkeypatch):
   return tmp_path / "keys"
 
 def pytest_pycollect_makeitem(collector, name, obj):
-  # ignore library functions imported into the test file
-  if inspect.isfunction(obj) and obj.__module__ != collector.obj.__name__: return []
+  # Library functions imported into a test file are no tests, decorated ones such as `@cache` too
+  imported = getattr(obj, "__module__", None) != collector.obj.__name__
+  if inspect.isfunction(inspect.unwrap(obj)) and imported: return []
 
 from xaeian import FILE, replace_map
 import opencplc
@@ -324,14 +325,14 @@ def write_app_image(path, origin:int, size:int, header:bool=True, trailer:int=72
   body += code + bytes(size - 0x200 - len(body) - len(code))
   app.add(origin + 0x200, body + b"\xff" * trailer)
   app.start = reset
-  save_hex(app, path)
+  save_hex(app, str(path))
 
 def write_boot_image(path, data:bytes):
   """Bootloader hex as its build links it: `data` from the start of flash."""
   from opencplc.utils.hexfile import Memory, save_hex
   boot = Memory()
   boot.add(0x08000000, data)
-  save_hex(boot, path)
+  save_hex(boot, str(path))
 
 def signed_by(public:bytes, update:bytes, size:int) -> bool:
   """`True` when the trailer of `update` holds the signature of its `size` bytes by `public`."""
@@ -344,3 +345,40 @@ def build_program(folder, name:str, body:str):
   src = folder / f"{name}.c"
   src.write_text(body)
   subprocess.run(["gcc", str(src), "-o", str(folder / f"{name}{EXE_EXT}")], check=True)
+
+def ci_node(title:str, at:str, frame:str|None="8 bytes (static)") -> str:
+  """Node of a `.ci` as gcc writes it: defined with its frame, or only declared without one."""
+  label = f"{title.split(':')[-1]}\\n{at}" + (f"\\n{frame}" if frame else "")
+  shape = "" if frame else " shape : ellipse"
+  return f'node: {{ title: "{title}" label: "{label}"{shape} }}'
+
+def ci_edge(caller:str, callee:str, site:str) -> str:
+  """Call of a `.ci`, from `caller` to `callee` at `site`."""
+  return f'edge: {{ sourcename: "{caller}" targetname: "{callee}" label: "{site}" }}'
+
+def ci_graph(*lines:str):
+  """Call graph of one `.ci` made of `lines`."""
+  from opencplc.lint.graph import Graph, read
+  graph = Graph()
+  read("\n".join(['graph: { title: "a.c"', *lines, "}"]), graph)
+  return graph
+
+def lint_finding(rule:str, path:str, function:str=""):
+  """Finding of `rule` at `path`, inside `function` when one is named."""
+  from opencplc.lint.finding import Finding
+  return Finding(rule, path, 1, 1, "message", function)
+
+def value_switch(enum:str="MODE_t", default:bool=False, cases:frozenset=frozenset(), values=None):
+  """`switch` of `act` in `mode.c`, steered by `enum` or by a `uint8_t` when it is ""."""
+  from opencplc.lint.dump import Switch, Values
+  return Switch("mode.c", 20, "act", enum, enum or "uint8_t", default, cases, values or Values())
+
+def value_entry(values, kind:str="assignment", param=None, checked:bool=False):
+  """A `uint8_t` entering `MODE_t` in `parse` of `frame.c`, a raw copy into its field `mode`."""
+  from opencplc.lint.dump import Entry
+  return Entry("MODE_t", "frame.c", 7, "parse", kind, "uint8_t", values, param, "mode", checked)
+
+def value_found(*units, opt_ins=frozenset()) -> list[tuple[str, str]]:
+  """Rule and message of each finding `check_switches` gives over `units`."""
+  from opencplc.lint.values import merge, check_switches
+  return [(f.rule, f.message) for f in check_switches(merge(list(units)), set(opt_ins))]

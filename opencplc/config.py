@@ -42,6 +42,13 @@ DIR_BUILD = "build"
 OPT_DEFAULT = "Og"
 LOG_LEVEL_DEFAULT = "LOG_LEVEL_INF"
 
+# Warnings of a chip build, the rules of MISRA C a compiler checks: 20.9, 18.8, 5.3, 16.3,
+# 7.4, 8.2, 11.1 and 11.8 in turn, and through `-Wall` 9.1, 13.2, 17.3 and 17.4
+WARNINGS = (
+  "-Wall", "-Wundef", "-Wvla", "-Wshadow", "-Wimplicit-fallthrough",
+  "-Wwrite-strings", "-Wstrict-prototypes", "-Wcast-function-type", "-Wcast-qual",
+)
+
 # Remote homes: GitHub for code, dl.opencplc.com for tool packages and assets
 URL_GIT = "https://github.com/OpenCPLC"
 URL_DL = "https://dl.opencplc.com"

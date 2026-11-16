@@ -4,7 +4,7 @@
 
 import io, os, json, shutil, subprocess, time, zipfile
 import pytest
-from xaeian import file_context
+from xaeian import PATH, file_context
 from opencplc.utils import tools
 from opencplc.project import generate
 from conftest import build_workspace, resolve_uno
@@ -147,3 +147,11 @@ def tests_of_an_stm32_project_bring_mingw():
   assert "mingw" not in tools.tool_names(True, False)
   assert tools.tool_names(True, True) == tools.STM32_TOOLS + ("mingw",)
   assert tools.tool_names(False, True) == tools.HOST_TOOLS
+
+def cppcheck_comes_with_the_first_lint_and_never_with_a_build(home):
+  root, fetched = home
+  tools.ensure_tools(is_embedded=True, yes=True, tests=True)
+  assert "cppcheck-2.22.zip" not in fetched
+  tools.ensure_packages(tools.LINT_TOOLS, yes=True)
+  assert fetched[-1] == "cppcheck-2.22.zip"
+  assert os.environ["PATH"].split(";")[0] == f"{PATH.normalize(str(root))}/cppcheck/bin"

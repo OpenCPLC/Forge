@@ -17,6 +17,7 @@ from .model import Project
 from .pack import pack_command
 from .upload import upload
 from .runner import run_tests
+from .lint import build_report
 from .workspace import ensure_refs
 from . import utils, __version__
 
@@ -105,7 +106,12 @@ def info_actions(args, forge_cfg:dict) -> bool:
     FILE.remove(f"{PATH.script_dir()}/{EXE_NAME}.old") # what an earlier -u replaced
   ran = False
   if args.size:
-    size_report(args.size[0], int(args.size[1]), int(args.size[2]))
+    if len(args.size) not in (3, 6):
+      p.err(f"Flag {flag.z} takes ELF FLASH_kB RAM_kB, and CPU CORE PROJECT for the stack")
+      sys.exit(1)
+    elf, flash_kB, ram_kB = args.size[:3]
+    size_report(elf, int(flash_kB), int(ram_kB))
+    if len(args.size) == 6: build_report(elf, *args.size[3:])
     ran = True
   if args.pack:
     pack_command(args.pack)

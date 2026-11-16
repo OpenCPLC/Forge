@@ -28,15 +28,18 @@ PACKAGES = {
   "openocd": "openocd-0.12.zip",
   "mingw": "mingw-16.1.zip",
   "make": "make-4.4.zip",
+  "cppcheck": "cppcheck-2.22.zip",
 }
 COMMANDS = {
   "arm-gcc": "arm-none-eabi-gcc",
   "openocd": "openocd",
   "mingw": "gcc",
   "make": "make",
+  "cppcheck": "cppcheck",
 }
 STM32_TOOLS = ("make", "arm-gcc", "openocd")
 HOST_TOOLS = ("make", "mingw")
+LINT_TOOLS = ("cppcheck",) # a build never needs them, the first `make lint` installs them
 
 def tool_names(is_embedded:bool, tests:bool) -> tuple[str, ...]:
   """Packages of a project: its toolchain, and MinGW beside `arm-gcc` for tests on the computer."""
@@ -181,16 +184,14 @@ def ensure_git(yes:bool):
   p.err("Git installed, open a new console and run again")
   sys.exit(1)
 
-def ensure_tools(is_embedded:bool, yes:bool, tests:bool=False):
+def ensure_packages(names:tuple[str, ...], yes:bool):
   """
-  Everything a build needs.
+  Tools `names` ready to run from this process.
 
-  Windows: packages present and first on PATH of this process.
+  Windows: packages present and first on PATH, the missing ones installed once confirmed.
   Linux: commands on PATH, or a list of what is missing.
   `yes` answers every install prompt.
   """
-  ensure_git(yes)
-  names = tool_names(is_embedded, tests)
   if not WINDOWS:
     missing = [COMMANDS[n] for n in names if not which(COMMANDS[n])]
     if missing:
@@ -210,7 +211,12 @@ def ensure_tools(is_embedded:bool, yes:bool, tests:bool=False):
       sys.exit(1)
     for name in missing: install(name)
   os.environ["PATH"] = ";".join([bin_dir(n) for n in names] + [os.environ.get("PATH", "")])
-  if root == DEFAULT_DIR: user_path_add(bin_dir("make"))
+
+def ensure_tools(is_embedded:bool, yes:bool, tests:bool=False):
+  """Everything a build needs, and on Windows `make` on the user PATH for any new console."""
+  ensure_git(yes)
+  ensure_packages(tool_names(is_embedded, tests), yes)
+  if WINDOWS and tools_dir() == DEFAULT_DIR: user_path_add(bin_dir("make"))
 
 def verify_compiler(is_embedded:bool) -> bool:
   """Compiler answers `--version`, not just sits on PATH."""

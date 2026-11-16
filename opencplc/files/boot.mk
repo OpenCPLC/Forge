@@ -16,7 +16,7 @@ BOOT_S = ${BOOT_S}
 BOOT_INCLUDES = ${BOOT_INCLUDES}
 
 BOOT_DEFS = ${BOOT_DEFS}
-BOOT_CFLAGS = $(MCU) $(BOOT_DEFS) -Os -Wall -fdata-sections -ffunction-sections
+BOOT_CFLAGS = $(MCU) $(BOOT_DEFS) -Os $(WARNINGS) -fdata-sections -ffunction-sections
 BOOT_CFLAGS += -g -gdwarf-2 -MMD -MP -MF"$(@:%.o=%.d)"
 BOOT_LDFLAGS = $(MCU) -specs=nano.specs -T$(BUILD)/boot.ld $(LIBS)
 BOOT_LDFLAGS += -Wl,--no-warn-rwx-segment,-Map=$(@:.elf=.map),--cref -Wl,--gc-sections

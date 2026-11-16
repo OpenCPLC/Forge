@@ -14,7 +14,7 @@ import os, re, sys, platform, subprocess
 from datetime import datetime
 from xaeian import Print, Color as c, FILE, DIR, PATH, replace_end
 from xaeian.cmd import which
-from .config import BOOT_H, BOOT_LINE
+from .config import BOOT_H, BOOT_LINE, WARNINGS
 from .templates import load_templates
 from .platforms import FLASH_BASE
 from .model import Config, Project
@@ -274,6 +274,7 @@ def generate(pro:Project, activate:bool=True):
     "${C_INCLUDES}": mk_list(include_flags(pro, pro.include_dirs)),
     "${CONFIG_INPUTS}": " ".join(config_inputs(pro)),
     "${C_DEFS}": " ".join(f"-D{d}" for d in pro.defines),
+    "${WARNINGS}": " ".join(WARNINGS),
     "${FORGE_VERSION}": forge_version(),
     "${MCU_FLAGS}": pro.mcu_flags,
     "${OPT_LEVEL}": pro.opt_level,

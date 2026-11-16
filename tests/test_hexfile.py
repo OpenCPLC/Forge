@@ -10,15 +10,15 @@ def round_trip_keeps_bytes_and_entry(tmp_path):
   memory.add(0x08000000, bytes(range(40)))
   memory.add(0x0800FFF8, bytes(range(100, 132))) # crosses a 64kB boundary
   memory.start = 0x08000101
-  save_hex(memory, tmp_path / "image.hex")
-  loaded = load_hex(tmp_path / "image.hex")
+  save_hex(memory, str(tmp_path / "image.hex"))
+  loaded = load_hex(str(tmp_path / "image.hex"))
   assert loaded.segments == memory.segments
   assert loaded.start == 0x08000101
 
 def no_record_crosses_64kB(tmp_path):
   memory = Memory()
   memory.add(0x0800FFF8, bytes(32))
-  save_hex(memory, tmp_path / "image.hex")
+  save_hex(memory, str(tmp_path / "image.hex"))
   for line in (tmp_path / "image.hex").read_text().split():
     size, offset, kind = int(line[1:3], 16), int(line[3:7], 16), int(line[7:9], 16)
     if kind == 0x00: assert offset + size <= 0x10000
@@ -66,15 +66,15 @@ def patch_stays_inside_the_image():
 def bin_holds_its_range_alone(tmp_path):
   memory = Memory()
   memory.add(0x08000000, b"\x11\x22\x33")
-  save_bin(memory, tmp_path / "copy.bin", 0x08000001, 2)
+  save_bin(memory, str(tmp_path / "copy.bin"), 0x08000001, 2)
   assert (tmp_path / "copy.bin").read_bytes() == b"\x22\x33"
 
 def broken_checksum_names_the_line(tmp_path):
   (tmp_path / "bad.hex").write_text(":020000040800F2\n:0400000001020304F1\n:00000001FF\n")
   with pytest.raises(ValueError, match=r":2: record checksum"):
-    load_hex(tmp_path / "bad.hex")
+    load_hex(str(tmp_path / "bad.hex"))
 
 def unknown_record_is_refused(tmp_path):
   (tmp_path / "odd.hex").write_text(":020000021000EC\n:00000001FF\n")
   with pytest.raises(ValueError, match="record type 02"):
-    load_hex(tmp_path / "odd.hex")
+    load_hex(str(tmp_path / "odd.hex"))

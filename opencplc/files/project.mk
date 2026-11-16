@@ -66,8 +66,10 @@ C_DEFS = ${C_DEFS}
 OPT = -${OPT_LEVEL}
 
 ASFLAGS = $(MCU) $(C_DEFS) $(OPT) -Wall -fdata-sections -ffunction-sections
-CFLAGS = $(MCU) $(C_DEFS) $(C_INCLUDES) $(OPT) -Wall -fdata-sections -ffunction-sections
-CFLAGS += -g -gdwarf-2 -MMD -MP -MF"$(@:%.o=%.d)"
+# Each warning stands for a rule of MISRA C, the call graph with frames feeds the rules of Forge
+WARNINGS = ${WARNINGS}
+CFLAGS = $(MCU) $(C_DEFS) $(C_INCLUDES) $(OPT) $(WARNINGS) -fdata-sections -ffunction-sections
+CFLAGS += -g -gdwarf-2 -MMD -MP -MF"$(@:%.o=%.d)" -fcallgraph-info=su
 
 LD_SCRIPT = $(PROJECT)/flash.ld
 LIBS = -lc -lm -lnosys
@@ -121,7 +123,7 @@ $(BUILD)/project/%.o: $(PROJECT)/%.s $(CONFIG_DEPS)
 $(BUILD)/$(TARGET).elf: $(OBJECTS) $(LD_SCRIPT)
 		$(CC) $(OBJECTS) $(LDFLAGS) -o $@
 	$(SZ) $@
-	@cd $(WORKSPACE) && $(FORGE) -z $@ $(FLASH_kB) $(RAM_kB)
+	@cd $(WORKSPACE) && $(FORGE) -z $@ $(FLASH_kB) $(RAM_kB) ${CPU} $(OPENCPLC) $(PROJECT)
 
 $(BUILD)/%.hex: $(BUILD)/%.elf
 	$(HEX) $< $@
@@ -192,6 +194,10 @@ else
 endif
 	@$(call TOUCH,$(FORGE_STAMP))
 
+# Rules of Forge on the build, cppcheck and the analyzer of gcc; `lint.yaml` holds the exceptions
+lint: build
+	@cd $(WORKSPACE) && $(FORGE) --lint $(NAME) $(LOAD_FLAGS)
+
 ${TEST}
 
 clean:
@@ -200,6 +206,6 @@ clean:
 
 clr: clean
 
-.PHONY: build run flash erase stack dist clean clr
+.PHONY: build run flash erase stack dist lint clean clr
 
 -include $(OBJECTS:.o=.d)

@@ -1,7 +1,7 @@
 ## OpenCPLC ⚒️ Forge
 
 **Forge** is a console app that makes working with **OpenCPLC** easier.
-Its job is to set up your environment so you developer can focus on building apps instead of fighting with configs and compilation.
+Its job is to set up your environment so you can focus on building apps instead of fighting with configs and compilation.
 Available as a **Python [`pip`](https://pypi.org/project/opencplc)** package or standalone **`opencplc.exe`** from 🚀[Releases](https://github.com/OpenCPLC/Forge/releases) _(in that case add its location to system `PATH` manually)_.
 
 ```bash
@@ -118,6 +118,7 @@ Full list of targets:
 - **`make flash`**: Uploads program to PLC _(microcontroller)_ memory
 - **`make run`**: Does `make build`, then `make flash`
 - `make test`: Builds every `.tests/*.c` into a program for the computer and runs it, see [Tests](#-tests); `make test T=name` runs one
+- `make lint`: Checks the build with the rules of Forge, cppcheck and the gcc analyzer, see [Lint](#-lint)
 - **`make clean`** or `make clr`: Removes built files for the project
 - `make clean_all` or `make clr_all`: Removes built files for all projects
 - `make dist`: Packs the release into the project folder: the `.hex` for the programmer, under the bootloader the `.bin` for updates too; `make dist TAG=1.2.0` names them `<name>-1.2.0.hex` and `.bin`
@@ -128,11 +129,12 @@ Full list of targets:
 Built files land in `build/projects/<project_name>/`: the `.elf`, `.hex`, `.bin` and `.map` next to `opencplc/` with framework objects and `project/` with yours.
 `-dist.hex` is what the programmer flashes; under the bootloader `-dist.bin` comes beside it, the image for an update.
 Every project compiles the framework on its own, so switching projects never links objects built with another configuration.
-After linking Forge reports memory usage:
+After linking Forge reports memory usage, the stack of each thread included:
 
 ```text
 FLASH 70.7kB / 72kB (98%)
 RAM 34.3kB / 36kB (95%)
+STACK loop 556B / 2048B (27%)
 ```
 
 ## 🥾 Bootloader
@@ -295,6 +297,13 @@ A test includes the module it checks, so it runs the firmware code itself.
 One workflow file runs the same on GitHub on every push.
 Writing, running and CI: [🧪 Tests](https://github.com/OpenCPLC/Forge/wiki/tests).
 
+## 🔍 Lint
+
+`make lint` checks a chip build: rules of Forge on VRTS, stack of each thread, values and headers, then cppcheck and gcc analyzer.
+Findings print as compiler warnings with norms behind them, CWE, CERT C or MISRA C, and an exception goes to `lint.yaml` with its reason.
+`rules` of project `lint.yaml` turn on rules a product may want and Forge leaves off, such as `no-heap`.
+Rules, norms and exceptions: [🔍 Lint](https://github.com/OpenCPLC/Forge/wiki/lint).
+
 ## 🚩 Flags
 
 Beyond the basic flags described above, there are a few more worth knowing.
@@ -340,8 +349,9 @@ Full list:
 - `--upload`: Sends an update image over the console, **`FILE`** and optionally **`PORT`**; `make update` uses it.
 - `--lock`: Locks the board for production: RDP1 by default, `2` for good, `0` unlocks, erasing the flash, see [Lock](https://github.com/OpenCPLC/Forge/wiki/bootlock).
 - `-p --pack`: Packs the image for flash: under the bootloader with it in front and CRC and signature behind, the update binary beside; `make` uses it after linking.
-- `-z --size`: Reports FLASH and RAM usage of an `.elf`; `make` uses it after linking.
+- `-z --size`: Reports FLASH and RAM usage of an `.elf`, and given the CPU, Core and project, the stack of each thread; `make` uses it after linking.
 - `--test`: Runs the test programs, each in a clean folder of its own with a minute to finish; `make test` uses it.
+- `--lint`: Checks the build of the project with the rules of Forge, cppcheck and the gcc analyzer; `make lint` uses it.
 - `-y --yes`: Auto-confirms all prompts _(non-interactive mode)_.
 
 #### Hash utilities

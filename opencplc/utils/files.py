@@ -85,6 +85,10 @@ def _glob_rx(glob:str) -> str:
   tokens = re.split(r"(\*\*/|\*\*|\*|\?)", glob.lstrip("/"))
   return head + "".join(WILDCARDS.get(t) or re.escape(t) for t in tokens) + "(?:/.*)?"
 
+def glob_match(path:str, pattern:str) -> bool:
+  """Slash `path`, or a folder above it, matched by a `.gitignore` pattern, case aside."""
+  return re.fullmatch(_glob_rx(pattern), path, re.IGNORECASE) is not None
+
 def ignored(name:str, patterns:list[str]) -> bool:
   """
   Project `name` hidden by `patterns` written as in `.gitignore`, case aside.
@@ -94,8 +98,7 @@ def ignored(name:str, patterns:list[str]) -> bool:
   """
   hidden = False
   for pattern in patterns:
-    if re.fullmatch(_glob_rx(pattern.removeprefix("!")), name, re.IGNORECASE):
-      hidden = not pattern.startswith("!")
+    if glob_match(name, pattern.removeprefix("!")): hidden = not pattern.startswith("!")
   return hidden
 
 # A project lives in `projects/`, named from there, or in a Core, named `opencplc/<version>/...`

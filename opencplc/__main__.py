@@ -7,7 +7,7 @@ Modules stack up from the bottom, each importing only those below it:
 `platforms` and `boards` describe the hardware, `model` holds the shapes the modules pass on,
 `headers` reads main.h and boot.h, `workspace` settles root, config, refs and project inventory,
 `configure` makes a `Config`, `resolver` the `Project` model of it, `project` writes its files,
-and the commands act on them: `pack`, `upload`, `runner`, `keygen`, `lock` and `actions`.
+and the commands act on them: `pack`, `upload`, `runner`, `lint`, `keygen`, `lock` and `actions`.
 """
 
 import signal, sys
@@ -19,6 +19,7 @@ from .model import Config
 from .project import prepare_project, generate, project_delete
 from .resolver import resolve_project, has_tests, tests_of
 from .actions import info_actions, info_show, program_image
+from .lint import run_lint
 from .keygen import keygen
 from .lock import lock_board
 from .configure import config_new, config_load, opt_normalize
@@ -58,7 +59,7 @@ def name_project(args, cwd:str, forge_cfg:dict) -> bool:
   # -r <name> and -r inside a project directory touch that project only, never the workspace
   scoped = bool(args.reload and args.name)
   # these act on the active project when no name is given
-  acting = args.program or args.keygen or args.lock is not None
+  acting = args.program or args.keygen or args.lock is not None or args.lint
   if not args.name and (args.reload or args.info or acting):
     scoped = reload_from_cwd(args, cwd)
     if not scoped:
@@ -115,11 +116,13 @@ def configure_project(args, projects:dict, fw_ver:str, forge_cfg:dict) -> Config
   return cfg
 
 def run_project(args, cfg:Config, scoped:bool):
-  """What the flags ask of the project: -i, --program and --lock, or else a load."""
+  """What the flags ask of the project: -i, --lint, --program and --lock, or else a load."""
   if args.info:
     info_show(resolve_project(cfg))
   tests = has_tests(tests_of(cfg.name, utils.project_dir(cfg.name)))
   utils.ensure_toolchain(cfg.chip.platform == "STM32", args.yes, tests)
+  if args.lint:
+    sys.exit(run_lint(resolve_project(cfg)))
   # the factory programs the full image of `dist`, then locks the board
   if args.program or args.lock is not None:
     model = resolve_project(cfg)

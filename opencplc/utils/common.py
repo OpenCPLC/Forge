@@ -16,7 +16,11 @@ def is_yes(msg:str="Proceed automatically") -> bool:
   """Ask `msg` and read a yes/no answer; y, yes, t, tak and true count as yes."""
   yn = f"[{c.GREEN}YES{c.END}/{c.RED}NO{c.END}]"
   p.inf(f"{msg}? {yn}:", end=" ")
-  ans = input().lower()
+  try:
+    ans = input().lower()
+  except EOFError: # no console to answer, as under CI, is no consent
+    print()
+    return False
   return ans in ("yes", "y", "true", "tak", "t")
 
 def color_url(url:str) -> str:

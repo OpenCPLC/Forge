@@ -21,7 +21,8 @@ KEYS = "8a" * 32 + "5C" * 32 # `BOOT_KEYS` of a product with two keys, as its ma
 def no_bootloader_keeps_the_application(tmp_path):
   write_app_image(tmp_path / "app.hex", ORIGIN, SIZE)
   pack(str(tmp_path / "app.hex"), str(tmp_path / "app-dist.hex"))
-  assert load_hex(tmp_path / "app-dist.hex").segments == load_hex(tmp_path / "app.hex").segments
+  assert (load_hex(str(tmp_path / "app-dist.hex")).segments
+    == load_hex(str(tmp_path / "app.hex")).segments)
   assert not (tmp_path / "app-dist.bin").exists()
 
 def crc_covers_the_image_with_gaps_erased(tmp_path):
@@ -38,7 +39,7 @@ def flash_image_starts_with_the_bootloader(tmp_path):
   write_app_image(tmp_path / "app.hex", ORIGIN, SIZE)
   write_boot_image(tmp_path / "boot.hex", BOOT)
   pack(str(tmp_path / "app.hex"), str(tmp_path / "app-dist.hex"), str(tmp_path / "boot.hex"))
-  flash = load_hex(tmp_path / "app-dist.hex")
+  flash = load_hex(str(tmp_path / "app-dist.hex"))
   assert flash.read(FLASH_BASE, len(BOOT)) == BOOT
   assert flash.read(ORIGIN, SIZE + TRAILER) == (tmp_path / "app-dist.bin").read_bytes()
   assert flash.start == 0x08000081
@@ -48,14 +49,15 @@ def flash_image_holds_bootloader_and_application_alone(tmp_path):
   write_app_image(tmp_path / "app.hex", ORIGIN, SIZE)
   write_boot_image(tmp_path / "boot.hex", BOOT)
   pack(str(tmp_path / "app.hex"), str(tmp_path / "app-dist.hex"), str(tmp_path / "boot.hex"))
-  runs = {addr: len(seg) for addr, seg in load_hex(tmp_path / "app-dist.hex").segments.items()}
+  flash = load_hex(str(tmp_path / "app-dist.hex"))
+  runs = {addr: len(seg) for addr, seg in flash.segments.items()}
   assert runs == {FLASH_BASE: len(BOOT), ORIGIN: SIZE + TRAILER} # the mailbox page stays erased
 
 def bootloader_hex_lands_by_its_addresses(tmp_path):
   write_app_image(tmp_path / "app.hex", ORIGIN, SIZE)
   write_boot_image(tmp_path / "boot.hex", BOOT)
   pack(str(tmp_path / "app.hex"), str(tmp_path / "app-dist.hex"), str(tmp_path / "boot.hex"))
-  assert load_hex(tmp_path / "app-dist.hex").read(FLASH_BASE, len(BOOT)) == BOOT
+  assert load_hex(str(tmp_path / "app-dist.hex")).read(FLASH_BASE, len(BOOT)) == BOOT
 
 def image_without_header_is_refused(tmp_path):
   write_app_image(tmp_path / "app.hex", ORIGIN, SIZE, header=False)
@@ -89,7 +91,7 @@ def build_signs_with_the_development_key(tmp_path, key_files):
   update = (tmp_path / "app-dist.bin").read_bytes()
   assert update[SIZE:SIZE + 4] == zlib.crc32(update[:SIZE]).to_bytes(4, "little")
   assert signed_by(keys.dev_public(), update, SIZE)
-  flash = load_hex(tmp_path / "app-dist.hex")
+  flash = load_hex(str(tmp_path / "app-dist.hex"))
   assert flash.read(FLASH_BASE, len(BOOT)) == BOOT # the bootloader as its build linked it
   runs = {addr: len(seg) for addr, seg in flash.segments.items()}
   assert runs == {FLASH_BASE: len(BOOT), ORIGIN: SIZE + TRAILER}

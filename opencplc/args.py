@@ -43,6 +43,7 @@ class Args:
   upload: list[str]|None = None
   pack: list[str]|None = None
   test: list[str]|None = None
+  lint: bool = False
   assets: str|None = None
   update: str|None = None
   yes: bool = False
@@ -124,12 +125,15 @@ option("-i", "--info", action="store_true", help="Show detailed project configur
 option("-F", "--framework-versions", action="store_true", help="List Core versions")
 option("-v", "--version", action="store_true", help="Show OpenCPLC Forge version and exit")
 # Utilities
-option("-z", "--size", nargs=3, metavar=("ELF", "FLASH_kB", "RAM_kB"),
-  help="Report FLASH and RAM usage of an .elf against the chip memory")
+option("-z", "--size", nargs="+", metavar="ARG",
+  help="Report FLASH and RAM of an .elf: ELF FLASH_kB RAM_kB, "
+    "then CPU CORE PROJECT for the stack of each thread and the quick rules of make lint")
 option("-p", "--pack", nargs="+", metavar="FILE",
   help="Pack the flash image: APP.hex OUT.hex [BOOT [KEYS NUMBER [dist]]], a makefile step")
 option("--test", nargs="+", metavar="PATH",
   help="Run test programs: BUILD NAME [NAME ...], a makefile step")
+option("--lint", action="store_true",
+  help="Check the build of the project: rules of Forge, cppcheck and the gcc analyzer")
 option("--program", type=str, nargs="?", const=True, metavar="FILE",
   help="Send a .hex to the board through the programmer; alone, the one make dist left")
 option("--lock", type=int, nargs="?", const=1, choices=(0, 1, 2), metavar="LEVEL",
