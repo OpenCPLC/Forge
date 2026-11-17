@@ -66,6 +66,19 @@ def load_graph(paths:list[str]) -> tuple[Graph, list[str]]:
   graph = Graph()
   return graph, [read(FILE.load(path), graph) for path in paths]
 
+def drop_unlinked(graph:Graph, symbols:set[str]):
+  """
+  Functions the linker left out of the image, gone from `graph`: code no part of the program.
+
+  `--gc-sections` drops what nothing references, a thread start compiled out by `#if` included,
+  while a function called through a pointer is referenced, so it stays.
+  A clone such as `name.constprop.0` counts by the name before its first dot.
+  """
+  linked = {symbol.split(".")[0] for symbol in symbols}
+  for title in [t for t, fn in graph.functions.items() if fn.name.split(".")[0] not in linked]:
+    del graph.functions[title]
+    graph.calls.pop(title, None)
+
 def settle_weak(graph:Graph, weak:set[str]):
   """
   Titles of `weak` definitions back under their global name.

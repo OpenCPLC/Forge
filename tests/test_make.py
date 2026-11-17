@@ -79,7 +79,7 @@ def clean_removes_only_this_project(ws):
 
 @pytest.mark.skipif(not (HAVE_MAKE and HAVE_GCC), reason="make and gcc required")
 def switching_projects_keeps_the_other_build(ws):
-  # project B shares the Core but compiles with its own flags
+  # Project B shares the Core but compiles with its own flags
   pro_b = ws / "projects" / "b"
   write_file(pro_b / "main.h", MAIN_H_HOST)
   write_file(pro_b / "main.c", "int main(void) { return 0; }\n")
@@ -279,5 +279,5 @@ def atomic_save_of_one_file_rebuilds_nothing(ws):
   os.replace(tmp, ws / "projects" / "app" / "util.c")
   res = make_run(ws, "build")
   assert res.returncode == 0, res.stdout + res.stderr
-  assert "using framework version" in res.stdout # Forge did run
+  assert "using framework version" in res.stdout # proof that Forge ran
   assert not re.search(r"-o \S*build/projects/app/opencplc/", res.stdout) # no Core object compiled

@@ -91,7 +91,7 @@ def _expand(seed:bytes) -> tuple[int, bytes]:
   if len(seed) != 32: raise ValueError("Ed25519 seed must be 32 bytes")
   digest = hashlib.sha512(seed).digest()
   scalar = int.from_bytes(digest[:32], "little")
-  # clamped: low 3 bits and bit 255 cleared, bit 254 set
+  # Clamped: low 3 bits and bit 255 cleared, bit 254 set
   scalar &= (1 << 254) - 8
   scalar |= 1 << 254
   return scalar, digest[32:]

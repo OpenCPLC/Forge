@@ -50,7 +50,7 @@ def upload(args:list[str]):
     p.run(f"Build it with {utils.color_command('make')}")
     sys.exit(1)
   port = console_port(args[1] if len(args) > 1 else None)
-  # the console of a project runs without echo, so the first line of a reply is the reply
+  # The console of a project runs without echo, so the first line of a reply is the reply
   with Shell(port, time_disp=False, strip_echo=False) as sh:
     if not sh.serial: sys.exit(1) # the port said why it did not open
     sh.serial.read(sh.buffer_size) # what ST-Link kept while the port was closed
@@ -65,7 +65,7 @@ def upload(args:list[str]):
       p.inf(f"The console takes images only with {c.SKY}#define CMD_BOOT ON{c.END} in main.h")
       sys.exit(1)
     sh.print_info(f"Image {name} staged, the board resets to install it")
-    # the first line of the new image ends the install, so no ping lands inside it
+    # The first line of the new image ends the install, so no ping lands inside it
     start = time.monotonic()
     while time.monotonic() - start < INSTALL_TIMEOUT_s:
       if any(sh.read_lines() or []): break

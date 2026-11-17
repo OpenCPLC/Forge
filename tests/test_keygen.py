@@ -66,7 +66,7 @@ def count_names_the_spare_keys():
       key_names(args)
 
 def development_key_name_and_odd_names_are_refused():
-  for name in ("dev", "DEV", "my key", "../x"): # Windows file names ignore case
+  for name in ("dev", "DEV", "my key", "../x"): # file names on Windows ignore case
     with pytest.raises(SystemExit):
       key_names([name])
 

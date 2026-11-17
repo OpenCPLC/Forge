@@ -78,7 +78,7 @@ def git_comes_from_winget_without_a_question(monkeypatch):
   monkeypatch.setattr(tools, "which", lambda cmd: None)
   monkeypatch.setattr(tools, "run",
     lambda cmd, **kw: calls.append(cmd) or type("R", (), {"returncode": 0})())
-  # git appears in its user home only once winget ran
+  # `git` appears in its user home only once `winget` ran
   monkeypatch.setattr(tools.FILE, "exists",
     lambda path: bool(calls) and path.endswith("Programs/Git/cmd/git.exe"))
   monkeypatch.setenv("LOCALAPPDATA", "C:/Users/me/AppData/Local")

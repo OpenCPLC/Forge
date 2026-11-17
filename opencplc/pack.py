@@ -77,7 +77,7 @@ def pack(app_path:str, out_path:str, boot_path:str|None=None, keys_hex:str="", n
   boot = hexfile.load_hex(boot_path)
   image.merge(boot)
   image.start = int.from_bytes(boot.read(FLASH_BASE + 4, 4), "little") # its reset vector
-  # every refusal comes above, so a failed pack leaves no file behind
+  # Every refusal comes above, so a failed pack leaves no file behind
   hexfile.save_bin(image, update_path(out_path), origin, end - origin)
   hexfile.save_hex(image, out_path)
 

@@ -50,10 +50,10 @@ def other_board(cfg:Config, core_dir:str, folder:str) -> bool:
   Boards sit in brd/ at Core root, and under plc/ in versions that kept them there.
   A project on any Core compiles its own board and no other.
   """
-  # below brd only, brd itself holds the header all boards share
+  # Below `brd` only, `brd` itself holds the header all boards share
   roots = (f"{core_dir}/brd/", f"{core_dir}/plc/brd/")
   if not any(folder.startswith(root) for root in roots): return False
-  # exact directory, so uno never drags in uno_mini
+  # Exact directory, so `uno` never drags in `uno_mini`
   return not (cfg.board and PATH.is_under(folder, cfg.board.dir))
 
 def in_drivers(core_dir:str, folder:str) -> bool:

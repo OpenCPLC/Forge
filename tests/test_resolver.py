@@ -161,7 +161,7 @@ def key_image_links_behind_the_32k_bootloader(ws):
   pro = resolve_key_uno()
   assert pro.flash_origin == 0x08008000 and pro.image_kB == 230 and pro.boot_kB == 30
   assert "BOOT_PAGES=16" in pro.defines and "BOOT_SLOT_PAGES=115" in pro.defines
-  # the image reads its keys from main.h itself, a `-D` would only repeat them
+  # The image reads its keys from `main.h` itself, a `-D` would only repeat them
   assert pro.boot_keys == KEY and not any(d.startswith("BOOT_KEYS") for d in pro.defines)
 
 def wb55_key_image_links_behind_the_32k_bootloader(ws):
@@ -179,7 +179,7 @@ def bootloader_of_core_builds_from_the_chip_alone(ws):
     for part in ("plc", "brd", "drv"))
   assert pro.boot_c_sources == sorted(pro.boot_c_sources)
   assert pro.boot_asm_sources == [f"{core}/hal/arm/startup.s"]
-  # its own place in flash: no slot until a request names one
+  # Its own place in flash: no slot until a request names one
   assert pro.boot_defines == ["STM32", "STM32G0", "STM32G0C1xx",
     f"FORGE_VERSION={forge_version()}", "BOOT_PAGES=16", "BOOT_CHIP=0x467"]
 

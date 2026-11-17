@@ -28,27 +28,27 @@ def get_hal_dirs(hal:str) -> list:
 @dataclass(frozen=True)
 class Chip:
   """One row of the chip table."""
-  name: str      # canonical key, e.g. "STM32G0C1"
-  platform: str  # "STM32" | "Host"
+  name: str        # canonical key, e.g. "STM32G0C1"
+  platform: str    # "STM32" | "Host"
   family: str
   flash_kB: int
   ram_kB: int
   cpu: str
   fpu: bool
-  uart: dict     # console of a new project: `nbr`, `tx`, `rx`, `dma`
-  led: dict      # LED a new bare-metal project blinks: `port`, `pin`, `name`
+  uart: dict       # console of a new project: `nbr`, `tx`, `rx`, `dma`
+  led: dict        # LED a new bare-metal project blinks: `port`, `pin`, `name`
   define: str
   device: str
   svd: str
   hal: str
-  ld: str        # linker template, "" for the host
-  openocd: str   # openocd target, "" for the host
-  erase: str     # openocd command of `make erase`
+  ld: str          # linker template, "" for the host
+  openocd: str     # openocd target, "" for the host
+  erase: str       # openocd command of `make erase`
   page_kB: int
   boot_kB: int
   boot_key_kB: int
   dev_id: int
-  stack: str = "" # Core script that installs the radio stack, only a WB has one
+  stack: str = ""  # script of Core that installs the radio stack, only a WB has one
 
   @property
   def defines(self) -> list[str]:
@@ -68,7 +68,7 @@ CHIPS = {chip.name: chip for chip in (
     flash_kB=128, ram_kB=36,
     cpu="cortex-m0plus", fpu=False,
     uart={"nbr": 1, "tx": "PC4", "rx": "PC5", "dma": 4},
-    led={"port": "GPIOA", "pin": 5, "name": "Nucleo-G071RB green `LD2`"},
+    led={"port": "GPIOA", "pin": 5, "name": "green `LD2` of Nucleo-G071RB"},
     define="STM32G081xx", device="STM32G081RB",
     svd="stm32g081.svd", hal="stm32g0",
     ld="stm32g0.ld", openocd="stm32g0x",
@@ -80,7 +80,7 @@ CHIPS = {chip.name: chip for chip in (
     flash_kB=512, ram_kB=144,
     cpu="cortex-m0plus", fpu=False,
     uart={"nbr": 1, "tx": "PC4", "rx": "PC5", "dma": 4},
-    led={"port": "GPIOA", "pin": 5, "name": "Nucleo-G0B1RE green `LD2`"},
+    led={"port": "GPIOA", "pin": 5, "name": "green `LD2` of Nucleo-G0B1RE"},
     define="STM32G0C1xx", device="STM32G0C1RE",
     svd="stm32g0c1.svd", hal="stm32g0",
     ld="stm32g0.ld", openocd="stm32g0x",
@@ -94,7 +94,7 @@ CHIPS = {chip.name: chip for chip in (
     flash_kB=832, ram_kB=192,
     cpu="cortex-m4", fpu=True,
     uart={"nbr": 1, "tx": "PB6", "rx": "PB7", "dma": 4},
-    led={"port": "GPIOB", "pin": 0, "name": "Nucleo-WB55RG green `LD2`"},
+    led={"port": "GPIOB", "pin": 0, "name": "green `LD2` of Nucleo-WB55RG"},
     define="STM32WB55xx", device="STM32WB55RG",
     svd="stm32wb55.svd", hal="stm32wb",
     ld="stm32wb.ld", openocd="stm32wbx",

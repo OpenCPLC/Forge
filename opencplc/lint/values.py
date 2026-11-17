@@ -36,11 +36,11 @@ def merge(units:list[Unit]) -> Program:
     entries |= {(e.path, e.line, e.enum, e.kind, e.member): e for e in unit.entries}
     for arg in unit.arguments: arguments.setdefault((arg.callee, arg.index), []).append(arg.values)
     ignored |= {(i.path, i.line): i for i in unit.ignored}
-    accesses |= {(a.key, a.function, a.write): a for a in unit.accesses}
+    accesses |= dict.fromkeys(unit.accesses)
     for caller, callee in unit.calls:
       calls.setdefault(local_key(caller), set()).add(local_key(callee))
   return Program(enums, list(switches.values()), list(entries.values()), arguments,
-    list(ignored.values()), list(accesses.values()), calls)
+    list(ignored.values()), list(accesses), calls)
 
 def local_key(key:str) -> str:
   """Function key with its path workspace-relative, so a dump and a call graph agree."""
@@ -65,11 +65,17 @@ def proven(entry:Entry, program:Program) -> bool:
   passed = program.arguments.get(entry.param, []) if entry.param else []
   return bool(passed) and all(values.within(allowed) for values in passed)
 
-def openings(program:Program) -> dict[str, Entry]:
-  """First place, in file order, where each open enum takes a value no proof covers."""
+def openings(program:Program, vouched=lambda entry: False) -> dict[str, Entry]:
+  """
+  First place, in file order, where each open enum takes a value no proof covers.
+
+  `vouched` takes an entry an exception names, a check the code makes where no proof reaches,
+  so a project answers for its own entry even when the `switch` lies in Core.
+  """
   found = {}
   for entry in sorted(program.entries, key=lambda e: (e.path, e.line)):
-    if entry.enum not in found and not proven(entry, program): found[entry.enum] = entry
+    if entry.enum in found or proven(entry, program) or vouched(entry): continue
+    found[entry.enum] = entry
   return found
 
 def opening_text(entry:Entry) -> str:
@@ -89,16 +95,23 @@ def at(switch:Switch, rule:str, message:str) -> Finding:
   return Finding(rule, PATH.local(switch.path), switch.line, 1, message, switch.function,
     RULES[rule].refs)
 
-def check_switches(program:Program, opt_ins:set[str]) -> list[Finding]:
+def check_switches(
+  program:Program, opt_ins:set[str],
+  vouched = lambda entry: False,
+) -> list[Finding]:
   """
-  A `switch` without `default` over an enum that is open, or over an integer with `switch-default`.
+  A state machine without `default` over an enum that is open: a stray value stalls it for good.
 
-  A value without a label skips a `switch` over an integer, as C defines,
-  so its `default` is a form a project asks for, while an open enum hides a value nobody named.
+  A value without a label skips a `switch`, as C defines, which harms no dispatch:
+  a variable its cases set is caught unset by `-Wmaybe-uninitialized`, a missing `return`
+  by `-Wreturn-type`, and a safe value set before it stays.
+  A `switch` whose cases set the very variable it switches on is another matter:
+  a value no case names keeps it where it is.
+  `switch-default` asks for `default` over an integer, as a form a project turns on,
+  and `switch-enum-default` reports the other side: `default` over a closed enum.
   Proven values of the condition within the labels make `default` needless either way.
-  `switch-enum-default` reports the other side: `default` over a closed enum.
   """
-  opened, found = openings(program), []
+  opened, found = openings(program, vouched), []
   for switch in sorted(program.switches, key=lambda s: (s.path, s.line)):
     if switch.has_default:
       if switch.enum and switch.enum not in opened and "switch-enum-default" in opt_ins:
@@ -106,9 +119,10 @@ def check_switches(program:Program, opt_ins:set[str]) -> list[Finding]:
           f"`default` over `{switch.enum}` keeps `-Wswitch` from naming a new enumerator"))
       continue
     if switch.values.within(switch.cases): continue
-    if switch.enum in opened:
-      found.append(at(switch, "switch-enum", f"`switch` over `{switch.enum}` has no `default`, "
-        f"and `{switch.enum}` {opening_text(opened[switch.enum])}"))
+    if switch.enum in opened and switch.steps:
+      found.append(at(switch, "switch-enum", f"`switch` over `{switch.enum}` steps the value "
+        f"it switches on and has no `default`, while `{switch.enum}` "
+        f"{opening_text(opened[switch.enum])}: a stray value would stall it"))
     elif not switch.enum and "switch-default" in opt_ins:
       found.append(at(switch, "switch-default",
         f"`switch` over `{switch.source}` has no `default`"))
@@ -143,13 +157,17 @@ def check_volatile(
   graphed:set[str] = frozenset(),
 ) -> list[Finding]:
   """
-  A variable an interrupt writes and a thread reads or writes, declared without `volatile`.
+  A variable an interrupt writes and a thread polls, declared without `volatile`.
 
   `irq` and `thread` are workspace-relative function keys of each context, from the call graph,
   and `graphed` every function it holds: one gcc inlined away joins the context of its caller.
   A function running in both counts for both.
-  A write in a thread read by an interrupt is mostly a setting made before the interrupt starts,
-  so only the interrupt writing counts.
+  Polling is the one read `volatile` saves: a loop with no barrier may keep the value
+  in a register and never see the interrupt change it.
+  A read once per call, or with a call into another unit between turns, reloads anyway,
+  so a value handed over by a flag or a ring index needs no `volatile` of its own.
+  A write in a thread wants exclusion, which `volatile` does not give, and a read guarded
+  by masked interrupts or a pointer to `volatile` is fresh.
   """
   irq, thread = inlined(irq, program.calls, graphed), inlined(thread, program.calls, graphed)
   by_key = {}
@@ -158,11 +176,12 @@ def check_volatile(
   for accesses in by_key.values():
     if any(a.volatile for a in accesses): continue
     writer = next((a for a in accesses if a.write and local_key(a.function) in irq), None)
-    reader = next((a for a in accesses if local_key(a.function) in thread), None)
+    reader = next((a for a in accesses
+      if a.read and a.polled and not a.guarded and local_key(a.function) in thread), None)
     if writer is None or reader is None: continue
     first = min(accesses, key=lambda a: (a.path, a.line))
     found.append(Finding("irq-volatile", PATH.local(first.path), first.line, 1,
       f"`{first.name}` written by interrupt `{local_key(writer.function).rpartition(':')[2]}` "
-      f"and used by thread `{local_key(reader.function).rpartition(':')[2]}` is not `volatile`",
-      first.name, RULES["irq-volatile"].refs))
+      f"is polled by thread `{local_key(reader.function).rpartition(':')[2]}` "
+      "in a loop with no barrier, and is not `volatile`", first.name, RULES["irq-volatile"].refs))
   return found

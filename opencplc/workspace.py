@@ -49,7 +49,7 @@ def enter_workspace() -> str:
   if not os.path.samefile(root, cwd):
     os.chdir(root) # subprocesses (git, make) follow the process cwd
     p.inf(f"Workspace: {c.CREAM}{root}{c.END}")
-  # xaeian file API follows its own root: import-time cwd, or exe dir when frozen
+  # `xaeian` file API follows its own root: import-time cwd, or exe dir when frozen
   set_context(root_path=root)
   return cwd
 

@@ -4,9 +4,11 @@
 
 from xaeian import FILE, YAML, file_context
 import pytest
+from dataclasses import replace
 from opencplc.lint.lintfile import LintFileError, read, exceptions, keep
 from opencplc.lint.rules import load_roles
-from opencplc.lint.command import lint_opt_ins, load_all_waivers
+from opencplc.lint.dump import Entry, Values
+from opencplc.lint.command import lint_opt_ins, load_all_waivers, vouching
 from conftest import lint_finding as finding
 
 ROLES = {
@@ -72,6 +74,16 @@ def an_exception_explains_its_rule_at_its_place():
   assert [(f.path, f.function) for f in left] == [
     ("app/main.c", "loop"), ("app/lib/mine.c", "walk")]
   assert all(w.used for w in waivers)
+
+def a_project_vouches_for_its_own_entry_into_an_enum_of_core():
+  # The `switch` lies in Core, while the value enters it in the project, checked out of reach
+  FILE.save("app/lint.yaml", "except:\n  switch-enum:\n"
+    "    state.c:apply: Register map refuses other values before apply\n")
+  waivers, _ = load_all_waivers("core", "app")
+  vouched = vouching(waivers)
+  own = Entry("UART_Parity_t", "app/state.c", 376, "apply", "cast", "unsigned int", Values())
+  assert vouched(own) and all(w.used for w in waivers)
+  assert not vouched(replace(own, path="core/hal/uart.c"))
 
 def a_project_cannot_silence_core():
   FILE.save("app/lint.yaml", "except:\n  heap-owner:\n    '*': modbus is not ours\n")

@@ -1,72 +1,72 @@
-## OpenCPLC ⚒️ Forge
+# OpenCPLC ⚒️ Forge
 
 **Forge** is a console app that makes working with **OpenCPLC** easier.
 Its job is to set up your environment so you can focus on building apps instead of fighting with configs and compilation.
 Available as a **Python [`pip`](https://pypi.org/project/opencplc)** package or standalone **`opencplc.exe`** from 🚀[Releases](https://github.com/OpenCPLC/Forge/releases) _(in that case add its location to system `PATH` manually)_.
 
-```bash
+```sh
 pip install opencplc
 ```
 
-Just pick a folder _(your workspace)_, open [CMD](#-console) and type:
+Pick a folder _(your workspace)_, open [CMD](#-console) and type:
 
-```bash
+```sh
 opencplc -n <project_name> -b <board>
 opencplc -n myapp -b uno
 ```
 
-This creates a directory _(or directory tree)_ `projects/<project_name>`.
-Two files are created inside: `main.c` and `main.h`, the minimal project setup.
-Don't delete them or move to subfolders.
+This creates `projects/<project_name>` _(nested folders when the name holds `/`)_.
+Inside it Forge creates `main.c` and `main.h`, all a project needs.
+Don't delete them or move them to subfolders.
 
 When you have more projects, you can switch between them freely:
 
-```bash
+```sh
 opencplc <project_name>
 opencplc myapp
 ```
 
 You can also pick projects by number from the list:
 
-```bash
+```sh
 opencplc -l  # show project list
 opencplc 3   # load project #3 from list
 ```
 
-Every project owns its `makefile` and `flash.ld`, and the `makefile` in the workspace root points at the active one.
-Loading a project regenerates these files: they transform everything _(project and framework files: `.c`, `.h`, `.s`)_ into binary files `.bin`/`.hex` that can be flashed to the PLC.
+Every project owns its `makefile` and `flash.ld`, and `makefile` in the workspace root points at the active one.
+Loading a project regenerates these files, which turn all sources _(project and framework `.c`, `.h`, `.s`)_ into `.bin` and `.hex` files ready to flash.
 
-Changing `PRO_x` values in **`main.h`** or the **project structure** _(adding, moving, deleting or renaming files)_ needs a reload.
-`make` does it by itself: when `main.h` or the source tree is newer than the `makefile`, it runs Forge first and then builds.
-Editing the body of a function needs no reload, `make` handles that on its own.
-You can also reload by hand, without the project name when it's active or when you're inside its directory:
+Changing `PRO_x` values in **`main.h`** or **project structure** _(adding, moving, deleting or renaming files)_ needs a reload.
+`make` does it by itself: when `main.h` or any source is newer than `makefile`, it runs Forge first and then builds.
+Editing function bodies needs no reload, `make` handles that on its own.
+You can also reload by hand, without the project name when it's active or when you're inside its folder:
 
-```bash
+```sh
 opencplc <project_name>
 opencplc -r
 ```
 
 Flags such as `-m` and `-o` configure a project only when it's created.
-Later the configuration lives in `main.h`: edit it and reload.
+Later configuration lives in `main.h`: edit it and reload.
 
-`-b` and `-c` also build an existing project for other hardware, with the memory and clock of that hardware, while `main.h` stays as it is:
+`-b` and `-c` also build an existing project for other hardware, with its memory and clock, while `main.h` stays as it is:
 
-```bash
+```sh
 opencplc test/flash -c STM32WB55
 ```
 
 `make` keeps that choice until you load the project without them.
-A test or demo for any board leaves `PRO_BOARD`, `PRO_CHIP` and the memory out of `main.h`, so every load names the hardware.
+Tests and demos for any board leave `PRO_BOARD`, `PRO_CHIP` and memory out of `main.h`, so every load names the hardware.
 
 ### 📄 Your files
 
 `main.c` is yours and Forge never overwrites it.
-The skeleton of a PLC board project looks like this:
+A PLC board project starts from this skeleton:
 
 ```c
-#include "opencplc.h"
+#include <opencplc.h>
 
-void loop(void)
+static void loop(void)
 {
   while(1) {
     RGB_Set(&RGB, RGB_Green);
@@ -82,54 +82,54 @@ stack(stack_loop, 1024);
 
 int main(void)
 {
-  thread(PLC_Main, stack_plc);  // PLC thread
-  thread(DBG_Loop, stack_dbg);  // logs and console
-  thread(loop, stack_loop);     // your application
-  vrts_init();                  // start thread switching
+  thread(PLC_Main, stack_plc); // PLC thread
+  thread(DBG_Loop, stack_dbg); // logs and console
+  thread(loop, stack_loop); // your application
+  vrts_init(); // start thread switching
   while(1);
 }
 ```
 
-Your application runs as a VRTS thread next to the PLC thread and the debugger thread _(logs and console)_.
-Add your own modules as more files in the project directory and its subfolders.
+Your application runs as a VRTS thread next to PLC and debugger threads _(logs and console)_.
+Add your own modules as more files in the project folder and its subfolders.
 
-`main.h` holds the configuration Forge reads on every load.
-The `PRO_*` definitions describe the board, chip, PLC layer, framework version and memory sizes, while `LOG_LEVEL` and `SYS_CLOCK_FREQ` are yours to change.
+`main.h` holds configuration Forge reads on every load.
+`PRO_*` definitions describe board, chip, PLC layer, framework version and memory sizes, while `LOG_LEVEL` and `SYS_CLOCK_FREQ` are yours to change.
 Extra framework drivers go there too: `#define PRO_DRIVERS "shtc3, hd44780"`.
 
-Here _(roughly)_ ends **Forge**'s job, and further work goes like a typical **embedded systems** project using [**✨Make**](#-make).
+Here _(roughly)_ ends **Forge**'s job, and further work goes like any **embedded** project, with [**✨Make**](#-make).
 
 ## ✨ Make
 
-If you have a proper project config and `makefile` generated by ⚒️**Forge**, to build and flash the program to the PLC just open a console in the workspace and type:
+With `makefile` generated by ⚒️**Forge**, open a console in your workspace to build the program and flash the PLC:
 
-```bash
+```sh
 make build  # build C project to binary
 make flash  # upload binary to PLC memory
 # or
 make run    # run = build + flash
 ```
 
-`make` in the workspace root works on the active project.
+`make` in workspace root works on the active project.
 Any project can be built directly, independently of the active one: `make -C projects/myapp`.
 Full list of targets:
 
 - **`make build`** or just **`make`**: Builds C project to `.bin`, `.hex`, `.elf` files
 - **`make flash`**: Uploads program to PLC _(microcontroller)_ memory
 - **`make run`**: Does `make build`, then `make flash`
-- `make test`: Builds every `.tests/*.c` into a program for the computer and runs it, see [Tests](#-tests); `make test T=name` runs one
-- `make lint`: Checks the build with the rules of Forge, cppcheck and the gcc analyzer, see [Lint](#-lint)
-- **`make clean`** or `make clr`: Removes built files for the project
-- `make clean_all` or `make clr_all`: Removes built files for all projects
-- `make dist`: Packs the release into the project folder: the `.hex` for the programmer, under the bootloader the `.bin` for updates too; `make dist TAG=1.2.0` names them `<name>-1.2.0.hex` and `.bin`
-- `make update`: Sends the update image of the build over the console, as a device takes one _(under the bootloader, with `CMD_BOOT ON`)_; `FILE=` sends another image, `PORT=` names the console
+- `make test`: Builds every `.tests/*.c` into a program for this computer and runs it, see [Tests](#-tests); `make test T=name` runs one
+- `make lint`: Checks the build with Forge rules, cppcheck and gcc analyzer, see [Lint](#-lint)
+- **`make clean`** or `make clr`: Removes built files of the project
+- `make clean_all` or `make clr_all`: Removes built files of all projects
+- `make dist`: Packs the release into the project folder: `.hex` for programmers and, under the bootloader, `.bin` for updates; `make dist TAG=1.2.0` names them `<name>-1.2.0.hex` and `.bin`
+- `make update`: Sends the update image of the build over the console _(under the bootloader, with `CMD_BOOT ON`)_; `FILE=` sends another image, `PORT=` picks the port
 - **`make erase`**: Completely wipes microcontroller memory _(**erase** full chip; on STM32WB the radio stack stays)_
-- `make stack`: Flashes the radio stack of the second core _(STM32WB)_; `make stack FUS=1` also provisions a factory board, once and irreversibly
+- `make stack`: Flashes radio stack of the second core _(STM32WB)_; `make stack FUS=1` also provisions a factory-fresh board, once and irreversibly
 
-Built files land in `build/projects/<project_name>/`: the `.elf`, `.hex`, `.bin` and `.map` next to `opencplc/` with framework objects and `project/` with yours.
-`-dist.hex` is what the programmer flashes; under the bootloader `-dist.bin` comes beside it, the image for an update.
+Built files land in `build/projects/<project_name>/`: `.elf`, `.hex`, `.bin` and `.map` next to `opencplc/` with framework objects and `project/` with yours.
+Programmers flash `-dist.hex`, and under the bootloader `-dist.bin` beside it carries updates.
 Every project compiles the framework on its own, so switching projects never links objects built with another configuration.
-After linking Forge reports memory usage, the stack of each thread included:
+After linking Forge reports memory use, including stack of each thread:
 
 ```text
 FLASH 70.7kB / 72kB (98%)
@@ -139,27 +139,27 @@ STACK loop 556B / 2048B (27%)
 
 ## 🥾 Bootloader
 
-A project whose `main.h` includes `boot.h` runs behind the bootloader of Core, which Forge builds with it, and takes updates without a programmer; `-B` sets it up for a new project.
+A project whose `main.h` includes `boot.h` runs behind Core's bootloader, which Forge builds with it, and takes updates without a programmer; `-B` sets this up for new projects.
 `opencplc --keygen acme 3` adds product keys to `BOOT_KEYS` in `boot.h`, and from then on the bootloader starts only images signed with them.
-`--lock` closes the board to the programmer for production, with or without a bootloader.
+`--lock` closes the board to programmers for production, with or without bootloader.
 Both and their security: [🥾 Bootloader and 🔒 lock](https://github.com/OpenCPLC/Forge/wiki/bootlock).
 
 ## ⚙️ Config
 
-On the first project ⚒️Forge creates the config file **`opencplc.json`**.
+With the first project ⚒️Forge creates config file **`opencplc.json`**.
 It contains:
 
 - **`version`**: Default OpenCPLC framework version for new projects. Value `latest` means newest stable version.
-- `stlink`: Programmer bound to a project, so `make flash` hits the right board when several ST-Links are connected. Set with `opencplc myapp -s <serial>`, clear with `opencplc myapp -s`. Read the serial from the OpenOCD log of `make flash` with one programmer connected.
-- `ignore`: Projects left off the `-l` list and its numbers, given as patterns like in `.gitignore`, e.g. `["demo/"]` hides all demos. A project given by name still loads. Add the key by hand when needed.
+- `stlink`: Programmer bound to a project, so `make flash` hits the right board when several ST-Links are connected. Set it with `opencplc myapp -s <serial>`, clear it with `opencplc myapp -s`. Read the serial from OpenOCD log of `make flash` with one programmer connected.
+- `ignore`: Projects left off `-l` and its numbers, as `.gitignore` patterns, e.g. `["demo/"]` hides all demos. Projects named directly still load. Add this key by hand when needed.
 - `available-versions`: List of all available framework versions. Set automatically, used offline.
 
-The workspace layout is fixed: `projects/` with your projects, `opencplc/` with framework versions and `build/` with built files.
-Copy a project folder manually and it's detected on the next run.
+Workspace layout is fixed: `projects/` with your projects, `opencplc/` with framework versions and `build/` with built files.
+Copy project folders by hand, and Forge finds them on its next run.
 
 ## 🤔 How works?
 
-Who does what: Forge prepares the environment, Make builds and flashes, you write the code.
+Who does what: Forge prepares the environment, Make builds and flashes, you write code.
 
 ```mermaid
 flowchart LR
@@ -173,39 +173,39 @@ flowchart LR
 ```
 
 On Windows ⚒️**Forge** brings its own **Make**, **GNU Arm Embedded Toolchain**, **OpenOCD** and **MinGW** into `%LOCALAPPDATA%\OpenCPLC`, no admin rights needed, and **Git** through `winget`.
-After the first run open a new console, so `make` is found.
-On Linux the tools come from your distribution.
+After the first run open a new console, so `make` is on `PATH`.
+On Linux tools come from your distribution.
 
-Then if needed, it clones the OpenCPLC framework from the [repository](https://github.com/OpenCPLC/Core) to `opencplc/<version>`.
-A new project takes the version from `opencplc.json` or the one given with `-f --framework`:
+Then, when needed, it clones OpenCPLC framework from its [repository](https://github.com/OpenCPLC/Core) into `opencplc/<version>`.
+New projects take their version from `opencplc.json`, or from `-f --framework`:
 
-```bash
+```sh
 opencplc <project_name> --new -f 0.4.3
 opencplc <project_name> --new -f develop
 ```
 
-Alone the flag only downloads, so a version can be read before any project points at it:
+Alone the flag only downloads, so you can read a version before any project points at it:
 
-```bash
+```sh
 opencplc -f develop
 ```
 
 ### 📌 Project versioning
 
-Each project stores in `main.h` the framework version it was created with _(definition `PRO_FRAMEWORK`)_.
-That version is used to build it and gets cloned when missing, so old projects compile even after a framework update to a newer version.
-If the clone fails, Forge warns and builds with the workspace default.
+Each project keeps in `main.h` the framework version it was created with _(`PRO_FRAMEWORK`)_.
+That version builds it and gets cloned when missing, so old projects compile even after framework updates.
+If cloning fails, Forge warns and builds with the workspace default.
 
-To try another version without touching `main.h`, pass `-f` when loading the project: it builds with that version until you load the project without `-f`, and says so.
+To try another version without touching `main.h`, pass `-f` when loading: the project builds with that version until a load without `-f`, and Forge says so.
 
-A project inside a framework version, such as its compile test, is loaded by its path: `opencplc opencplc/develop/.tests/g081`.
-It has no `PRO_FRAMEWORK` and builds with the framework it lies in, into `build/opencplc/develop/.tests/g081/`.
+Projects inside a framework version, such as its compile tests, load by path: `opencplc opencplc/develop/.tests/g081`.
+They have no `PRO_FRAMEWORK` and build with the framework they lie in, into `build/opencplc/develop/.tests/g081/`.
 `opencplc opencplc/develop` loads the framework itself, and `make test` runs its tests.
 
 ### 🧩 Boards
 
-Ready boards come from the framework: every directory `brd/<board>/` with an `.ini` manifest is a board.
-The manifest gives the defaults of a new project: whether the board needs the PLC layer, the chip, initial memory and clock, and the drivers the board needs:
+Boards come from the framework: each `brd/<board>/` folder with an `.ini` manifest is one.
+Its manifest gives new projects their defaults: whether the board needs the PLC layer, chip, initial memory and clock, and drivers:
 
 ```ini
 name = Uno
@@ -218,23 +218,25 @@ reserve_kB = 20
 drivers = max31865
 ```
 
-`reserve_kB` is optional: flash the board keeps for itself, taken off the top exactly like the third value of `-m`, so a project starts with what is left.
+`reserve_kB` is optional: flash the board keeps for itself, taken off the top like the third value of `-m`, so projects start with what is left.
 
-`name` is how the board reads in `main.h` and in messages, `PRO_BOARD_Uno`, while the directory stays in paths; the two compare without case or underscores, so `CardG0` and `card_g0` are the same board and `None` is reserved for having none.
+`name` is how the board reads in `main.h` and messages, `PRO_BOARD_Uno`, while its folder name stays in paths.
+The two compare without case or underscores, so `CardG0` and `card_g0` are one board, and `None` means no board.
 
-Adding a board means adding a directory to the framework, nothing changes in Forge.
-Those are defaults, not rules: `-c` swaps the chip _(memory then follows the chip, the clock stays with the board)_ and `--plc` adds the PLC layer to a board that does not need one.
-Only `plc = true` is binding, such a board does not build without its layer.
+Adding boards means adding folders to the framework, with no change in Forge.
+These are defaults, not rules: `-c` swaps chips _(memory follows the chip, clock stays with the board)_, and `--plc` adds the PLC layer to boards without it.
+Only `plc = true` binds: such boards do not build without their layer.
 
 Without a board `main.h` holds `PRO_BOARD_None`, and `PRO_PLC` decides the rest:
 `-c <chip>` alone is bare metal _(HAL and libraries only)_, `-c <chip> -P` adds the PLC layer on your own hardware, where peripheral mapping and `PLC_Main` are yours to write.
 
 Device drivers live in `drv/`, outside the PLC layer, so any project can use them.
-Folders under `drv/` group them by kind, `temp/` for thermometers, `acc/` for accelerometers, `disp/` for displays; a driver is named by its file, wherever it sits.
-A board takes the ones its manifest names; a project adds more with `--drv` at creation or in `main.h`: `#define PRO_DRIVERS "shtc3, hd44780"`.
-Only the named drivers reach the build.
+Folders under `drv/` group them by kind: `temp/` for thermometers, `acc/` for accelerometers, `disp/` for displays.
+A driver goes by its file name, wherever it sits.
+Boards take the ones their manifests name, and projects add more with `--drv` at creation or in `main.h`: `#define PRO_DRIVERS "shtc3, hd44780"`.
+Only named drivers reach the build.
 
-The main **Forge** function is preparing files needed for a project:
+Above all, **Forge** writes these files:
 
 - `projects/<name>/flash.ld`: defines RAM and FLASH memory layout _(overwrites, STM32 only)_
 - `projects/<name>/makefile`: contains build, clean and flash rules _(overwrites)_
@@ -245,7 +247,7 @@ The main **Forge** function is preparing files needed for a project:
 - `settings.json`: sets local editor preferences _(creates once, not overwritten)_
 - `extensions.json`: suggests useful VSCode extensions _(creates once, not overwritten)_
 
-There's also a bunch of helper functions accessible through smart use of [**🚩flags**](#-flags).
+More helpers come through [**🚩flags**](#-flags).
 
 ### 🗂️ Workspace structure
 
@@ -274,13 +276,13 @@ If IntelliSense stops working, use `F1` → _C/C++: Reset IntelliSense Database_
 
 ## 🖥️ Host
 
-Forge supports the **Host** platform for developing and testing code on a PC _(Windows/Linux)_ without embedded hardware:
+Forge supports **Host** platform for developing and testing code on a PC _(Windows/Linux)_ without embedded hardware:
 
-```bash
+```sh
 opencplc -n myapp -c host # desktop project
 ```
 
-This creates a project that compiles with native GCC _(MinGW on Windows)_ instead of the ARM toolchain, and `make run` starts the program.
+Such a project compiles with native GCC _(MinGW on Windows)_ instead of ARM toolchain, and `make run` starts the program.
 Useful for:
 
 - Testing algorithms and logic without hardware
@@ -288,100 +290,100 @@ Useful for:
 - Unit testing framework components
 - Quick prototyping before deploying to PLC
 
-The Host platform provides stub implementations for hardware-dependent modules _(GPIO, timers, etc.)_ so the code structure remains compatible with STM32 targets.
+Host platform provides stubs for hardware modules _(GPIO, timers, etc.)_, so code stays compatible with STM32 targets.
 
 ## 🧪 Tests
 
-Every `.c` file directly in `.tests/` at the top of a project is a test program, which `make test` builds and runs on the computer, in an STM32 project too.
-A test includes the module it checks, so it runs the firmware code itself.
+Every `.c` file directly in `.tests/` of a project is a test program, which `make test` builds and runs on this computer, in STM32 projects too.
+Tests include the modules they check, so they run firmware code itself.
 One workflow file runs the same on GitHub on every push.
 Writing, running and CI: [🧪 Tests](https://github.com/OpenCPLC/Forge/wiki/tests).
 
 ## 🔍 Lint
 
 `make lint` checks a chip build: Forge rules on VRTS, thread stacks, values and headers, then cppcheck and `gcc -fanalyzer`.
-Findings print like compiler warnings, each citing norms behind its rule, such as CWE, CERT C or MISRA C.
-A project turns on extra rules in its `lint.yaml`, such as `no-heap`, and keeps exceptions there with their reasons.
+Findings print like compiler warnings and cite norms behind their rules, such as CWE, CERT C or MISRA C.
+Projects turn on extra rules in their `lint.yaml`, such as `no-heap`, and keep exceptions there with reasons.
 Rules, norms and exceptions: [🔍 Lint](https://github.com/OpenCPLC/Forge/wiki/lint).
 
 ## 🚩 Flags
 
-Beyond the basic flags described above, there are a few more worth knowing.
+Beyond flags above, a few more are worth knowing.
 Full list:
 
-#### Basic
+### Basic
 
-- **`name`**: Project name. Default first argument. Also defines the project path: `projects/name`, and output files _(`.bin`, `.hex`, `.elf`)_ are tied to it. Can also be a project number from the `-l` list.
-- `-n --new`: Creates a new project with the given name.
-- `-e --demo`: Downloads the [Demo](https://github.com/OpenCPLC/Demo) repository into `projects/demo`. Load one like any project: `opencplc demo/blinky`.
-- `-r --reload`: Regenerates project files. Without **`name`** it takes the active project, or the one whose directory you're in.
-- `-d --delete`: Deletes the project with the given **`name`**.
-- `-g --get`: Downloads a project from Git _(**GitHub**, **GitLab**, ...)_ or a remote ZIP and adds it as a new project. The second argument _(first is the link)_ can be a reference _(`branch`, `tag`)_. If **`name`** is not specified, it tries to read it from the `@name` field in `main.h`.
+- **`name`**: Project name, the default first argument. It also sets project path `projects/name`, and output files _(`.bin`, `.hex`, `.elf`)_ follow it. A number from `-l` works too.
+- `-n --new`: Creates a new project with that name.
+- `-e --demo`: Downloads [Demo](https://github.com/OpenCPLC/Demo) repository into `projects/demo`. Load a demo like any project: `opencplc demo/blinky`.
+- `-r --reload`: Regenerates project files. Without **`name`** it takes the active project, or the one whose folder you're in.
+- `-d --delete`: Deletes project **`name`**.
+- `-g --get`: Downloads a project from Git _(**GitHub**, **GitLab**, ...)_ or a remote ZIP as a new project. A second argument after the link picks a reference _(`branch`, `tag`)_. Without **`name`** it reads `@name` from `main.h`.
 
-#### Hardware config
+### Hardware config
 
-- `-b --board`: Board from the framework _(`uno`)_. It sets the chip, the memory, the clock and the PLC layer of a new project; `-c` and `--plc` override that. On an existing project it picks another board until a load without it.
-- `-c --chip`: Microcontroller or platform: `STM32G081`, `STM32G0C1`, `STM32WB55`, `HOST` _(compile for PC)_. Without `-b --board`, the project runs without the PLC layer, only HAL and standard framework libraries. Useful for Nucleo boards or custom hardware. On an existing project it picks another chip until a load without it.
-- `-P --plc`: Adds the PLC layer to a project without a board, on your own hardware.
+- `-b --board`: Board from the framework _(`uno`)_. It sets chip, memory, clock and PLC layer of new projects; `-c` and `--plc` override that. On an existing project it picks another board until a load without it.
+- `-c --chip`: Microcontroller or platform: `STM32G081`, `STM32G0C1`, `STM32WB55`, `HOST` _(compile for PC)_. Without `-b --board` a project has no PLC layer, only HAL and standard framework libraries, as on Nucleo boards or custom hardware. On an existing project it picks another chip until a load without it.
+- `-P --plc`: Adds PLC layer to projects without a board, on your own hardware.
 - `-D --drv`: Framework drivers of a new project, comma separated _(`shtc3, hd44780`)_. Later ones go into `PRO_DRIVERS` in `main.h`.
-- `-B --boot`: Runs the new project behind the bootloader of Core: `boot.h` beside `main.h` and its `#include`, see [Bootloader](#-bootloader).
-- `-m --memory`: Memory in kB: `FLASH RAM [RESERVED]`. `RESERVED` is the memory allocated for config and EEPROM, subtracted from FLASH in the linker file `flash.ld`. _(STM32 only)_
+- `-B --boot`: Puts new projects behind Core's bootloader: `boot.h` beside `main.h` and its `#include`, see [Bootloader](#-bootloader).
+- `-m --memory`: Memory in kB: `FLASH RAM [RESERVED]`. `RESERVED` is memory for config and EEPROM, taken off FLASH in linker file `flash.ld` _(STM32 only)_.
 
-#### Build config
+### Build config
 
-- `-f --framework`: Framework version: `latest`, `develop`, `0.4.3`. For a new project it becomes `PRO_FRAMEWORK`; for an existing one it builds with that version until a load without it; alone it only clones the version into `opencplc/`.
+- `-f --framework`: Framework version: `latest`, `develop`, `0.4.3`. For new projects it becomes `PRO_FRAMEWORK`, existing ones build with that version until a load without it, and alone it only clones the version into `opencplc/`.
 - `-o --opt-level`: Compiler optimization level: `O0`, `Og` _(default)_, `O1`, `O2`, `O3`, `Os`. Levels `O2` and `O3` show a warning for STM32 _(timing, debugging)_.
-- `-s --stlink`: Binds an ST-Link serial to the project; `-s` alone clears the binding.
+- `-s --stlink`: Binds ST-Link serial to the project, `-s` alone clears it.
 
-#### Info
+### Info
 
 - `-l --list`: Lists existing projects.
-- `-i --info`: Returns basic info about the specified or active project, including project and framework versions.
+- `-i --info`: Basic info of the given or active project, project and framework versions included.
 - `-F --framework-versions`: Lists all available OpenCPLC framework versions.
-- `-v --version`: Shows the ⚒️Forge version and repository link.
+- `-v --version`: Shows ⚒️Forge version and repository link.
 
-#### Tools
+### Tools
 
-- `-a --assets`: Downloads helper materials _(chip documents and errata, board pinouts, style guides of Core)_. Optionally accepts a folder name as destination.
-- `-u --update`: Replaces the Forge executable with the given version _(default: `latest`)_; a `pip` install updates through `pip` instead.
-- `--program`: Sends a `.hex` to the board through the programmer. Alone, it takes the one `make dist` left in the active project; of several, the newest, after confirmation.
-- `--keygen`: Makes or takes product key **`NAME`** with spare ones, **`COUNT`** keys in all _(default 1)_, and adds their public parts to `BOOT_KEYS` in `boot.h` of the active project; the password is optional, see [Bootloader](https://github.com/OpenCPLC/Forge/wiki/bootlock).
-- `--upload`: Sends an update image over the console, **`FILE`** and optionally **`PORT`**; `make update` uses it.
-- `--lock`: Locks the board for production: RDP1 by default, `2` for good, `0` unlocks, erasing the flash, see [Lock](https://github.com/OpenCPLC/Forge/wiki/bootlock).
-- `-p --pack`: Packs the image for flash: under the bootloader with it in front and CRC and signature behind, the update binary beside; `make` uses it after linking.
-- `-z --size`: Reports FLASH and RAM usage of an `.elf`, and given the CPU, Core and project, the stack of each thread; `make` uses it after linking.
-- `--test`: Runs the test programs, each in a clean folder of its own with a minute to finish; `make test` uses it.
-- `--lint`: Checks the build of the project with the rules of Forge, cppcheck and the gcc analyzer; `make lint` uses it.
+- `-a --assets`: Downloads helper materials _(chip documents and errata, board pinouts, style guides of Core)_. Optionally takes a destination folder.
+- `-u --update`: Replaces Forge executable with the given version _(default: `latest`)_, while `pip` installs update through `pip`.
+- `--program`: Sends a `.hex` to the board through the programmer. Alone it takes what `make dist` left in the active project, the newest of several after confirmation.
+- `--keygen`: Makes or takes product key **`NAME`** with spares, **`COUNT`** keys in all _(default 1)_, and adds their public parts to `BOOT_KEYS` in `boot.h` of the active project, with an optional password, see [Bootloader](https://github.com/OpenCPLC/Forge/wiki/bootlock).
+- `--upload`: Sends update image **`FILE`** over the console, optionally to **`PORT`**; `make update` uses it.
+- `--lock`: Locks the board for production: RDP1 by default, `2` for good, `0` unlocks and erases flash, see [Lock](https://github.com/OpenCPLC/Forge/wiki/bootlock).
+- `-p --pack`: Packs the image for flash: under the bootloader with it in front and CRC and signature behind, with update binary beside; `make` uses it after linking.
+- `-z --size`: Reports FLASH and RAM use of an `.elf`, and, given CPU, Core and project, stack of each thread; `make` uses it after linking.
+- `--test`: Runs test programs, each in a clean folder of its own with one minute to finish; `make test` uses it.
+- `--lint`: Checks the project's build with Forge rules, cppcheck and gcc analyzer; `make lint` uses it.
 - `-y --yes`: Auto-confirms all prompts _(non-interactive mode)_.
 
-#### Hash utilities
+### Hash utilities
 
 - `-hl --hash-list`: Generates an enum with DJB2 hashes from a tag list.
 - `-ht --hash-title`: Enum type name for the hash generator.
 - `-hd --hash-define`: Uses `#define` instead of `enum` for hash output.
 
-🗑️ Deleting and 💾 copying projects can be done directly from the OS.
-Each project stores all the information it needs in `main.h`, and its presence is auto-detected on startup.
+🗑️ Delete and 💾 copy projects directly in your file manager.
+Each project keeps everything it needs in `main.h`, and Forge finds it on startup.
 
 ## 📟 Console
 
 ⚒️Forge and ✨Make are console programs.
 Essential for working with OpenCPLC.
 
-A system console is available in many apps like **Command Prompt**, **PowerShell**, [**Git Bash**](https://git-scm.com/downloads), even the terminal in [**VSCode**](https://code.visualstudio.com/).
-Forge finds the workspace from any directory inside it, so a project directory is a fine place to open the console too.
+Many apps give you a system console: **Command Prompt**, **PowerShell**, [**Git Bash**](https://git-scm.com/downloads), even the terminal of [**VSCode**](https://code.visualstudio.com/).
+Forge finds its workspace from any folder inside, so a project folder works as well.
 
 When something goes wrong:
 
-- Forge lands in the wrong workspace: a stray `opencplc.json` sits somewhere between the project and the real root, remove it.
-- `make` not found right after the first run: the console still has the old `PATH`, close it and open a new one.
-- A tool misbehaves: remove `%LOCALAPPDATA%\OpenCPLC` and run Forge again, it installs the packages afresh.
-- `make` stops at `opencplc -r` with an error about the version or the board: `main.h` points at something this framework doesn't have, fix the entry and run `make` again.
-- A project is missing from `-l`: its directory has no `main.h`.
+- Forge lands in a wrong workspace: a stray `opencplc.json` sits between your project and the real root, remove it.
+- `make` not found right after the first run: the console still has old `PATH`, open a new one.
+- A tool misbehaves: remove `%LOCALAPPDATA%\OpenCPLC` and run Forge again, it reinstalls its packages.
+- `make` stops at `opencplc -r` with an error about version or board: `main.h` points at something this framework lacks, fix that entry and run `make` again.
+- A project is missing from `-l`: its folder has no `main.h`.
 
 ## 📋 Usage examples
 
-```bash
+```sh
 # Creating new project
 opencplc -n myapp -b uno                    # project for OpenCPLC Uno board
 opencplc -n myapp -b uno -m 128 36          # project for Uno with 128kB/36kB memory

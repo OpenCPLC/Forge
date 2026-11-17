@@ -16,7 +16,7 @@ def root_found_at_root(tmp_path):
   assert find_workspace(str(tmp_path)) == PATH.normalize(str(tmp_path))
 
 def missing_marker_walks_past_tmp_tree(tmp_path):
-  # the machine may hold a stray opencplc.json above tmp,
+  # The machine may hold a stray `opencplc.json` above `tmp`,
   # so assert only that nothing inside the marker-free tree was picked
   deep = tmp_path / "a" / "b"
   deep.mkdir(parents=True)
@@ -58,7 +58,7 @@ def projects_root_itself_is_not_a_project(tmp_path):
   assert project_from_path(str(root), str(root)) is None
 
 def entering_pins_the_file_root_even_when_cwd_is_the_root(tmp_path, monkeypatch):
-  # frozen builds resolve relative paths from the exe directory unless the root is set
+  # Frozen builds resolve relative paths from the exe directory unless the root is set
   from xaeian import file_context, get_context
   from opencplc.workspace import enter_workspace
   (tmp_path / "opencplc.json").write_text("{}")

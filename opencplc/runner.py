@@ -26,12 +26,12 @@ def run_one(build:str, name:str) -> tuple[int|None, int, str, list[str]]:
   Returns checks passed, `None` when it left no counts, checks failed,
   why it failed beyond its counts, and its output above them.
   """
-  # beside the program, under a name that a program without `.exe` on Linux cannot take
+  # Beside the program, under a name that a program without `.exe` on Linux cannot take
   folder = PATH.resolve(f"{build}/{name}.run", read=False)
   if DIR.exists(folder): DIR.remove(folder, force=True)
   DIR.ensure(folder, is_file=False)
   exe = PATH.resolve(f"{build}/{name}{EXE_EXT}")
-  # one stream keeps a `panic` on stderr in its place,
+  # One stream keeps a `panic` on stderr in its place,
   # bytes decode leniently: a test may print any byte, and `xaeian.cmd.run` would refuse it
   try:
     res = subprocess.run([exe], cwd=folder, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -43,7 +43,7 @@ def run_one(build:str, name:str) -> tuple[int|None, int, str, list[str]]:
   counts = SUMMARY.fullmatch(lines[-1].strip()) if lines else None
   if not counts: return None, 0, f"ended with code {res.returncode}", lines
   ok, err = int(counts[1]), int(counts[2] or 0)
-  # misses explain their own exit code, an exit without them is the failure itself
+  # Misses explain their own exit code, an exit without them is the failure itself
   why = f"ended with code {res.returncode}" if res.returncode and not err else ""
   return ok, err, why, lines[:-1]
 
@@ -74,7 +74,7 @@ def run_tests(build:str, names:list[str]) -> int:
     passed_checks += ok or 0
     all_checks += (ok or 0) + err
     failed += not passed
-  # a hang leaves no counts, so the programs stand beside the checks
+  # A hang leaves no counts, so the programs stand beside the checks
   total = (f"Test programs {fraction(len(names) - failed, len(names))}, "
     f"checks {fraction(passed_checks, all_checks)} in {time.perf_counter() - start:.1f}s")
   if failed:

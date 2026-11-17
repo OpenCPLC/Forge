@@ -32,7 +32,7 @@ void vrts_thread(void (*fn)(void), unsigned int *stack) { if(stack) fn(); }
 __attribute__((weak)) void TIM2_IRQHandler(void) { ticks = 0; }
 __attribute__((weak)) void USART2_IRQHandler(void) { delay(1); }
 """
-MAIN_C = """#include "vrts.h"
+MAIN_C = """#include <vrts.h>
 stack(stack_loop, 64);
 static void loop(void)
 {

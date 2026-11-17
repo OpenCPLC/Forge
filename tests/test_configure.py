@@ -159,7 +159,7 @@ def hardware_of_main_h_forced_again_is_a_plain_load(ws):
   assert cfg.load_flags == "" and cfg.flash_kB == 480
   main_h = ws / "projects" / "myapp" / "main.h"
   main_h.write_text(main_h.read_text().replace("PRO_PLC true", "PRO_PLC false"))
-  for flags in ({}, {"board": "uno"}): # Uno runs on the PLC layer, both refuse alike
+  for flags in ({}, {"board": "uno"}): # `uno` runs on the PLC layer, both refuse alike
     with pytest.raises(SystemExit):
       load_project(ws, **flags)
 

@@ -165,7 +165,7 @@ def deleting_a_project_drops_its_stlink(ws, monkeypatch):
   assert "SER1" not in (ws / "opencplc.json").read_text()
 
 def pinned_project_loads_without_the_workspace_default_core(ws, monkeypatch):
-  # main.h pins 1.0.0 (present); the workspace default 2.0.0 is not on disk and must not be needed
+  # `main.h` pins 1.0.0, present, and the workspace default 2.0.0 is neither on disk nor needed
   run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-y")
   cfg = (ws / "opencplc.json").read_text().replace('"version": "1.0.0"', '"version": "2.0.0"')
   (ws / "opencplc.json").write_text(cfg.replace('["1.0.0"]', '["2.0.0", "1.0.0"]'))
@@ -261,7 +261,7 @@ def boot_flag_writes_boot_h_and_its_include(ws, monkeypatch):
   assert '#include "boot.h"' in (pro / "main.h").read_text()
   assert (pro / "boot.h").read_text().startswith("// app/boot.h\n")
   make = read_makefile(ws, "app")
-  assert "-DBOOT_SLOT_PAGES=125" in make and "BOOT := true" in make # (512 - 12) / 2 = 250kB
+  assert "-DBOOT_SLOT_PAGES=125" in make and "BOOT := true" in make # (512 − 12) / 2 = 250kB
   assert "ORIGIN = 0x08003000, LENGTH = 250K" in (pro / "flash.ld").read_text()
   assert run_cli(monkeypatch, "app", "-B") == 1 # the `#include` is edited in main.h afterwards
   assert run_cli(monkeypatch, "-n", "plain", "-c", "STM32G0C1", "-y") == 0

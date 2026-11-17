@@ -132,7 +132,7 @@ def dev_key(pro:Project) -> str:
 
 def include_flags(pro:Project, dirs:list[str]) -> list[str]:
   """-I flags anchored in `$(PROJECT)`, `$(BUILD)` or `$(OPENCPLC)`, resolved by Make."""
-  # the project first: a test project of Core lies inside Core
+  # The project first: a test project of Core lies inside Core
   bases = ((pro.pro_dir, "PROJECT"), (pro.build_dir, "BUILD"), (pro.core_dir, "OPENCPLC"))
   flags = []
   for d in dirs:
@@ -198,7 +198,7 @@ def prepare_project(cfg:Config):
     "${LED_PIN}": chip.led["pin"],
     "${LED_NAME}": chip.led["name"],
   }
-  # a project in Core builds with the Core it lies in, so it neither pins nor prints a version
+  # A project in Core builds with the Core it lies in, so it neither pins nor prints a version
   pinless = ["PRO_FRAMEWORK"] if utils.core_version(cfg.name) else []
   if not FILE.exists(f"{pro_dir}/main.c"):
     if chip.platform == "STM32":
@@ -254,7 +254,7 @@ def generate(pro:Project, activate:bool=True):
   up_path = PATH.rel(".", pro.pro_dir)
   drive = os.path.splitdrive(PATH.resolve("."))[0] # empty off Windows
   boot_image = "$(BUILD)/boot/boot.hex" if pro.boot else ""
-  # a `plain` bootloader holds no key, so `dist` packs the one of builds
+  # A `plain` bootloader holds no key, so `dist` packs the one of builds
   boot_dist_image = "$(BUILD)/boot-dist/boot.hex" if pro.boot_keys else boot_image
   subs = {
     "${NAME}": pro.name,
@@ -322,7 +322,7 @@ def generate(pro:Project, activate:bool=True):
     "${LIME}": c.LIME, "${SKY}": c.SKY, "${VIOLET}": c.VIOLET,
     "${END}": c.END,
   } | utils.template_paths(pro.platform == "STM32", pro.tests)
-  # Linker script and makefile live inside the project - parallel builds stay disjoint
+  # Linker script and makefile live inside the project, so parallel builds stay disjoint
   if pro.linker:
     ld_template = templates["flash"].get(pro.linker, templates["flash"]["stm32g0.ld"])
     utils.create_file("flash.ld", ld_template, pro.pro_dir, subs)
@@ -330,7 +330,7 @@ def generate(pro:Project, activate:bool=True):
     if pro.boot:
       region = {"${FLASH_ORIGIN}": f"0x{FLASH_BASE:08X}", "${FLASH}": pro.boot_kB}
       utils.create_file("boot.ld", ld_template, pro.build_dir, subs | region)
-  # the Core itself has tests alone, and no `main.h`: Forge writes one into its build
+  # The Core itself has tests alone, and no `main.h`: Forge writes one into its build
   if utils.is_core(pro.name):
     makefile = tpl["core.mk"]
     utils.create_file("main.h", tpl["core.h"], pro.build_dir, subs)
@@ -342,7 +342,7 @@ def generate(pro:Project, activate:bool=True):
   keep_cube = bool(pro.stack_script and subs["${CUBE_PATH}"])
   utils.create_file("makefile", makefile, pro.pro_dir, recipe_safe(subs),
     remove_line="" if keep_cube else "${CUBE_PATH}")
-  # make takes this makefile as reloaded, a reload now would only write the same
+  # `make` takes this makefile as reloaded, a reload now would only write the same
   FILE.save(f"{pro.build_dir}/.forge", "")
   if not activate: return
   write_dispatcher(pro.pro_dir, colored_path(pro.pro_dir, pro.name))
@@ -351,14 +351,14 @@ def generate(pro:Project, activate:bool=True):
   drop = ([] if pro.plc else ["/plc/", '"OpenCPLC"']) + ([] if pro.board else ["/brd/"])
   drop += [] if utils.is_core(pro.name) else ["${BUILD_DIR}"] # `main.h` of the Core itself
   utils.create_file("c_cpp_properties.json", without(props, drop), ".vscode", subs)
-  # cortex-debug takes its tools from PATH where Forge has no packages to point at
+  # `cortex-debug` takes its tools from `PATH` where Forge has no packages to point at
   launch = tpl.get("launch.json", templates["launch.json"])
   drop = [] if pro.stlink else ["openOCDPreConfigLaunchCommands"]
   drop += [] if pro.boot else ["symbolFiles"]
   drop += [] if is_windows else ["TOOLS_ARM_DIR", "TOOLS_OPENOCD_EXE"]
   utils.create_file("launch.json", without(launch, drop), ".vscode", subs)
   utils.create_file("tasks.json", templates["tasks.json"], ".vscode", subs)
-  # Shared files - created once, kept afterwards
+  # Shared files: created once, kept afterwards
   if not FILE.exists(".vscode/settings.json"):
     utils.create_file("settings.json", templates["settings.json"], ".vscode", subs)
   if not FILE.exists(".vscode/extensions.json"):

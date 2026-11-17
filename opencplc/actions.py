@@ -87,7 +87,7 @@ def framework_fetch(args, forge_cfg:dict) -> bool:
   A way to read a version before `PRO_FRAMEWORK` points at it.
   Already cloned stays as it is.
   """
-  # beside any other flag -f overrides the Core of a project run, so it downloads only alone
+  # Beside any other flag `-f` overrides the Core of a project run, so it downloads only alone
   if not args.framework or given(args) - {"framework", "yes"}: return False
   ver = args.framework
   path = PATH.resolve(utils.core_dir(ver), read=False)
@@ -190,7 +190,7 @@ def program_image(pro:Project, path:str|bool, yes:bool):
     p.err(f"File {utils.color_image(path)} not found")
     sys.exit(1)
   cmd = utils.openocd_command(pro.openocd_target, pro.stlink)
-  # braces keep a path with spaces one word for openocd
+  # Braces keep a path with spaces one word for `openocd`
   cmd += ["-c", f"program {{{PATH.normalize(path)}}} verify reset exit"]
   name = utils.color_image(PATH.basename(path))
   if run(cmd, capture=False).returncode:

@@ -171,7 +171,7 @@ def ensure_git(yes:bool):
     sys.exit(1)
   cmd = ["winget", "install", "--id", "Git.Git", "-e", "--silent",
     "--accept-package-agreements", "--accept-source-agreements"]
-  # user scope needs no admin rights, machine scope is the fallback
+  # User scope needs no admin rights, machine scope is the fallback
   try:
     if run(cmd + ["--scope", "user"], capture=False).returncode:
       run(cmd, capture=False, check=True)
@@ -221,7 +221,7 @@ def ensure_tools(is_embedded:bool, yes:bool, tests:bool=False):
 def verify_compiler(is_embedded:bool) -> bool:
   """Compiler answers `--version`, not just sits on PATH."""
   compiler = "arm-none-eabi-gcc" if is_embedded else "gcc"
-  # bytes, never decoded: a localized compiler answers in the code page of its console
+  # Bytes, never decoded: a localized compiler answers in the code page of its console
   try:
     return subprocess.run([compiler, "--version"], capture_output=True, timeout=5).returncode == 0
   except (OSError, subprocess.TimeoutExpired):

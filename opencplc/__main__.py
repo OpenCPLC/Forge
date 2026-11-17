@@ -58,7 +58,7 @@ def name_project(args, cwd:str, forge_cfg:dict) -> bool:
     ensure_refs(forge_cfg, args.yes) # first run: the version list must exist
   # -r <name> and -r inside a project directory touch that project only, never the workspace
   scoped = bool(args.reload and args.name)
-  # these act on the active project when no name is given
+  # These act on the active project when no name is given
   acting = args.program or args.keygen or args.lock is not None or args.lint
   if not args.name and (args.reload or args.info or acting):
     scoped = reload_from_cwd(args, cwd)
@@ -71,7 +71,7 @@ def fetch_project(args, fw_ver:str, forge_cfg:dict):
   # A new project takes the workspace default Core, an existing one the version it pins
   if args.new:
     ensure_framework(fw_ver, forge_cfg, args.yes)
-  # Remote project - name read from its main.h when not given
+  # Remote project: name read from its `main.h` when not given
   if args.get:
     if not args.get[0].endswith(".zip"):
       utils.ensure_git(args.yes)
@@ -102,7 +102,7 @@ def pick_project(args, forge_cfg:dict) -> dict:
 
 def configure_project(args, projects:dict, fw_ver:str, forge_cfg:dict) -> Config:
   """Config of the project, over the Core that builds it, with its ST-Link."""
-  # the keys go into boot.h first, so this very run builds the project under them
+  # The keys go into `boot.h` first, so this very run builds the project under them
   named = utils.project_key(projects, args.name)
   if args.keygen and named:
     keygen(args.keygen, named, PATH.resolve(projects[named], read=False))
@@ -123,7 +123,7 @@ def run_project(args, cfg:Config, scoped:bool):
   utils.ensure_toolchain(cfg.chip.platform == "STM32", args.yes, tests)
   if args.lint:
     sys.exit(run_lint(resolve_project(cfg)))
-  # the factory programs the full image of `dist`, then locks the board
+  # The factory programs the full image of `dist`, then locks the board
   if args.program or args.lock is not None:
     model = resolve_project(cfg)
     if args.program: program_image(model, args.program, args.yes)
@@ -140,7 +140,7 @@ def main():
   forge_cfg = forge_config(templates)
   if info_actions(args, forge_cfg): sys.exit(0)
   scoped = name_project(args, cwd, forge_cfg)
-  # after the name is known: a project in Core sets the version
+  # After the name is known: a project in Core sets the version
   fw_ver = framework_version(args, forge_cfg)
   fetch_project(args, fw_ver, forge_cfg)
   projects = pick_project(args, forge_cfg)

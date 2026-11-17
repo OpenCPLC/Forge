@@ -12,14 +12,14 @@ WORKFLOW = f"{REPO_ROOT}/.github/workflows/project.yml"
 DOCS = [f"{REPO_ROOT}/.wiki/tests.md", f"{REPO_ROOT}/.wiki/tests.pl.md"]
 
 def project_workflow_installs_its_own_release():
-  # the wheel job tests a copy of `tests/` alone
+  # The wheel job tests a copy of `tests/` alone
   if not FILE.exists(WORKFLOW): pytest.skip("no source tree")
   # `@0.5.1` installing Forge 0.5.0 would build a project with the old one, quietly
   assert set(re.findall(r"\d+\.\d+\.\d+", FILE.load(WORKFLOW))) == {__version__}
 
 def docs_pin_the_workflow_of_this_release():
-  # the wiki is a repository of its own, so a clone of Forge comes without it
+  # The wiki is a repository of its own, so a clone of Forge comes without it
   if not FILE.exists(DOCS[0]): pytest.skip("no wiki")
-  # a project copies its `test.yml` from here, so an old tag would stay with it
+  # A project copies its `test.yml` from here, so an old tag would stay with it
   for path in DOCS:
     assert set(re.findall(r"project\.yml@(\S+)", FILE.load(path))) == {__version__}, path

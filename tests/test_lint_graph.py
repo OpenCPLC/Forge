@@ -4,7 +4,7 @@
 
 from xaeian import file_context
 import pytest
-from opencplc.lint.graph import Graph, read, settle_weak, INDIRECT
+from opencplc.lint.graph import Graph, read, settle_weak, drop_unlinked, INDIRECT
 from opencplc.lint.rules import (
   Roles, Thread, find_threads, hidden_calls, check_graph, check_stacks, deepest, contexts,
 )
@@ -133,6 +133,18 @@ def an_inlined_helper_still_counts_by_its_source():
   found = check_graph(graph, {"a.c": THREADS_C, "mb.c": MODBUS_C}, [MASTER, DEBUG], ROLES)
   assert [(f.rule, f.function) for f in found] == [
     ("heap-owner", "read_bits"), ("heap-cleared", "master")]
+
+def code_the_linker_left_out_is_no_part_of_the_program():
+  """`DBG_Loop` of a thread compiled out by `#if`: `--gc-sections` leaves it out of the image."""
+  graph = graph_of(
+    node("master", "a.c:1:6"), node("DBG_Loop", "d.c:1:6"),
+    edge("DBG_Loop", "heap_clear", "d.c:3:3"),
+  )
+  assert [f.rule for f in check_graph(graph, {"a.c": THREADS_C}, [MASTER], ROLES)] == [
+    "heap-owner"]
+  drop_unlinked(graph, {"master", "main"})
+  assert "DBG_Loop" not in graph.functions and "DBG_Loop" not in graph.calls
+  assert check_graph(graph, {"a.c": THREADS_C}, [MASTER], ROLES) == []
 
 def thread_taking_blocks_clears_them_itself():
   texts = {"a.c": "void loop(void)\n{\n  format();\n  heap_clear();\n}\n"}

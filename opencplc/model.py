@@ -17,11 +17,11 @@ from .boards import Board
 class Hardware:
   """Chip and board a project builds for, with the memory and clock it gets there."""
   chip: Chip
-  board: Board|None # `None` without a board
-  plc: bool         # PLC layer compiled in
-  flash_kB: int     # flash region of the project, `PRO_FLASH_kB`
+  board: Board|None  # `None` without a board
+  plc: bool          # PLC layer compiled in
+  flash_kB: int      # flash region of the project, `PRO_FLASH_kB`
   ram_kB: int
-  freq_Hz: int      # clock the project starts with, `SYS_CLOCK_FREQ`
+  freq_Hz: int       # clock the project starts with, `SYS_CLOCK_FREQ`
 
   @property
   def board_title(self) -> str:
@@ -32,16 +32,16 @@ class Hardware:
 class Config(Hardware):
   """Hardware with the settings of the project on it."""
   name: str
-  pro_ver: str            # Core version main.h pins, the one it lies in for a project in Core
-  fw_ver: str             # Core version that builds it
+  pro_ver: str          # version of Core `main.h` pins, or the Core a project lies in
+  fw_ver: str           # version of Core that builds it
   opt_level: str = OPT_DEFAULT
   log_level: str = LOG_LEVEL_DEFAULT
-  boot: bool = False      # main.h includes boot.h: the image runs behind the bootloader
-  boot_keys: str = ""     # `BOOT_KEYS` of boot.h, "" for a `plain` bootloader
-  signing_key: int = 0    # `PRO_SIGNING_KEY`, the key `make dist` signs with
+  boot: bool = False    # main.h includes boot.h: the image runs behind the bootloader
+  boot_keys: str = ""   # `BOOT_KEYS` of boot.h, "" for a `plain` bootloader
+  signing_key: int = 0  # `PRO_SIGNING_KEY`, the key `make dist` signs with
   project_drivers: list[str] = field(default_factory=list)
-  load_flags: str = ""    # -f, -b and -c of the load, which the reloads of make keep
-  stlink: str = ""        # ST-Link bound to the project in opencplc.json
+  load_flags: str = ""  # -f, -b and -c of the load, which the reloads of make keep
+  stlink: str = ""      # ST-Link bound to the project in opencplc.json
 
   @property
   def drivers(self) -> list[str]:
@@ -56,10 +56,12 @@ class Project:
   name: str     # "firm/app", "opencplc/develop/.tests/g081" in a Core
   pro_dir: str  # workspace-relative source directory
   target: str   # artifact base name, "tests-g081" in a Core
+
   # Core
-  pro_ver: str   # Core version pinned in main.h, the one it lies in for a project in Core
-  core_ref: str  # Core version used for this build
+  pro_ver: str   # version of Core `main.h` pins, or the Core a project lies in
+  core_ref: str  # version of Core used for this build
   core_dir: str  # workspace-relative Core directory
+
   # Hardware
   platform: str     # "STM32" | "Host"
   chip: str
@@ -72,6 +74,7 @@ class Project:
   cpu: str
   device: str
   svd: str
+
   # Build configuration
   flash_kB: int  # `PRO_FLASH_kB`, the flash region of the project
   image_kB: int  # what the image may take: the region, or its slot under the bootloader
@@ -81,6 +84,7 @@ class Project:
   log_level: str
   defines: list[str]
   mcu_flags: str
+
   # Sources and includes, workspace-relative and sorted
   core_c_sources: list[str]
   core_asm_sources: list[str]
@@ -88,23 +92,26 @@ class Project:
   project_asm_sources: list[str]
   include_dirs: list[str]
   project_dirs: list[str] # project root and every dir holding project sources or headers
+
   # Flash and debug
   linker: str        # linker template key, "" for HOST
   openocd_target: str
   erase_command: str
-  stack_script: str  # Core script that flashes the radio stack, "" when the chip has none
+  stack_script: str  # script of Core that flashes the radio stack, "" when the chip has none
   boot: bool         # image runs under the bootloader, linked into the application slot
   flash_origin: int  # address the image is linked at
   boot_keys: str     # `BOOT_KEYS` as written, "" for a `plain` bootloader
   signing_key: int   # `PRO_SIGNING_KEY`, the number of the key `dist` signs with
   stlink: str
   build_dir: str
+
   # Bootloader of Core compiled under the image, all empty without one
   boot_kB: int                  # its code region, the mailbox page left out
   boot_c_sources: list[str]
   boot_asm_sources: list[str]
   boot_include_dirs: list[str]  # `.boot/` of Core first, then the project for its `boot.h`
   boot_defines: list[str]
+
   # Tests: `.c` programs of `test_dir` built for this computer against Core in test mode
   test_dir: str  # `.tests/` of the project, the folder of the Core itself
   tests: bool    # `test_dir` holds a program, so an STM32 project needs MinGW too

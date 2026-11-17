@@ -155,7 +155,7 @@ def read_main_h(args, projects:dict) -> tuple[dict, list[str]]:
     sys.exit(1)
   lines = utils.lines_clear(lines, "//")
   info = main_h_defines(lines)
-  # in Core the folder names the version, a pin would lie on a checkout of another one
+  # In Core the folder names the version, a pin would lie on a checkout of another one
   in_core = bool(utils.core_version(key))
   if in_core and info.get("PRO_FRAMEWORK"):
     p.err(f"File {shown} pins {c.SKY}PRO_FRAMEWORK{c.END}, "
@@ -221,7 +221,7 @@ def resolve_version(args, pro_ver:str, fw_ver:str, forge_cfg:dict) -> str:
     p.inf(f"Project uses {c.VIOLET}{pro_ver}{c.END}, "
       f"workspace default is {c.GREY}{fw_ver}{c.END}")
     return pro_ver
-  # Quiet upgrade hint - only when an active release is older than the latest release
+  # Quiet upgrade hint, only when the active release is older than the latest one
   latest = forge_cfg["available-versions"][0]
   releases = utils.version_is_release(pro_ver) and utils.version_is_release(latest)
   if releases and utils.version_older_than(pro_ver, latest):
@@ -254,7 +254,7 @@ def config_load(args, projects:dict, fw_ver:str, forge_cfg:dict) -> Config:
   layers_check(args.name, lines, boot_lines)
   core = utils.core_version(args.name)
   pro_ver = core or info["PRO_FRAMEWORK"]
-  # settings of main.h and boot.h refuse before any Core is cloned for them
+  # Settings of `main.h` and `boot.h` refuse before any Core is cloned for them
   keys_hex = boot_keys(boot_lines)
   signing_key = main_h_number(info, "PRO_SIGNING_KEY")
   use_ver = core or resolve_version(args, pro_ver, fw_ver, forge_cfg)
@@ -310,7 +310,7 @@ def load_hardware(args, info:dict, core:str) -> tuple[Hardware, bool]:
     sys.exit(1)
   hardware = hardware_config(args.board, args.chip, plc == "true", core)
   if not (board or chip): return hardware, False
-  # flags naming what main.h names: a plain load, its checks included
+  # Flags naming what `main.h` names: a plain load, its checks included
   named = hardware.board.name if hardware.board else None
   if named == (board.lower() or None) and chip.upper() in ("", hardware.chip.name):
     return main_h_hardware(args.name, board, chip, plc, core), True

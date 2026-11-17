@@ -183,7 +183,7 @@ def boot_project_links_into_its_slot_and_builds_the_bootloader_under_it(ws):
   make = read_makefile(ws)
   assert "BOOT := true" in make and "FLASH_kB := 240" in make
   assert "-DBOOT_SLOT_PAGES=120" in make
-  # the `plain` bootloader holds no key, so `dist` packs the one of builds
+  # The `plain` bootloader holds no key, so `dist` packs the one of builds
   assert "BOOT_IMAGE := $(BUILD)/boot/boot.hex\n" in make and "BOOT_KEYS := \n" in make
   assert "BOOT_DIST_IMAGE := $(BUILD)/boot/boot.hex\n" in make
   assert "BOOT_kB := 10\n" in make and "BOOT_C = .boot/main.c \\\n" in make
@@ -191,7 +191,7 @@ def boot_project_links_into_its_slot_and_builds_the_bootloader_under_it(ws):
   assert "BOOT_DEV_KEY := \n" in make # a `plain` bootloader takes no key
   # `main.h` of Core `.boot/` first, then `boot.h` of the project
   assert "BOOT_INCLUDES = -I$(OPENCPLC)/.boot \\\n-I$(PROJECT) \\\n" in make
-  # the region less its mailbox page, linked at the start of flash
+  # The region less its mailbox page, linked at the start of flash
   boot_ld = (ws / BUILD / "boot.ld").read_text()
   assert "ORIGIN = 0x08000000, LENGTH = 10K" in boot_ld
 
@@ -206,13 +206,13 @@ def key_bootloader_of_builds_takes_the_development_key(ws):
   assert f"BOOT_KEYS := {KEY}\n" in make and "SIGNING_KEY := 0\n" in make
   assert "-DBOOT_PAGES=16" in make and "-DBOOT_SLOT_PAGES=115" in make
   assert "-DBOOT_KEYS" not in make # both programs read the keys from boot.h
-  # a build signs with the development key, the one the bootloader of builds takes
+  # A build signs with the development key, the one the bootloader of builds takes
   assert "--pack $< $@ $(BOOT_IMAGE) $(if $(BOOT_KEYS),$(BOOT_KEYS) $(SIGNING_KEY))\n" in make
   assert "-dist.hex: $(BUILD)/$(TARGET).hex $(BOOT_IMAGE)\n" in make
   assert "BOOT_kB := 30\n" in make
   assert "ORIGIN = 0x08000000, LENGTH = 30K" in (ws / BUILD / "boot.ld").read_text()
   assert f"BOOT_DEV_KEY := {keys.dev_public().hex()}\n" in make
-  # the flag goes to the objects of `boot/` alone, `boot-dist/` takes the product keys
+  # The flag goes to the objects of `boot/` alone, `boot-dist/` takes the product keys
   desk = make[make.index("$(BUILD)/boot/%.o: $(OPENCPLC)/%.c"):]
   dist = make[make.index("$(BUILD)/boot-dist/%.o: $(OPENCPLC)/%.c"):]
   assert "$(BOOT_DEV)" in desk.split("\n\n")[0] and "$(BOOT_DEV)" not in dist.split("\n\n")[0]

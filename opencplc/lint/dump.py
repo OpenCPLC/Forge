@@ -9,7 +9,7 @@ Only the facts the rules need leave this module, so a dump of megabytes ends as 
 """
 
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from fnmatch import fnmatchcase
 from xaeian import FILE
 
@@ -20,7 +20,13 @@ TYPE_RANGE = {
   ("short", "unsigned"): (0, 0xFFFF), ("short", "signed"): (-0x8000, 0x7FFF),
 }
 RAW_COPIES = {"memcpy": 0, "memmove": 0, "memset": 0} # destination of each by argument index
+# CMSIS calls that mask interrupts, and those that end it, a restored `PRIMASK` among them
+MASKING = {
+  "__disable_irq": True, "__disable_fault_irq": True,
+  "__enable_irq": False, "__enable_fault_irq": False, "__set_PRIMASK": False,
+}
 KEYWORDS = {"if", "while", "for", "switch", "return", "sizeof", "do"} # a `(` after them is no call
+ASM = {"asm", "__asm", "__asm__"} # a barrier the compiler keeps, whatever it holds
 SHARED = ("Global", "Namespace", "Public") # a variable of the file, or a field of a struct
 NESTING = 4 # levels of structs in a struct whose enum fields raw bytes reach
 
@@ -54,6 +60,8 @@ class Switch:
   has_default: bool
   cases: frozenset[int]  # labels with a proven value
   values: Values         # of the condition
+  # Its cases set the very variable it switches on, a state machine a stray value would stall
+  steps: bool = False
 
 @dataclass(frozen=True)
 class Entry:
@@ -91,13 +99,18 @@ class Ignored:
 @dataclass(frozen=True)
 class Access:
   """One function reading or writing one variable that outlives a call."""
-  key: str       # `name`, `path:name` for a static one, `Struct.field` for a field
+  key: str        # `name`, `path:name` for a static one, `Struct.field` for a field
   name: str
-  path: str      # of the declaration
+  path: str       # of the declaration
   line: int
-  function: str  # key of the function, as for `Argument`
-  write: bool
-  volatile: bool
+  function: str   # key of the function, as for `Argument`
+  write: bool     # by an assignment, `++` or `--`
+  read: bool      # by anything but a plain `=`, which only writes
+  volatile: bool  # as declared
+  # Read with interrupts masked or through a pointer to `volatile`, fresh either way
+  guarded: bool = False
+  # Read again and again by a loop with no barrier, where a value kept in a register would do
+  polled: bool = False
 
 @dataclass
 class Unit:
@@ -134,6 +147,10 @@ class Tokens:
       while scope is not None and scope.get("type") != "Function":
         scope = self.scopes.get(scope.get("nestedIn"))
       self.owner[scope_id] = scope
+    # Body of each function this unit defines, by function id; one only declared has none
+    self.bodies = {s.get("function"): s for s in self.scopes.values()
+      if s.get("type") == "Function" and s.get("function")}
+    self.barriers:dict[str, bool] = {} # by function scope, once `barrier` looked inside it
 
   def get(self, token:ET.Element|None, name:str) -> ET.Element|None:
     """Token an attribute of `token` points at."""
@@ -372,7 +389,17 @@ def collect_switches(tokens:Tokens, unit:Unit):
     unit.switches.append(Switch(keyword.get("file"), int(keyword.get("linenr")),
       function.get("className") if function is not None else "", tokens.enum_of(condition),
       type_text(condition), scope_id in defaults, frozenset(cases.get(scope_id, ())),
-      tokens.values_of(condition) if condition is not None else Values()))
+      tokens.values_of(condition) if condition is not None else Values(),
+      steps(tokens, scope, condition)))
+
+def steps(tokens:Tokens, scope:ET.Element, condition:ET.Element|None) -> bool:
+  """The cases of the `switch` of `scope` assign the variable or field it switches on."""
+  target = path_of(tokens, condition)
+  if not target: return False
+  for token in tokens.order[slice(*span_of(tokens, scope))]:
+    if token.get("isAssignmentOp") == "true" or token.get("str") in ("++", "--"):
+      if path_of(tokens, tokens.get(token, "astOperand1")) == target: return True
+  return False
 
 def collect_entries(tokens:Tokens, unit:Unit, loads:tuple[str, ...]=()):
   """
@@ -391,7 +418,8 @@ def collect_entries(tokens:Tokens, unit:Unit, loads:tuple[str, ...]=()):
     if assigns and text == "=":
       target, source = tokens.enum_of(operand), tokens.get(token, "astOperand2")
       if target and source is not None and tokens.enum_of(source) != target:
-        unit.entries.append(entry(tokens, target, where, "assignment", source))
+        unit.entries.append(clamped(tokens, entry(tokens, target, where, "assignment", source),
+          token, source))
     elif text in ("++", "--"):
       # A step stays inside when the value it starts from is proven one short of the edge
       target = tokens.enum_of(operand)
@@ -405,7 +433,8 @@ def collect_entries(tokens:Tokens, unit:Unit, loads:tuple[str, ...]=()):
     elif token.get("isCast") == "true":
       target = tokens.enum_of(token)
       if target and operand is not None and tokens.enum_of(operand) != target:
-        unit.entries.append(entry(tokens, target, where, "cast", operand))
+        unit.entries.append(clamped(tokens, entry(tokens, target, where, "cast", operand),
+          tokens.get(token, "astParent"), operand))
     elif text == "return":
       # `return` carries the type of its function, which takes the value without a cast
       target = tokens.enum_of(token)
@@ -557,6 +586,44 @@ def collect_union(
     unit.entries.append(Entry(enum, *where, "union", type_text(written), values, member=member,
       checked=compared_after(tokens, op, path and f"{path}.{member}")))
 
+def clamped(tokens:Tokens, found:Entry, assign:ET.Element|None, source:ET.Element) -> Entry:
+  """
+  `found` with the values its target keeps once the very next statement clamps it,
+  `if(x > LAST) x = FIRST;`: what the condition lets through and what the clamp gives.
+
+  An upper clamp holds only a value that cannot go below zero, so the source has to be unsigned.
+  """
+  if assign is None or assign.get("str") != "=": return found
+  path = path_of(tokens, tokens.get(assign, "astOperand1"))
+  end = assign
+  while end is not None and end.get("str") != ";": end = tokens.next(end)
+  keyword = tokens.next(end) if end is not None else None
+  if not path or keyword is None or keyword.get("str") != "if": return found
+  opener = tokens.next(keyword)
+  condition = tokens.get(opener, "astOperand2")
+  if condition is None: return found
+  left, right = tokens.get(condition, "astOperand1"), tokens.get(condition, "astOperand2")
+  text = condition.get("str")
+  # A strict `x > C` or `C < x` lets through up to `C`, and `>=` or `<=` one less
+  if path_of(tokens, left) == path and text in (">", ">="): edge, step = right, text == ">="
+  elif path_of(tokens, right) == path and text in ("<", "<="): edge, step = left, text == "<="
+  else: return found
+  limit = tokens.values_of(edge).known if edge is not None else frozenset()
+  base = tokens.values_of(source)
+  low = 0 if source.get("valueType-sign") == "unsigned" else base.low
+  if len(limit) != 1 or low is None or low < 0: return found
+  high = min(limit) - step
+  if base.high is not None: high = min(high, base.high)
+  given = frozenset()
+  start = tokens.next(tokens.get(opener, "link"))
+  if start is not None and start.get("str") == "{": start = tokens.next(start)
+  while start is not None and start.get("str") != ";":
+    if start.get("str") == "=" and path_of(tokens, tokens.get(start, "astOperand1")) == path:
+      given = tokens.values_of(tokens.get(start, "astOperand2")).known
+    start = tokens.next(start)
+  if not given or high - low > 4096: return found
+  return replace(found, values=Values(frozenset(range(low, high + 1)) | given))
+
 def compared_after(tokens:Tokens, after:ET.Element, target:str) -> bool:
   """The function of `after` compares the object at `target`, a variable or a field, later on."""
   function = tokens.function_of(after)
@@ -672,40 +739,222 @@ def collect_statics(tokens:Tokens, unit:Unit):
     started(tokens, unit, variable, initializer(tokens, name_token), where, name_token.get("str"))
 
 def collect_accesses(tokens:Tokens, unit:Unit):
-  """Reads and writes of file-scope variables and of struct fields, function by function."""
+  """
+  Reads and writes of file-scope variables and of struct fields, function by function.
+
+  A field of a local copy is no shared data.
+  Masking follows the token order of a function, each CMSIS call of `MASKING` setting it,
+  and the `memory` clobber of those calls keeps the compiler from moving a read across them.
+  A read is polled when a loop with no barrier runs it again and again on the same object,
+  in its own function or through a function of the unit that loop calls.
+  """
+  loops = polling_loops(tokens)
+  helpers = run_by(tokens, loops)
+  masked = {} # by function scope, whether its last masking call so far masked interrupts
   for token in tokens.order:
+    function = tokens.function_of(token)
+    if function is None: continue
+    if token.get("str") in MASKING and (after := tokens.next(token)) is not None \
+      and after.get("str") == "(":
+      masked[function.get("id")] = MASKING[token.get("str")]
+      continue
     variable = tokens.variables.get(token.get("variable") or "")
     if variable is None or variable.get("access") not in SHARED: continue
-    function = tokens.function_of(token)
-    if function is None or token.get("id") == variable.get("nameToken"): continue
+    if token.get("id") == variable.get("nameToken"): continue
     declared = tokens.by_id.get(variable.get("nameToken"))
     path = declared.get("file") if declared is not None else token.get("file")
     name = token.get("str")
+    line = int((declared if declared is not None else token).get("linenr"))
     if variable.get("access") == "Public":
       scope = tokens.scopes.get(variable.get("scope"))
-      key = f"{scope.get('className') if scope is not None else '?'}.{name}"
+      record = scope.get("className") if scope is not None else "?"
+      # Unnamed structs are numbered unit by unit, so their fields go by their declaration
+      key = f"{path}:{line}:{name}" if record.startswith("Anonymous") else f"{record}.{name}"
       expression = tokens.get(token, "astParent") if token.get("astParent") else token
+      if local_copy(tokens, expression): continue
     else:
       key = f"{path}:{name}" if variable.get("isStatic") == "true" else name
       expression = token
-    line = int((declared if declared is not None else token).get("linenr"))
+    reached = element(tokens, expression, variable.get("isArray") == "true")
+    write, read = used(tokens, reached)
+    if not (write or read): continue
+    guarded = masked.get(function.get("id"), False) or fresh(reached)
+    index = tokens.index[token.get("id")]
+    polled = read and (any(start <= index <= end and not names_in(tokens, reached) & assigned
+      for start, end, assigned in loops)
+      or (function.get("id") in helpers and fixed(tokens, reached)))
     unit.accesses.append(Access(key, name, path, line, owner_key(tokens, token),
-      written(tokens, expression, variable.get("isArray") == "true"),
-      variable.get("isVolatile") == "true"))
+      write, read, variable.get("isVolatile") == "true", guarded, polled))
 
-def written(tokens:Tokens, expression:ET.Element, array:bool) -> bool:
+#-------------------------------------------------------------------------------------------- Loops
+
+def is_call(tokens:Tokens, token:ET.Element) -> bool:
+  """`token` is the `(` of a call, never of a cast or of `if`, `while` and their kin."""
+  if token.get("str") != "(" or token.get("isCast") == "true": return False
+  callee = tokens.get(token, "astOperand1")
+  return callee is not None and callee.get("str") not in KEYWORDS
+
+def body_of(tokens:Tokens, call:ET.Element) -> ET.Element|None:
+  """Function scope the call reaches in this unit, `None` for another unit or a pointer."""
+  name = tokens.get(call, "astOperand1")
+  return tokens.bodies.get(name.get("function") or "") if name is not None else None
+
+def span_of(tokens:Tokens, scope:ET.Element) -> tuple[int, int]:
+  """Token indexes from the opening to the closing token of a function body or a loop scope."""
+  return tokens.index[scope.get("bodyStart")], tokens.index[scope.get("bodyEnd")]
+
+def barrier(tokens:Tokens, start:int, end:int) -> bool:
   """
-  `expression` is the target of an assignment or an increment.
+  Something between the token indexes `start` and `end` the compiler cannot see through,
+  so it reloads every variable past it: `asm`, a call through a pointer or into another unit.
+  A call to a function of this unit counts by what that function holds.
+  """
+  for token in tokens.order[start:end + 1]:
+    if token.get("str") in ASM: return True
+    if not is_call(tokens, token): continue
+    body = body_of(tokens, token)
+    if body is None: return True
+    scope = body.get("id")
+    if scope not in tokens.barriers:
+      tokens.barriers[scope] = False # a recursion brings no barrier of its own
+      tokens.barriers[scope] = barrier(tokens, *span_of(tokens, body))
+    if tokens.barriers[scope]: return True
+  return False
 
-  An element of an `array` is part of it, while the element a pointer leads to is another object.
+def loop_span(tokens:Tokens, scope:ET.Element) -> tuple[int, int]|None:
+  """
+  Token indexes of what a loop runs on every turn: its condition, its step and its body.
+
+  The start of a `for` runs once, so the turns begin past its first `;`,
+  and the condition of a `do` follows the body.
+  """
+  # Found from the body, since cppcheck 2.17 names no keyword of a loop scope
+  brace = tokens.by_id.get(scope.get("bodyStart"))
+  close = tokens.by_id.get(scope.get("bodyEnd"))
+  before = tokens.next(brace, -1) if brace is not None else None
+  if scope.get("type") == "Do": keyword = before
+  else:
+    closing = before is not None and before.get("str") == ")"
+    opener = tokens.get(before, "link") if closing else None
+    keyword = tokens.next(opener, -1) if opener is not None else None
+  if keyword is None or close is None: return None
+  start, end = tokens.index[keyword.get("id")], tokens.index[close.get("id")]
+  if scope.get("type") == "For":
+    while start < end and tokens.order[start].get("str") != ";": start += 1
+  elif scope.get("type") == "Do":
+    after = tokens.next(close)
+    opener = tokens.next(after) if after is not None and after.get("str") == "while" else None
+    shut = tokens.get(opener, "link") if opener is not None else None
+    if shut is not None: end = tokens.index[shut.get("id")]
+  return start, end
+
+def polling_loops(tokens:Tokens) -> list[tuple[int, int, set[str]]]:
+  """
+  Loops with no barrier, by the token indexes of their turns, each with the variables it assigns.
+
+  Such a loop may keep a variable it only reads in a register, all its turns long.
+  """
+  found = []
+  for scope in tokens.scopes.values():
+    if scope.get("type") not in ("While", "For", "Do"): continue
+    span = loop_span(tokens, scope)
+    if span is None or barrier(tokens, *span): continue
+    assigned = set()
+    for token in tokens.order[span[0]:span[1] + 1]:
+      if token.get("isAssignmentOp") == "true" or token.get("str") in ("++", "--"):
+        target = tokens.get(token, "astOperand1")
+        if target is not None and target.get("varId", "0") != "0":
+          assigned.add(target.get("varId"))
+    found.append((*span, assigned))
+  return found
+
+def run_by(tokens:Tokens, loops:list[tuple[int, int, set[str]]]) -> set[str]:
+  """Function scopes of this unit the loops call, at any depth: each runs on their every turn."""
+  found, spans = set(), [(start, end) for start, end, _ in loops]
+  while spans:
+    start, end = spans.pop()
+    for token in tokens.order[start:end + 1]:
+      body = body_of(tokens, token) if is_call(tokens, token) else None
+      if body is None or body.get("id") in found: continue
+      found.add(body.get("id"))
+      spans.append(span_of(tokens, body))
+  return found
+
+def names_in(tokens:Tokens, node:ET.Element) -> set[str]:
+  """Variables an expression names, by `varId`: the object, its bases and indexes."""
+  found, seen, stack = set(), set(), [node]
+  while stack:
+    item = stack.pop()
+    # A few trees link back into themselves in cppcheck, `uart.c` of Core among them
+    if item is None or item.get("id") in seen: continue
+    seen.add(item.get("id"))
+    if item.get("varId", "0") != "0": found.add(item.get("varId"))
+    stack += [tokens.get(item, "astOperand1"), tokens.get(item, "astOperand2")]
+  return found
+
+def fixed(tokens:Tokens, reached:ET.Element) -> bool:
+  """
+  `reached` is one object on every call: a variable of static storage,
+  a field of one or its element at a constant index, never what a pointer leads to.
+  """
+  node, seen = reached, set()
+  while node is not None and node.get("str") in (".", "[") and node.get("id") not in seen:
+    seen.add(node.get("id"))
+    if node.get("originalName") == "->": return False
+    index = tokens.get(node, "astOperand2") if node.get("str") == "[" else None
+    if index is not None and len(tokens.values_of(index).known) != 1: return False
+    node = tokens.get(node, "astOperand1")
+  variable = tokens.variables.get(node.get("variable") or "") if node is not None else None
+  if variable is None: return False
+  return variable.get("access") == "Global" or variable.get("isStatic") == "true"
+
+def element(tokens:Tokens, expression:ET.Element, array:bool) -> ET.Element:
+  """
+  What an access reaches: the element of an `array` it indexes, else `expression` itself.
+
+  An element of an array is part of it, while the element a pointer leads to is another object.
   """
   parent = tokens.get(expression, "astParent")
   if array and parent is not None and parent.get("str") == "[" \
     and tokens.get(parent, "astOperand1") is expression:
-    expression, parent = parent, tokens.get(parent, "astParent")
-  if parent is None: return False
-  if parent.get("str") in ("++", "--"): return True
-  return parent.get("isAssignmentOp") == "true" and tokens.get(parent, "astOperand1") is expression
+    return parent
+  return expression
+
+def used(tokens:Tokens, reached:ET.Element) -> tuple[bool, bool]:
+  """
+  Whether `reached` is written and whether it is read: `=` only writes it,
+  `+=` or `++` does both, `&` takes its address without either, anything else reads it.
+  """
+  parent = tokens.get(reached, "astParent")
+  if parent is None: return False, True
+  if parent.get("str") in ("++", "--"): return True, True
+  if parent.get("str") == "&" and parent.get("astOperand2") is None: return False, False
+  if parent.get("isAssignmentOp") == "true" and tokens.get(parent, "astOperand1") is reached:
+    return True, parent.get("str") != "="
+  return False, True
+
+def fresh(expression:ET.Element) -> bool:
+  """The value `expression` reaches is `volatile` there, through a pointer to `volatile` too."""
+  bits = int(expression.get("valueType-volatileness") or 0)
+  return bool(bits >> int(expression.get("valueType-pointer") or 0) & 1)
+
+def local_copy(tokens:Tokens, member:ET.Element) -> bool:
+  """
+  The field access `member` lands in an object of its own function, a copy rather than shared data.
+
+  A pointer may lead anywhere, so a path through `->`, `*` or a pointer counts as shared.
+  """
+  node, seen = member, set()
+  while node is not None and node.get("str") in (".", "[") and node.get("id") not in seen:
+    seen.add(node.get("id"))
+    if node.get("originalName") == "->": return False
+    node = tokens.get(node, "astOperand1")
+  variable = tokens.variables.get(node.get("variable") or "") if node is not None else None
+  if variable is None or variable.get("isPointer") == "true" or variable.get("isStatic") == "true":
+    return False
+  # An array parameter is a pointer in C
+  return variable.get("access") == "Local" \
+    or (variable.get("access") == "Argument" and variable.get("isArray") != "true")
 
 def read_dump(path:str, rename:dict[str, str]|None=None, loads:tuple[str, ...]=()) -> Unit:
   """

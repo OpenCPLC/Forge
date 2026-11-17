@@ -30,8 +30,8 @@ OPTR, WRP1AR = 0x20, 0x2C          # offsets in flash registers, alike on G0 and
 RDP = {0: 0xAA, 1: 0xBB, 2: 0xCC}  # any value but 0xAA and 0xCC is level 1
 # `OPTR` bits booting main flash whatever BOOT0 pin says: value, mask
 BOOT_BITS = {
-  "G0": (0x05000000, 0x05000000),     # nBOOT_SEL and nBOOT0 set
-  "WB": (0x08000000, 0x0C000000),     # nBOOT0 set, nSWBOOT0 clear
+  "G0": (0x05000000, 0x05000000),  # nBOOT_SEL and nBOOT0 set
+  "WB": (0x08000000, 0x0C000000),  # nBOOT0 set, nSWBOOT0 clear
 }
 # WRP areas of each chip, A and B of every bank, and the page bits of their start and end fields
 WRP_AREAS = {
@@ -104,7 +104,7 @@ def cube_unlock(pro:Project) -> str:
     p.run(f"Install it from {utils.color_url(utils.CUBE_URL)}")
     sys.exit(1)
   connect = ["-c", "port=SWD", "mode=UR"] + ([f"sn={pro.stlink}"] if pro.stlink else [])
-  # its progress bar comes in the console code page, `latin-1` takes any byte
+  # Its progress bar comes in the console code page, `latin-1` takes any byte
   areas = ["WRP1A_STRT=0xFF", "WRP1A_END=0x0", "WRP1B_STRT=0xFF", "WRP1B_END=0x0"]
   result = run([cli, *connect, "-ob", "RDP=0xAA", *areas], capture=True, encoding="latin-1")
   return (result.stdout or "") + (result.stderr or "")
@@ -134,7 +134,7 @@ def options_read(pro:Project) -> tuple[int, int]|None:
   """`OPTR` and `WRP1AR` read back from the chip, `None` when the session fails or SWD is shut."""
   code, out = openocd(pro, "init", "reset halt",
     f"stm32l4x option_read 0 0x{OPTR:02X}", f"stm32l4x option_read 0 0x{WRP1AR:02X}", "shutdown")
-  # openocd 0.12.0 of Linux distributions prints `Option Register: <address> = value`,
+  # `openocd` 0.12.0 of Linux distributions prints `Option Register: <address> = value`,
   # builds since 2025 the value alone
   values = re.findall(r"^(?:Option Register: <0x\w+> = )?(0x[0-9a-fA-F]+)\s*$", out, re.M)
   if code or len(values) < 2: return None
@@ -183,7 +183,7 @@ def lock_board(pro:Project, level:int, yes:bool):
   read = options_read(pro)
   if level == 2 and read is None and swd_shut(pro): # RDP2 shuts SWD at once
     p.ok(f"{c.PINK}{pro.chip}{c.END} at RDP2: powered, silent on SWD for good")
-    # the silence of SWD alone could have another cause, the chip itself names its level
+    # The silence of SWD alone could have another cause, the chip itself names its level
     p.run("Unplug and plug board power, "
       f"then {utils.color_command('boot info')} shows {c.GOLD}rdp:2{c.END}")
     return
@@ -194,9 +194,9 @@ def lock_board(pro:Project, level:int, yes:bool):
     sys.exit(1)
   p.ok(f"{c.PINK}{pro.chip}{c.END} at RDP{level}, OPTR 0x{read[0]:08X}, WRP1AR 0x{read[1]:08X}")
   if level == 0:
-    # option reload saw flash empty, and G0 boots its ROM until next power-on
+    # Option reload saw flash empty, and G0 boots its ROM until next power-on
     p.run(f"Program board with {utils.color_command('make flash')}, "
       "then unplug and plug its power")
     return
-  # a debugger seen since power-on keeps flash shut until next power-on
+  # A debugger seen since power-on keeps flash shut until next power-on
   p.run("Unplug and plug board power, a chip locked under the debugger starts nothing until then")

@@ -1,4 +1,4 @@
-## OpenCPLC ⚒️ Forge
+# OpenCPLC ⚒️ Forge
 
 **Forge** jest aplikacją konsolową usprawniającą pracę z **OpenCPLC**.
 Jego zadaniem jest dostosowanie środowiska pracy tak, aby programista-automatyk mógł skupić się na tworzeniu aplikacji, a nie walce z konfiguracją ekosystemu i kompilacją programu.
@@ -64,9 +64,9 @@ Test albo demo na dowolną płytkę nie wpisuje do `main.h` `PRO_BOARD`, `PRO_CH
 Szkielet projektu dla sterownika PLC wygląda tak:
 
 ```c
-#include "opencplc.h"
+#include <opencplc.h>
 
-void loop(void)
+static void loop(void)
 {
   while(1) {
     RGB_Set(&RGB, RGB_Green);
@@ -82,10 +82,10 @@ stack(stack_loop, 1024);
 
 int main(void)
 {
-  thread(PLC_Main, stack_plc);  // wątek sterownika
-  thread(DBG_Loop, stack_dbg);  // logi i konsola
-  thread(loop, stack_loop);     // Twoja aplikacja
-  vrts_init();                  // start przełączania wątków
+  thread(PLC_Main, stack_plc); // wątek sterownika
+  thread(DBG_Loop, stack_dbg); // logi i konsola
+  thread(loop, stack_loop); // twoja aplikacja
+  vrts_init(); // start przełączania wątków
   while(1);
 }
 ```
@@ -304,7 +304,7 @@ Reguły, normy i wyjątki: [🔍 Lint](https://github.com/OpenCPLC/Forge/wiki/li
 
 ## 🚩 Flags
 
-#### Podstawowe
+### Podstawowe
 
 - **`name`**: Nazwa projektu, domyślny pierwszy argument. Wyznacza ścieżkę `projects/name` i jest powiązana z plikami wsadowymi _(`.bin`, `.hex`, `.elf`)_. Można też podać numer z listy `-l`.
 - `-n --new`: Tworzy nowy projekt o wskazanej nazwie.
@@ -313,7 +313,7 @@ Reguły, normy i wyjątki: [🔍 Lint](https://github.com/OpenCPLC/Forge/wiki/li
 - `-d --delete`: Usuwa projekt o wskazanej nazwie.
 - `-g --get`: Pobiera projekt z GitHub/GitLab lub zdalnego ZIP i dodaje jako nowy. Drugi argument to referencja _(`branch`, `tag`)_. Jeśli `name` nie podano, odczytuje go z `@name` w `main.h`.
 
-#### Konfiguracja sprzętu
+### Konfiguracja sprzętu
 
 - `-b --board`: Płytka z framework'a _(`uno`)_. Ustawia chip, pamięć, zegar i warstwę PLC nowego projektu; `-c` i `--plc` to nadpisują. Przy istniejącym projekcie wybiera inną płytkę, aż do ładowania bez niej.
 - `-c --chip`: Mikrokontroler lub platforma: `STM32G081`, `STM32G0C1`, `STM32WB55`, `HOST`. Bez `-b` projekt działa bez warstwy PLC, tylko HAL i biblioteki standardowe. Przydatne dla Nucleo lub własnego hardware. Przy istniejącym projekcie wybiera inny układ, aż do ładowania bez niego.
@@ -322,20 +322,20 @@ Reguły, normy i wyjątki: [🔍 Lint](https://github.com/OpenCPLC/Forge/wiki/li
 - `-B --boot`: Nowy projekt działa za bootloaderem z Core: `boot.h` obok `main.h` i jego `#include`, patrz [Bootloader](#-bootloader).
 - `-m --memory`: Pamięć w kB: `FLASH RAM [RESERVED]`. `RESERVED` zostaje odjęte od FLASH w pliku linkera `flash.ld`. _(tylko STM32)_
 
-#### Konfiguracja kompilacji
+### Konfiguracja kompilacji
 
 - `-f --framework`: Wersja frameworka: `latest`, `develop`, `0.4.3`. Dla nowego projektu staje się `PRO_FRAMEWORK`, dla istniejącego buduje z nią aż do ładowania bez niej, sama klonuje wersję do `opencplc/`.
 - `-o --opt-level`: Poziom optymalizacji: `O0`, `Og` _(domyślny)_, `O1`, `O2`, `O3`, `Os`. Poziomy `O2`/`O3` wyświetlają ostrzeżenie dla STM32 _(timing, debugowanie)_.
 - `-s --stlink`: Przypisuje numer seryjny ST-Linka do projektu; samo `-s` czyści przypisanie.
 
-#### Informacje
+### Informacje
 
 - `-l --list`: Wyświetla listę projektów.
 - `-i --info`: Zwraca informacje o wskazanym lub aktywnym projekcie, w tym wersje projektu i frameworka.
 - `-F --framework-versions`: Wyświetla dostępne wersje frameworka OpenCPLC.
 - `-v --version`: Wyświetla wersję ⚒️Forge i link do repozytorium.
 
-#### Narzędzia
+### Narzędzia
 
 - `-a --assets`: Pobiera materiały pomocnicze _(dokumentacja i erraty układów, pinouty płytek, przewodniki stylu Core)_. Opcjonalnie przyjmuje nazwę folderu docelowego.
 - `-u --update`: Podmienia plik wykonywalny Forge na wskazaną wersję _(domyślnie `latest`)_; instalację z `pip` aktualizuje się przez `pip`.
@@ -348,7 +348,7 @@ Reguły, normy i wyjątki: [🔍 Lint](https://github.com/OpenCPLC/Forge/wiki/li
 - `--test`: Uruchamia programy testowe, każdy we własnym czystym katalogu i z minutą na zakończenie; `make test` używa tego.
 - `-y --yes`: Automatycznie potwierdza wszystkie pytania _(tryb nieinteraktywny)_.
 
-#### Hash utilities
+### Hash utilities
 
 - `-hl --hash-list`: Generuje enum z hashem DJB2 dla listy tagów.
 - `-ht --hash-title`: Nazwa typu enum dla generatora hashy.

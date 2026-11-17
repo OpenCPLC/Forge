@@ -19,16 +19,16 @@ from ..model import Project
 from ..runner import fraction
 from .. import utils
 from .finding import Finding
-from .graph import load_graph, settle_weak
+from .graph import load_graph, settle_weak, drop_unlinked
 from .rules import (
-  Bodies, Stack, GRAPH_RULES, FILE_RULES, VALUE_RULES, OPT_INS,
-  load_roles, split_opt_ins, find_threads, hidden_calls, contexts, check_graph, check_stacks,
-  check_files,
+  Bodies, Trees, Stack, GRAPH_RULES, FILE_RULES, TREE_RULES, VALUE_RULES, OPT_INS,
+  load_roles, split_opt_ins, vendor_code, find_threads, hidden_calls, contexts, check_graph,
+  check_stacks, check_files, check_includes, check_config,
 )
 from .values import merge, local_key, check_switches, check_status, check_volatile
 from .lintfile import LINT, LintFileError, Waiver, read, exceptions, keep
 from .checkers import (
-  Unit, GCC_OPT_INS, CPPCHECK_MIN, cppcheck_too_old, run_cppcheck, run_analyzer,
+  Unit, GCC_RULES, CPPCHECK_MIN, GCC_MIN, too_old, run_cppcheck, run_analyzer,
 )
 from .dump import Unit as Facts
 from . import sources
@@ -87,22 +87,13 @@ def stack_sizes(elf:str) -> dict[str, int|None]:
     sizes[name] = size if sizes.get(name, size) == size else None
   return sizes
 
-def vendor_code(path:str, vendor:list[tuple[str, str]]) -> bool:
-  """`path` lies in code Core or the project carries from others, a glob from the folder each."""
-  return any(PATH.is_under(path, root) and utils.glob_match(PATH.rel(path, root), pattern)
-    for root, pattern in vendor)
-
-def build_texts(
-  deps:list[str], core_dir:str, pro_dir:str,
-  vendor:list[tuple[str, str]],
-) -> dict[str, str]:
-  """Sources and headers of Core and the project the build compiled, code of others left out."""
+def build_texts(deps:list[str], core_dir:str, pro_dir:str) -> dict[str, str]:
+  """Sources and headers of Core and the project the build compiled, code of others among them."""
   texts = {}
   for path in sources.build_files(deps):
     local = PATH.local(path)
-    if not PATH.is_under(local, core_dir) and not PATH.is_under(local, pro_dir): continue
-    if vendor_code(local, vendor): continue
-    texts[path] = FILE.load(path)
+    if PATH.is_under(local, core_dir) or PATH.is_under(local, pro_dir):
+      texts[path] = FILE.load(path)
   return texts
 
 def lint_opt_ins(pro_dir:str) -> tuple[set[str], list[str]]:
@@ -117,26 +108,34 @@ def forge_check(
   """
   Rules of Forge over a finished build, those of `opt_ins` the project turned on among them.
 
-  A Core without `lint.yaml` or a build without a call graph leaves VRTS and the stack out.
+  A Core without `lint.yaml` leaves out `TREE_RULES`, VRTS and the stack,
+  and a build without a call graph the last two.
   """
   opt_ins = opt_ins or set()
   roles = load_roles(core_dir, pro_dir)
   vendor = roles.vendor if roles else []
   objects = linked_objects(elf)
-  texts = build_texts(beside(objects, ".d"), core_dir, pro_dir, vendor)
+  every = build_texts(beside(objects, ".d"), core_dir, pro_dir)
+  texts = {path: text for path, text in every.items() if not vendor_code(PATH.local(path), vendor)}
   found = check_files(texts)
+  if roles is None: return Check(found, [], FILE_RULES, texts)
+  found += check_includes(texts, Trees(core_dir, pro_dir, vendor))
+  found += check_config(texts, every, f"{pro_dir}/main.h")
+  files = FILE_RULES + TREE_RULES
   cis = beside(objects, ".ci")
-  if roles is None or not cis: return Check(found, [], FILE_RULES, texts)
+  if not cis: return Check(found, [], files, texts)
   graph, described = load_graph(cis)
   graphed = [o for o in objects if FILE.exists(PATH.with_suffix(o, ".ci"))]
   sources_of = {PATH.normalize(o): source for o, source in zip(graphed, described)}
   settle_weak(graph, weak_titles(graphed, sources_of))
+  sizes = stack_sizes(elf)
+  drop_unlinked(graph, set(sizes))
   threads = find_threads(graph, texts, roles)
-  stacks, misfits = check_stacks(graph, threads, stack_sizes(elf), 4 * roles.frame.get(cpu, 0),
+  stacks, misfits = check_stacks(graph, threads, sizes, 4 * roles.frame.get(cpu, 0),
     "stack-margin" in opt_ins)
   found += check_graph(graph, texts, threads, roles, opt_ins, pro_dir) + misfits
   irq, thread = contexts(graph, texts, threads, roles)
-  ran = FILE_RULES + GRAPH_RULES + tuple(rule for rule in GRAPH_OPT_INS if rule in opt_ins)
+  ran = files + GRAPH_RULES + tuple(rule for rule in GRAPH_OPT_INS if rule in opt_ins)
   return Check(found, stacks, ran, texts, {local_key(t) for t in irq},
     {local_key(t) for t in thread}, {local_key(t) for t in graph.functions},
     hidden_calls(graph, texts, roles))
@@ -213,13 +212,29 @@ def without_vendor(unit:Unit, vendor:list[tuple[str, str]]) -> Unit:
   ours = [d for d in unit.include_dirs if not vendor_code(f"{d}/_.h", vendor)]
   return replace(unit, include_dirs=ours)
 
+def vector_entry(finding:Finding, handlers:tuple[str, ...]) -> bool:
+  """`static-scope` at a handler of the vector table, which the startup code declares."""
+  return finding.rule == "static-scope" and finding.function.endswith(handlers)
+
+def vouching(waivers:list[Waiver]):
+  """
+  Whether an exception of `switch-enum` names the place an entry stands in,
+  the check the code makes there out of reach of the proof; such an exception counts as used.
+  """
+  def vouched(entry) -> bool:
+    stand = Finding("switch-enum", PATH.local(entry.path), entry.line, 1, "", entry.function)
+    found = [waiver for waiver in waivers if waiver.explains(stand)]
+    for waiver in found: waiver.used = True
+    return bool(found)
+  return vouched
+
 def value_check(
   facts:list[Facts], check:Check, status:str,
-  opt_ins:set[str],
+  opt_ins:set[str], waivers:list[Waiver],
 ) -> dict[str, list[Finding]]:
   """Rules on types and proven values over the facts of every source of the application."""
   program = merge(facts)
-  found = check_switches(program, opt_ins)
+  found = check_switches(program, opt_ins, vouching(waivers))
   found += check_volatile(program, check.irq, check.thread, check.graphed)
   if "status-used" in opt_ins: found += check_status(program, status)
   rules = VALUE_RULES + tuple(rule for rule in VALUE_OPT_INS if rule in opt_ins)
@@ -257,10 +272,11 @@ def lint(pro:Project) -> int:
     return 1
   start = time.perf_counter()
   utils.ensure_packages(utils.LINT_TOOLS, True)
-  if old := cppcheck_too_old():
-    p.err(f"Lint needs cppcheck {'.'.join(map(str, CPPCHECK_MIN))} or newer, and finds {old}")
-    p.run("Install a newer cppcheck and run again")
-    return 1
+  for tool, least in (("cppcheck", CPPCHECK_MIN), ("arm-none-eabi-gcc", GCC_MIN)):
+    if old := too_old(tool, least):
+      p.err(f"Lint needs {tool} {'.'.join(map(str, least))} or newer, and finds {old}")
+      p.run(f"Install a newer {tool} and run again")
+      return 1
   folder = f"{pro.build_dir}/lint"
   check = forge_check(elf, pro.core_dir, pro.pro_dir, pro.cpu, opt_ins)
   roles = load_roles(pro.core_dir, pro.pro_dir)
@@ -270,32 +286,36 @@ def lint(pro:Project) -> int:
   for where in check.hidden: p.wrn(hidden_text(where))
   vendor = roles.vendor if roles else []
   loads = tuple(roles.load) if roles else ()
+  handlers = tuple(roles.irq_handlers) if roles else ()
   local = {PATH.local(path): text for path, text in check.texts.items()}
   bodies = Bodies(local) # the function an exception names, for outside findings too
   checks = {rule: [f for f in check.found if f.rule == rule] for rule in check.ran}
-  groups = ["cppcheck", "analyzer", *sorted(opt_ins & (GCC_OPT_INS.keys() | {"cppcheck-style"}))]
+  compiled = {rule for rule in GCC_RULES if rule in opt_ins or rule not in OPT_INS}
+  groups = ["cppcheck", "analyzer", *sorted(compiled | (opt_ins & {"cppcheck-style"}))]
   outside = {name: {} for name in groups}
   def take(group:str, finding:Finding):
     # Headers of others reach every source, and both units share Core
     if vendor_code(finding.path, vendor): return
-    finding = replace(finding, function=bodies.around(finding.path, finding.line))
+    function = finding.function or bodies.around(finding.path, finding.line)
+    finding = replace(finding, function=function)
+    if vector_entry(finding, handlers): return
     outside[group][(finding.rule, finding.path, finding.line, finding.col)] = finding
   every = units(pro, vendor)
+  waivers, refused = load_all_waivers(pro.core_dir, pro.pro_dir)
   values = "irq-yield" in check.ran # VRTS and the stack ran, so the contexts are known
   # The analyzer only waits for its gcc processes, so it runs while the dumps are read
   with ThreadPoolExecutor(1) as background:
     analyzing = background.submit(
-      lambda: [finding for unit in every for finding in run_analyzer(unit, folder, opt_ins)])
+      lambda: [finding for unit in every for finding in run_analyzer(unit, folder, compiled)])
     for index, unit in enumerate(every):
       found, styled, facts = run_cppcheck(without_vendor(unit, vendor), folder,
         "cppcheck-style" in opt_ins, dump=values and not index, loads=loads)
       for finding in found: take("cppcheck", finding)
       for finding in styled: take("cppcheck-style", finding)
-      if facts: checks |= value_check(facts, check, roles.status, opt_ins)
+      if facts: checks |= value_check(facts, check, roles.status, opt_ins, waivers)
     for finding in analyzing.result():
-      take(finding.rule if finding.rule in GCC_OPT_INS else "analyzer", finding)
+      take(finding.rule if finding.rule in GCC_RULES else "analyzer", finding)
   checks |= {name: list(items.values()) for name, items in outside.items()}
-  waivers, refused = load_all_waivers(pro.core_dir, pro.pro_dir)
   left = {name: keep(items, waivers) for name, items in checks.items()}
   shown = sorted((f for items in left.values() for f in items), key=lambda f: (f.path, f.line))
   for finding in shown: p(finding.text())

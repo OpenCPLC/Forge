@@ -8,7 +8,7 @@ from opencplc.utils.common import validate_project_name, assign_name
 def valid_names_pass():
   for name in ("myapp", "firm/app", "ok/nested/deep", "app.v2", "a_b-c", "opencplc"):
     assert validate_project_name(name) == (True, "")
-  for name in ("opencplc/develop", "opencplc/develop/.tests/g081"): # Core itself, project in it
+  for name in ("opencplc/develop", "opencplc/develop/.tests/g081"): # the Core, then its project
     assert validate_project_name(name) == (True, "")
 
 def invalid_names_fail():

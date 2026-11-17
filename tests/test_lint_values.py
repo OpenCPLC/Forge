@@ -20,10 +20,16 @@ def workspace(tmp_path):
 def a_closed_enum_needs_no_default():
   assert found(Unit({"MODE_t": MODE}, [switch()], [entry(Values(frozenset({1})))])) == []
 
-def an_unchecked_entry_opens_the_enum_and_the_switch_reports_it():
+def an_unchecked_entry_opens_the_enum_and_the_state_machine_reports_it():
   unit = Unit({"MODE_t": MODE}, [switch()], [entry(Values(frozenset(), 0, 255))])
-  assert found(unit) == [("switch-enum", "`switch` over `MODE_t` has no `default`, "
-    "and `MODE_t` takes `uint8_t` unchecked at frame.c:7")]
+  assert found(unit) == [("switch-enum", "`switch` over `MODE_t` steps the value it switches on "
+    "and has no `default`, while `MODE_t` takes `uint8_t` unchecked at frame.c:7: "
+    "a stray value would stall it")]
+
+def a_switch_that_only_dispatches_skips_a_stray_value_harmlessly():
+  # A value no case names does nothing there, as C defines, and the compiler sees the rest
+  unit = Unit({"MODE_t": MODE}, [switch(steps=False)], [entry(Values(frozenset(), 0, 255))])
+  assert found(unit) == []
 
 def an_empty_range_proves_nothing():
   # Crossed bounds say the flow lost its way, never that no value comes
@@ -53,8 +59,7 @@ def raw_bytes_need_a_comparison_of_the_field_afterwards():
 
 def a_union_member_beside_the_enum_brings_its_value_in():
   written = Unit({"MODE_t": MODE}, [switch()], [entry(Values(frozenset(), 0, 255), "union")])
-  assert found(written) == [("switch-enum", "`switch` over `MODE_t` has no `default`, "
-    "and `MODE_t` takes `uint8_t` written beside `mode` in a union at frame.c:7")]
+  assert "takes `uint8_t` written beside `mode` in a union at frame.c:7" in found(written)[0][1]
   assert found(Unit({"MODE_t": MODE}, [switch()], [entry(Values(frozenset({1})), "union")])) == []
 
 def raw_zeros_are_a_value_the_enum_has():
@@ -65,8 +70,8 @@ def raw_zeros_are_a_value_the_enum_has():
 def a_zero_of_static_storage_opens_an_enum_without_a_zero_enumerator():
   zero = replace(entry(Values(frozenset({0})), "initial"), source="mode")
   assert found(Unit({"MODE_t": MODE}, [switch()], [zero])) == []
-  assert found(Unit({"MODE_t": frozenset({1, 5})}, [switch()], [zero])) == [("switch-enum",
-    "`switch` over `MODE_t` has no `default`, and `MODE_t` starts as `0` in `mode` at frame.c:7")]
+  opened = found(Unit({"MODE_t": frozenset({1, 5})}, [switch()], [zero]))
+  assert "`MODE_t` starts as `0` in `mode` at frame.c:7" in opened[0][1]
 
 def an_integer_switch_needs_a_default_only_when_turned_on():
   # A value without a label skips the `switch`, as C defines
@@ -92,23 +97,38 @@ def an_ignored_status_is_reported_and_other_values_are_not():
   assert [(f.rule, f.line, f.function) for f in check_status(merge([unit]), "status_t")] == [
     ("status-used", 3, "loop")]
 
-def a_variable_an_interrupt_writes_and_a_thread_reads_is_volatile():
+def a_variable_an_interrupt_writes_and_a_thread_polls_is_volatile():
   irq, thread = {"TIM2_IRQHandler"}, {"app.c:elapsed", "app.c:setup", "main"}
-  reads = Access("app.c:ticks", "ticks", "app.c", 5, "app.c:elapsed", False, False)
-  writes = Access("app.c:ticks", "ticks", "app.c", 5, "TIM2_IRQHandler", True, False)
+  reads = Access("app.c:ticks", "ticks", "app.c", 5, "app.c:elapsed", False, True, False,
+    polled=True)
+  writes = Access("app.c:ticks", "ticks", "app.c", 5, "TIM2_IRQHandler", True, False, False)
   found_here = check_volatile(merge([Unit(accesses=[writes, reads])]), irq, thread)
   assert [(f.rule, f.path, f.line, f.function) for f in found_here] == [
     ("irq-volatile", "app.c", 5, "ticks")]
   volatile = [replace(a, volatile=True) for a in (writes, reads)]
   assert check_volatile(merge([Unit(accesses=volatile)]), irq, thread) == []
   # A write from a thread read by an interrupt is mostly a setting made before it starts
-  setup = Access("app.c:ticks", "ticks", "app.c", 5, "app.c:setup", True, False)
+  setup = Access("app.c:ticks", "ticks", "app.c", 5, "app.c:setup", True, False, False)
   assert check_volatile(merge([Unit(accesses=[setup, reads])]), irq, thread) == []
+
+def only_polling_asks_for_volatile():
+  irq, thread = {"TIM2_IRQHandler"}, {"app.c:reset", "app.c:harvest", "app.c:once"}
+  writes = Access("app.c:ticks", "ticks", "app.c", 5, "TIM2_IRQHandler", True, False, False)
+  # A value handed over by a flag is read once a call, and a call reloads it anyway
+  once = Access("app.c:ticks", "ticks", "app.c", 5, "app.c:once", False, True, False)
+  # Zeroing wants exclusion rather than `volatile`, and a read with interrupts masked is fresh
+  reset = Access("app.c:ticks", "ticks", "app.c", 5, "app.c:reset", True, False, False)
+  harvest = replace(once, function="app.c:harvest", guarded=True, polled=True)
+  assert check_volatile(merge([Unit(accesses=[writes, once, reset, harvest])]), irq, thread) == []
+  # `+=` in a loop with no barrier polls as well
+  added = replace(reset, read=True, polled=True)
+  assert len(check_volatile(merge([Unit(accesses=[writes, added])]), irq, thread)) == 1
 
 def a_helper_gcc_inlined_into_an_interrupt_writes_for_it():
   irq, thread = {"TIM2_IRQHandler"}, {"app.c:elapsed", "main"}
-  writes = Access("app.c:ticks", "ticks", "app.c", 5, "app.c:count", True, False)
-  reads = Access("app.c:ticks", "ticks", "app.c", 5, "app.c:elapsed", False, False)
+  writes = Access("app.c:ticks", "ticks", "app.c", 5, "app.c:count", True, False, False)
+  reads = Access("app.c:ticks", "ticks", "app.c", 5, "app.c:elapsed", False, True, False,
+    polled=True)
   unit = Unit(accesses=[writes, reads], calls=[("TIM2_IRQHandler", "app.c:count")])
   inlined = check_volatile(merge([unit]), irq, thread, irq | thread)
   assert [(f.rule, f.function) for f in inlined] == [("irq-volatile", "ticks")]

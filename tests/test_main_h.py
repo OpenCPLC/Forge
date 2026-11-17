@@ -96,10 +96,10 @@ def generated_c_follows_the_c_style():
 
 def bare_metal_led_comes_from_the_chip_table():
   from opencplc.platforms import CHIPS
-  subs = {"${LED_PORT}": "GPIOB", "${LED_PIN}": 0, "${LED_NAME}": "Nucleo-WB55RG green `LD2`"}
+  subs = {"${LED_PORT}": "GPIOB", "${LED_PIN}": 0, "${LED_NAME}": "green `LD2` of Nucleo-WB55RG"}
   out = render(load_template("main-none.c"), subs)
   assert ".port = GPIOB," in out and ".pin = 0," in out
-  assert "// Nucleo-WB55RG green `LD2`" in out
+  assert "// green `LD2` of Nucleo-WB55RG" in out
   for name, chip in CHIPS.items():
     assert set(chip.led) == {"port", "pin", "name"}, name
   assert CHIPS["STM32WB55"].led["port"] == "GPIOB" # LD2 is PB0, not PA5

@@ -264,7 +264,7 @@ def forge_env(ws):
   """Environment and FORGE override that let Make run this interpreter's opencplc."""
   import xaeian
   env = os.environ.copy()
-  # the same opencplc and xaeian these tests import, wherever they come from
+  # The same opencplc and xaeian these tests import, wherever they come from
   forge_home = os.path.dirname(os.path.dirname(opencplc.__file__))
   xaeian_home = os.path.dirname(os.path.dirname(xaeian.__file__))
   env["PYTHONPATH"] = os.pathsep.join([forge_home, xaeian_home])
@@ -368,10 +368,17 @@ def lint_finding(rule:str, path:str, function:str=""):
   from opencplc.lint.finding import Finding
   return Finding(rule, path, 1, 1, "message", function)
 
-def value_switch(enum:str="MODE_t", default:bool=False, cases:frozenset=frozenset(), values=None):
-  """`switch` of `act` in `mode.c`, steered by `enum` or by a `uint8_t` when it is ""."""
+def value_switch(
+  enum:str = "MODE_t", default:bool = False, cases:frozenset = frozenset(), values = None,
+  steps:bool = True,
+):
+  """`switch` of `act` in `mode.c`, steered by `enum` or by a `uint8_t` when it is "".
+
+  By default a state machine: its cases set the value it switches on.
+  """
   from opencplc.lint.dump import Switch, Values
-  return Switch("mode.c", 20, "act", enum, enum or "uint8_t", default, cases, values or Values())
+  return Switch("mode.c", 20, "act", enum, enum or "uint8_t", default, cases, values or Values(),
+    steps)
 
 def value_entry(values, kind:str="assignment", param=None, checked:bool=False):
   """A `uint8_t` entering `MODE_t` in `parse` of `frame.c`, a raw copy into its field `mode`."""

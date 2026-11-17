@@ -12,7 +12,7 @@ def lines_clear_strips_comments_and_blanks():
   assert lines_clear(lines, "#") == ["NAME = app", "LIB = opencplc/1.0.0"]
 
 def lines_clear_joins_continuations_gluing_fragments():
-  # each fragment is rstripped before the join, so the space at the joint is lost;
+  # Each fragment is rstripped before the join, so the space at the joint is lost;
   # production reads only single-line vars (`NAME`/`LIB`/`PRO`) through this path
   lines = ["C_SOURCES = a.c \\", "b.c"]
   assert lines_clear(lines, "#") == ["C_SOURCES = a.cb.c"]

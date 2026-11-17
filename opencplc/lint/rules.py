@@ -10,10 +10,11 @@ A check takes data and gives findings back: nothing here runs a tool or prints.
 """
 
 import re
-from collections import deque
+from collections import Counter, deque
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
-from xaeian import FILE, PATH
+from xaeian import DIR, FILE, PATH
+from ..utils import glob_match
 from .finding import Finding
 from .lintfile import LISTS, read, flat
 from .graph import Graph, Function, INDIRECT, place
@@ -43,13 +44,16 @@ RULES = {
   "header-guard": Rule("files", "MISRA Dir 4.10, CERT PRE06-C"),
   "extern-in-c": Rule("files", "MISRA 8.5, CERT DCL40-C"),
   "own-header-first": Rule("files", "MISRA 8.4, BARR-C 4.3"),
+  "include-form": Rule("files", ""), # a form of OpenCPLC, which no norm asks
+  "config-order": Rule("files", "CERT DCL40-C"),
+  "config-unread": Rule("files", "MISRA 2.5"),
   "switch-enum": Rule("values", "CWE-478"),
   "switch-enum-default": Rule("values", "", opt_in=True),
   "switch-default": Rule("values", "MISRA 16.4", opt_in=True),
   "status-used": Rule("values", "MISRA 17.7, CERT ERR33-C, CWE-252", opt_in=True),
   "conversion": Rule("gcc", "MISRA 10.3, CWE-197", opt_in=True),
   "double-promotion": Rule("gcc", "", opt_in=True),
-  "static-scope": Rule("gcc", "MISRA 8.7, MISRA 8.8, CERT DCL15-C", opt_in=True),
+  "static-scope": Rule("gcc", "MISRA 8.7, MISRA 8.8, CERT DCL15-C"),
   "cppcheck-style": Rule("tools", "", opt_in=True),
 }
 GRAPH_RULES = (
@@ -57,11 +61,20 @@ GRAPH_RULES = (
   "recursion", "stack-fit",
 )
 FILE_RULES = ("header-object", "header-guard", "extern-in-c", "own-header-first")
+# Rules of files telling code of others from Core, which only `vendor` of `lint.yaml` does
+TREE_RULES = ("include-form", "config-order", "config-unread")
 VALUE_RULES = ("switch-enum", "irq-volatile")
 OPT_INS = tuple(name for name, rule in RULES.items() if rule.opt_in)
 START = "Reset_Handler" # the start of the program, in the vector table but no interrupt
 STACK_MARGIN = 25 # % of a stack `stack-margin` keeps free
 HEAP_C = ("malloc", "calloc", "realloc", "free")
+CONFIG_HEADERS = ("main.h", "boot.h") # configure the build, every tree takes them in quotes
+FORGE_SETTINGS = ("PRO_", "BOOT_") # names of `main.h` Forge reads itself, no file of the build
+# Where a finding of `include-form` says a file lies
+PLACES = {
+  "Core": "lies in Core", "project": "lies in the project",
+  "vendor": "is code of others", "toolchain": "comes with the toolchain",
+}
 
 @dataclass
 class Roles:
@@ -121,6 +134,11 @@ def load_roles(core_dir:str, pro_dir:str = "") -> Roles|None:
 def split_opt_ins(names:list[str]) -> tuple[list[str], list[str]]:
   """Rules a project turns on, and the names among them that are no rule to turn on."""
   return [n for n in names if n in OPT_INS], [n for n in names if n not in OPT_INS]
+
+def vendor_code(path:str, vendor:list[tuple[str, str]]) -> bool:
+  """`path` lies in code Core or the project carries from others, a glob from the folder each."""
+  return any(PATH.is_under(path, root) and glob_match(PATH.rel(path, root), pattern)
+    for root, pattern in vendor)
 
 #-------------------------------------------------------------------------------------------- Roots
 
@@ -453,4 +471,121 @@ def check_files(texts:dict[str, str]) -> list[Finding]:
         "`extern` belongs to the header of the file that defines it",
         refs=RULES["extern-in-c"].refs))
     if missing := own_header(path, text): found.append(missing)
+  return found
+
+class Trees:
+  """
+  Tree each file name lies in: Core, the project, code of others, or else the toolchain.
+
+  Names come from whole folders, not the include path of one build,
+  so the header of another chip family behind its `#if` is known too.
+  Hidden folders stay out: `.tests` holds fakes named as modules of Core,
+  and a project inside Core is a tree of its own.
+  """
+  def __init__(self, core_dir:str, pro_dir:str, vendor:list[tuple[str, str]]):
+    self.pro_dir = pro_dir
+    self.names:dict[str, set[str]] = {}
+    for root, tree in ((core_dir, "Core"), (pro_dir, "project")):
+      for rel in DIR.file_list(root, exts=[".c", ".h"], blacklist=[".git"], shape="rel"):
+        if any(part.startswith(".") for part in rel.split("/")): continue
+        own = "vendor" if vendor_code(f"{root}/{rel}", vendor) else tree
+        self.names.setdefault(PATH.basename(rel), set()).add(own)
+
+  def of_file(self, path:str) -> str:
+    """Tree of a file of the build: the project or Core."""
+    return "project" if PATH.is_under(path, self.pro_dir) else "Core"
+
+  def of_name(self, name:str, own:str) -> str:
+    """Tree of the file an include in a file of `own` names, `own` first."""
+    found = self.names.get(PATH.basename(name), set())
+    if "vendor" in found: return "vendor" # a model keeps the name of what it stands in for
+    if own in found: return own
+    return next(iter(found), "toolchain")
+
+def check_includes(texts:dict[str, str], trees:Trees) -> list[Finding]:
+  """
+  The mark of each `#include` names a tree: quotes the tree of the file, angle brackets another.
+
+  `main.h` and `boot.h` configure the build, so every tree takes them in quotes.
+  """
+  found = []
+  for path, text in texts.items():
+    local = PATH.local(path)
+    own = trees.of_file(local)
+    for mark, name, line in sources.includes(text):
+      tree, base = trees.of_name(name, own), PATH.basename(name)
+      quoted = base in CONFIG_HEADERS or tree == own
+      if (mark == '"') == quoted: continue
+      if base in CONFIG_HEADERS: where = "configures the build of every tree"
+      elif tree == own: where = f"{PLACES[tree]}, as this file does"
+      else: where = PLACES[tree]
+      form = f'"{name}"' if quoted else f"<{name}>"
+      found.append(Finding("include-form", local, line, 1, f"`{base}` {where}, so `{form}`",
+        refs=RULES["include-form"].refs))
+  return found
+
+def check_config(texts:dict[str, str], every:dict[str, str], main_h:str) -> list[Finding]:
+  """
+  Knobs of headers, and the settings of `main.h` a project gives them.
+
+  A knob is a `#define` open to a setting, and an include above it reaches `main.h`,
+  directly or through another header: a file without it keeps the default alone.
+  `texts` are the files checked, `every` all of the build, code of others among them.
+  """
+  local = {PATH.local(path): text for path, text in every.items()}
+  headers:dict[str, list[str]] = {}
+  for path, text in local.items(): headers.setdefault(PATH.basename(path), []).append(text)
+  def reaches(names:list[str]) -> bool:
+    seen, queue = set(names), deque(names)
+    while queue:
+      name = queue.popleft()
+      if name == "main.h": return True
+      for text in headers.get(name, []):
+        for _, include, _ in sources.includes(text):
+          if (base := PATH.basename(include)) in seen: continue
+          seen.add(base)
+          queue.append(base)
+    return False
+  found = []
+  for path, text in ((PATH.local(path), text) for path, text in texts.items()):
+    if not path.endswith(".h") or path == main_h: continue
+    guard = sources.GUARD.search(sources.uncommented(text))
+    above = sources.includes(text)
+    for name, line, opened in sources.defines(text):
+      if not opened or (guard and name == guard[1]): continue
+      if reaches([PATH.basename(include) for _, include, at in above if at < line]): continue
+      found.append(Finding("config-order", path, line, 1,
+        f"no include above `{name}` reaches `main.h`, so a project cannot set it", name,
+        RULES["config-order"].refs))
+  return found + (unread_settings(local, main_h) if main_h in local else [])
+
+def unread_settings(local:dict[str, str], main_h:str) -> list[Finding]:
+  """
+  Settings of `main.h` no file of the build reads, or one shuts out with a plain `#define`.
+
+  A setting building on another reads it in `main.h` itself.
+  """
+  text = local[main_h]
+  guard = sources.GUARD.search(sources.uncommented(text))
+  settings:dict[str, int] = {}
+  for name, line, _ in sources.defines(text):
+    if name.startswith(FORGE_SETTINGS) or (guard and name == guard[1]): continue
+    settings.setdefault(name, line)
+  own = Counter(sources.WORD.findall(sources.uncommented(text)))
+  defined = Counter(name for name, _, _ in sources.defines(text))
+  read = {name for name in settings if own[name] > defined[name]}
+  shut:dict[str, str] = {}
+  for path, body in local.items():
+    if path == main_h: continue
+    hits = settings.keys() & set(sources.WORD.findall(sources.uncommented(body)))
+    read |= hits
+    for name, line, opened in (sources.defines(body) if hits else []):
+      if name in hits and not opened: shut.setdefault(name, f"{path}:{line}")
+  found = []
+  for name, line in settings.items():
+    if name in shut: why = f"`{shut[name]}` defines `{name}` without `#ifndef`"
+    elif name not in read: why = f"no file of the build reads `{name}`"
+    else: continue
+    found.append(Finding("config-unread", main_h, line, 1, f"{why}, so setting it changes nothing",
+      name, RULES["config-unread"].refs))
   return found

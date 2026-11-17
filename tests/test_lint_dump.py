@@ -7,12 +7,12 @@ import pytest
 from xaeian import FILE, PATH, file_context
 from xaeian.cmd import run, which
 from opencplc.lint.dump import Tokens, read_dump
-from opencplc.lint.checkers import CPPCHECK_MIN, cppcheck_too_old
+from opencplc.lint.checkers import CPPCHECK_MIN, too_old
 from opencplc.utils import tools
 
 # Found as `make lint` finds it: the Forge package on Windows, where PATH plays no part
 CPPCHECK = which(f"{tools.bin_dir('cppcheck')}/cppcheck" if tools.WINDOWS else "cppcheck")
-USABLE = bool(CPPCHECK) and not cppcheck_too_old(CPPCHECK)
+USABLE = bool(CPPCHECK) and not too_old(CPPCHECK, CPPCHECK_MIN)
 SOURCE = """#include <stdint.h>
 #include <string.h>
 typedef enum { OK = 0, ERR, BUSY } status_t;
@@ -97,6 +97,58 @@ void raw_enum(const uint8_t *bytes, uint8_t raw)
   *(uint8_t *)&given = raw;
   memcpy(&counted, &given, sizeof(given));
 }
+void __disable_irq(void);
+void __enable_irq(void);
+uint32_t harvest(void)
+{
+  __disable_irq();
+  uint32_t taken = ticks;
+  ticks = 0;
+  __enable_irq();
+  return taken + ticks;
+}
+typedef struct { uint32_t seq; int16_t id; } SNAP_t;
+static SNAP_t *snap_at;
+int16_t snapped(void)
+{
+  volatile SNAP_t *src = snap_at;
+  SNAP_t copy;
+  do { copy = *src; } while(copy.seq != src->seq);
+  return copy.id;
+}
+typedef volatile struct { uint8_t arr[4]; uint16_t level; } VS_t;
+static VS_t vs;
+uint16_t vs_read(void) { return vs.level + vs.arr[1]; }
+static struct { uint8_t n; } one;
+uint8_t one_n(void) { return one.n; }
+void one_point(uint8_t **at) { *at = &one.n; }
+typedef enum { PAR_None = 0, PAR_Odd = 1, PAR_Even = 2 } PAR_t;
+typedef struct { PAR_t parity; } LINE_t;
+static LINE_t wire;
+uint32_t stored(void);
+void framing(void)
+{
+  wire.parity = (PAR_t)stored();
+  if(wire.parity > PAR_Even) wire.parity = PAR_None;
+}
+PAR_t unclamped(void) { PAR_t p = (PAR_t)stored(); return p; }
+void let(void);
+static uint8_t done;
+static uint8_t ready(void) { return done; }
+void waits(void) { while(!done) {} }
+void yields(void) { while(!done) let(); }
+void asks(void) { while(!ready()) {} }
+uint8_t once(void) { return done; }
+void later(void) { do {} while(!done); }
+static MODE_t machine;
+void stepper(void)
+{
+  switch(machine) {
+    case MODE_Idle: machine = MODE_Run; break;
+    case MODE_Run: machine = MODE_Stop; break;
+    case MODE_Stop: break;
+  }
+}
 """
 
 @pytest.fixture()
@@ -114,6 +166,8 @@ def switches_carry_the_type_of_their_condition(facts):
   assert facts.enums["MODE_t"] == {0, 1, 5}
   switches = {s.function: s for s in facts.switches}
   assert (switches["act"].enum, switches["act"].has_default) == ("MODE_t", False)
+  # `act` dispatches, while `stepper` sets the state it switches on
+  assert (switches["act"].steps, switches["stepper"].steps) == (False, True)
   # `raw & 3` is proven within the labels 0 to 3, so its `switch` needs no `default`
   assert switches["level"].enum == "" and switches["level"].values.within(switches["level"].cases)
 
@@ -150,6 +204,38 @@ def returns_loads_raw_bytes_and_unions_enter_an_enum(facts):
   united = entries[("united", "union")][0]
   assert (united.member, united.values.high) == ("mode", 255)
   assert entries[("named", "union")][0].values.known == {1}
+
+def a_read_masked_or_through_volatile_is_guarded_and_a_local_copy_shares_nothing(facts):
+  harvest = {(a.write, a.read, a.guarded) for a in facts.accesses
+    if a.name == "ticks" and a.function == "harvest"}
+  # Between `__disable_irq()` and `__enable_irq()` guarded, past them bare; `=` only writes
+  assert harvest == {(False, True, True), (True, False, True), (False, True, False)}
+  # `src->seq` reads through a pointer to `volatile`, while `copy` is a local copy
+  assert {(a.function, a.read, a.guarded) for a in facts.accesses
+    if a.key in ("SNAP_t.seq", "SNAP_t.id")} == {("snapped", True, True)}
+
+def a_volatile_type_guards_its_fields_and_the_elements_of_their_arrays(facts):
+  # A `typedef volatile struct` makes every field `volatile` where it is read, an array one too
+  assert {(a.name, a.read, a.guarded) for a in facts.accesses
+    if a.function == "vs_read" and a.name in ("level", "arr")} == {
+    ("level", True, True), ("arr", True, True)}
+
+def a_field_of_an_unnamed_struct_goes_by_its_declaration_and_an_address_reads_nothing(facts):
+  # Unnamed structs are numbered unit by unit, so `Anonymous0` would gather other files
+  line = SOURCE.splitlines().index("static struct { uint8_t n; } one;") + 1
+  assert {(a.function, a.key) for a in facts.accesses if a.name == "n"
+    and a.function in ("one_n", "one_point")} == {("one_n", f"app.c:{line}:n")}
+
+def a_loop_with_no_barrier_polls_what_it_reads(facts):
+  # A call into another unit reloads every variable, and one read a call is fresh anyway
+  polled = {(a.function, a.polled) for a in facts.accesses if a.name == "done" and a.read}
+  assert polled == {("waits", True), ("yields", False), ("app.c:ready", True), ("once", False),
+    ("later", True)}
+
+def a_clamp_right_after_the_conversion_closes_the_enum(facts):
+  parity = {e.function: e for e in facts.entries if e.enum == "PAR_t"}
+  assert parity["framing"].values.within(facts.enums["PAR_t"])
+  assert not parity["unclamped"].values.within(facts.enums["PAR_t"])
 
 def an_element_behind_a_pointer_field_is_no_write_of_it_and_calls_come_out(facts):
   output = {(a.function, a.write) for a in facts.accesses if a.key == "MEASURE_t.output"}

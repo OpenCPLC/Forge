@@ -15,7 +15,10 @@ from xaeian.xstring import scan
 
 C_TOKENS = {"quotes": "\"'", "esc": "\\", "line": "//", "block": ("/*", "*/")}
 DIRECTIVE = re.compile(r"^[ \t]*#(?:[^\n]*\\\n)*[^\n]*", re.M) # with its continued lines
-INCLUDE = re.compile(r'^[ \t]*#[ \t]*include[ \t]*[<"]([^>"]+)[>"]', re.M)
+INCLUDE = re.compile(r'^[ \t]*#[ \t]*include[ \t]*([<"])([^>"]+)[>"]', re.M)
+DEFINE = re.compile(r"[ \t]*#[ \t]*define[ \t]+(\w+)")
+CONDITION = re.compile(r"[ \t]*#[ \t]*(if|ifdef|ifndef|elif|else|endif)\b")
+OPENER = re.compile(r"\s*#\s*(?:ifndef\s+(\w+)|if\s*!\s*defined\s*\(?\s*(\w+))") # one line
 GUARD = re.compile(r"^[ \t]*#[ \t]*ifndef[ \t]+(\w+)[ \t]*\n[ \t]*#[ \t]*define[ \t]+\1\b", re.M)
 BRACES = re.compile(r"\{[^{}]*\}")
 BLOCK = "\x00" # stands for a brace block once its content is gone
@@ -29,6 +32,7 @@ def blank(text:str) -> str:
   """`text` as spaces, its newlines kept."""
   return re.sub(r"[^\n]", " ", text)
 
+@cache # includes, guards and defines each read the same file
 def uncommented(text:str) -> str:
   """`text` without comments, literals left, so `#include "x.h"` still names its file."""
   return "".join(blank(chunk) if kind == "comment" else chunk
@@ -180,7 +184,33 @@ def first_include(text:str) -> tuple[str, int]|None:
   """File and line of the first `#include` of `text`, `None` without one."""
   text = uncommented(text)
   found = INCLUDE.search(text)
-  return (found[1], line_of(text, found.start())) if found else None
+  return (found[2], line_of(text, found.start())) if found else None
+
+def includes(text:str) -> list[tuple[str, str, int]]:
+  """Every `#include` of `text`: its mark, `<` or `"`, the file it names, and its line."""
+  text = uncommented(text)
+  return [(found[1], found[2], line_of(text, found.start())) for found in INCLUDE.finditer(text)]
+
+def defines(text:str) -> list[tuple[str, int, bool]]:
+  """
+  Every `#define` of `text`: its name, its line, and whether it is open to a setting.
+
+  Open stands inside `#ifndef` of its own name, or `#if !defined`, at any depth,
+  so a name defined before keeps its value.
+  `#else` of such a block is not open.
+  """
+  found, frames = [], [] # each frame the name its `#ifndef` leaves open, "" for any other
+  for number, line in enumerate(uncommented(text).split("\n"), 1):
+    if condition := CONDITION.match(line):
+      if condition[1] in ("if", "ifdef", "ifndef"):
+        opener = OPENER.match(line)
+        frames.append((opener[1] or opener[2]) if opener else "")
+      elif condition[1] == "endif":
+        if frames: frames.pop()
+      elif frames: frames[-1] = ""
+    elif define := DEFINE.match(line):
+      found.append((define[1], number, define[1] in frames))
+  return found
 
 def guarded(text:str) -> bool:
   """A header shut against a second inclusion by `#ifndef` and `#define`, never `#pragma once`."""

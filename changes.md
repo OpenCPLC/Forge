@@ -2,10 +2,9 @@
 
 ## `0.5.3` Lint
 
-- `make lint` checks VRTS, thread stacks, values and headers, then runs cppcheck and gcc `-fanalyzer`
-- `switch` over enum closed in whole application needs no `default`, raw bytes and unions included
-- `lint.yaml` of Core or project: roles of API, rules turned on such as `no-heap`, exceptions with reason
-- Chip build prints stack of each thread and compiles with MISRA C warnings such as `-Wundef`, `-Wvla` and `-Wshadow`
+- `make lint` checks threads, interrupts, stacks, values and headers, then runs cppcheck and gcc `-fanalyzer`
+- `lint.yaml` turns on more rules and keeps exceptions with reasons
+- Chip build prints stack of each thread and compiles with MISRA C warnings
 
 ## `0.5.2` Ignore
 
