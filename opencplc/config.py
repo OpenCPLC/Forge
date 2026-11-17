@@ -56,3 +56,12 @@ URL_CORE = f"{URL_GIT}/Core"
 EXE_NAME = "opencplc.exe"
 URL_FORGE = f"{URL_GIT}/Forge"
 URL_DEMO = f"{URL_GIT}/Demo"
+
+# Files `-a` puts in `assets/` of a workspace: chip documents, board pinouts, style guides
+ASSETS = (
+  "reference-manual-stm32g0x1.pdf", "datasheet-stm32g081rb.pdf", "datasheet-stm32g0c1re.pdf",
+  "errata-stm32g081.pdf", "errata-stm32g0c1.pdf",
+  "reference-manual-stm32wb55.pdf", "datasheet-stm32wb55.pdf", "errata-stm32wb55.pdf",
+  "pinout-nucleo.pdf", "pinout-opencplc.pdf",
+  "style.md", "style.c.md", "style.plc.md", "style.md.md", "style.py.md",
+)

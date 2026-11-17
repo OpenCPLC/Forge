@@ -11,7 +11,7 @@ import sys
 from datetime import datetime
 from xaeian import Print, Color as c, Ico, FILE, DIR, PATH, replace_end
 from xaeian.cmd import run
-from .config import URL_DL, URL_FORGE, URL_CORE, EXE_NAME
+from .config import URL_DL, URL_FORGE, URL_CORE, EXE_NAME, ASSETS
 from .args import flag, given
 from .model import Project
 from .pack import pack_command
@@ -147,11 +147,7 @@ def info_actions(args, forge_cfg:dict) -> bool:
     ran = True
   if args.assets:
     DIR.ensure(args.assets)
-    files = [
-      "reference-manual-stm32g0x1.pdf", "datasheet-stm32g081rb.pdf",
-      "datasheet-stm32g0c1re.pdf", "pinout-nucleo.pdf", "pinout-opencplc.pdf",
-    ]
-    for f in files:
+    for f in ASSETS:
       dst = PATH.resolve(f"{args.assets}/{f}", read=False)
       if not FILE.exists(dst):
         utils.fetch(f"{URL_DL}/assets/{f}", dst)

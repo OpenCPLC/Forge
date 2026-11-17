@@ -337,7 +337,7 @@ Reguły, normy i wyjątki: [🔍 Lint](https://github.com/OpenCPLC/Forge/wiki/li
 
 #### Narzędzia
 
-- `-a --assets`: Pobiera materiały pomocnicze _(dokumentacja, diagramy)_. Opcjonalnie przyjmuje nazwę folderu docelowego.
+- `-a --assets`: Pobiera materiały pomocnicze _(dokumentacja i erraty układów, pinouty płytek, przewodniki stylu Core)_. Opcjonalnie przyjmuje nazwę folderu docelowego.
 - `-u --update`: Podmienia plik wykonywalny Forge na wskazaną wersję _(domyślnie `latest`)_; instalację z `pip` aktualizuje się przez `pip`.
 - `--program`: Wysyła `.hex` na płytkę przez programator. Bez pliku bierze ten, który `make dist` zostawił w aktywnym projekcie; z kilku najnowszy, po potwierdzeniu.
 - `--keygen`: Tworzy albo bierze z magazynu klucz produktu **`NAZWA`** z zapasowymi, razem **`LICZBA`** kluczy _(domyślnie 1)_, i dopisuje ich klucze publiczne do `BOOT_KEYS` w `boot.h` aktywnego projektu; hasło jest opcjonalne, patrz [Bootloader](https://github.com/OpenCPLC/Forge/wiki/bootlock.pl).

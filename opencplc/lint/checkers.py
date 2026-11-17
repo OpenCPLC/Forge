@@ -125,9 +125,9 @@ def run_cppcheck(
   FILE.remove([f"{copy}{suffix}" for copy in copies for suffix in (".dump", ".ctu-info")])
   return found, styled, facts
 
-def cppcheck_too_old() -> str|None:
-  """Version of cppcheck on PATH when older than `CPPCHECK_MIN`, `None` when new enough."""
-  found = version("cppcheck") or "?"
+def cppcheck_too_old(command:str="cppcheck") -> str|None:
+  """Version of cppcheck run as `command` when below `CPPCHECK_MIN`, `None` when new enough."""
+  found = version(command) or "?"
   parts = tuple(int(part) for part in re.findall(r"\d+", found)[:2])
   return found if parts < CPPCHECK_MIN else None
 

@@ -7,9 +7,12 @@ import pytest
 from xaeian import FILE, PATH, file_context
 from xaeian.cmd import run, which
 from opencplc.lint.dump import Tokens, read_dump
+from opencplc.lint.checkers import CPPCHECK_MIN, cppcheck_too_old
 from opencplc.utils import tools
 
-CPPCHECK = which("cppcheck", f"{tools.bin_dir('cppcheck')}/cppcheck")
+# Found as `make lint` finds it: the Forge package on Windows, where PATH plays no part
+CPPCHECK = which(f"{tools.bin_dir('cppcheck')}/cppcheck" if tools.WINDOWS else "cppcheck")
+USABLE = bool(CPPCHECK) and not cppcheck_too_old(CPPCHECK)
 SOURCE = """#include <stdint.h>
 #include <string.h>
 typedef enum { OK = 0, ERR, BUSY } status_t;
@@ -99,13 +102,14 @@ void raw_enum(const uint8_t *bytes, uint8_t raw)
 @pytest.fixture()
 def facts(tmp_path):
   """Facts of `SOURCE` as `app.c`, read from the dump cppcheck writes beside it."""
+  if not USABLE: pytest.skip(f"cppcheck {'.'.join(map(str, CPPCHECK_MIN))} or newer required")
   root = PATH.normalize(str(tmp_path))
   FILE.save(f"{root}/app.c", SOURCE)
-  run([CPPCHECK, "--quiet", "--dump", "--std=c11", "--library=gnu", f"{root}/app.c"])
+  done = run([CPPCHECK, "--quiet", "--dump", "--std=c11", "--library=gnu", f"{root}/app.c"])
+  assert FILE.exists(f"{root}/app.c.dump"), done.stderr + done.stdout
   with file_context(root_path=root):
     yield read_dump(f"{root}/app.c.dump", {f"{root}/app.c": "app.c"}, ("*_Load",))
 
-@pytest.mark.skipif(CPPCHECK is None, reason="cppcheck required")
 def switches_carry_the_type_of_their_condition(facts):
   assert facts.enums["MODE_t"] == {0, 1, 5}
   switches = {s.function: s for s in facts.switches}
@@ -113,7 +117,6 @@ def switches_carry_the_type_of_their_condition(facts):
   # `raw & 3` is proven within the labels 0 to 3, so its `switch` needs no `default`
   assert switches["level"].enum == "" and switches["level"].values.within(switches["level"].cases)
 
-@pytest.mark.skipif(CPPCHECK is None, reason="cppcheck required")
 def integers_entering_an_enum_carry_what_cppcheck_proved(facts):
   entries = {(e.function, e.kind): e for e in facts.entries}
   assert entries[("implicit", "assignment")].values.high == 255
@@ -126,7 +129,6 @@ def integers_entering_an_enum_carry_what_cppcheck_proved(facts):
   # The step of a loop bounded by `CH_C` stays inside `CH_t`
   assert entries[("channels", "arithmetic")].values.within(facts.enums["CH_t"])
 
-@pytest.mark.skipif(CPPCHECK is None, reason="cppcheck required")
 def statuses_left_unread_and_variables_shared_come_out(facts):
   # Every call left unread comes out with what it returns, the rule picks the status
   ignored = [(i.callee, i.returns, i.function) for i in facts.ignored]
@@ -135,7 +137,6 @@ def statuses_left_unread_and_variables_shared_come_out(facts):
   assert {("TIM2_IRQHandler", True), ("elapsed", False)} <= ticks
   assert all(a.path == "app.c" for a in facts.accesses if a.name == "ticks")
 
-@pytest.mark.skipif(CPPCHECK is None, reason="cppcheck required")
 def returns_loads_raw_bytes_and_unions_enter_an_enum(facts):
   entries = {}
   for e in facts.entries: entries.setdefault((e.function, e.kind), []).append(e)
@@ -150,7 +151,6 @@ def returns_loads_raw_bytes_and_unions_enter_an_enum(facts):
   assert (united.member, united.values.high) == ("mode", 255)
   assert entries[("named", "union")][0].values.known == {1}
 
-@pytest.mark.skipif(CPPCHECK is None, reason="cppcheck required")
 def an_element_behind_a_pointer_field_is_no_write_of_it_and_calls_come_out(facts):
   output = {(a.function, a.write) for a in facts.accesses if a.key == "MEASURE_t.output"}
   assert output == {("element", False)}
@@ -158,7 +158,6 @@ def an_element_behind_a_pointer_field_is_no_write_of_it_and_calls_come_out(facts
     if a.key == "MEASURE_t.count"}
   assert ("element", "app.c:counted") in facts.calls
 
-@pytest.mark.skipif(CPPCHECK is None, reason="cppcheck required")
 def a_state_machine_stepping_its_own_enum_stays_closed(facts):
   # An expression of the enum entering holds one of its enumerators, the hypothesis of the proof
   steps = [e for e in facts.entries if e.enum == "STEP_t"]
@@ -180,7 +179,6 @@ def a_bound_written_as_an_unsigned_word_reads_signed():
   values = tokens.values_of(tokens.by_id["1"])
   assert (values.low, values.high) == (0, 5)
 
-@pytest.mark.skipif(CPPCHECK is None, reason="cppcheck required")
 def static_storage_starts_as_zero_where_no_initializer_reaches(facts):
   # An object of static storage holds zeros, a value an enum without a zero enumerator lacks
   zeros = sorted(e.source for e in facts.entries if e.kind == "initial" and e.enum == "NZ_t")
@@ -190,7 +188,6 @@ def static_storage_starts_as_zero_where_no_initializer_reaches(facts):
   assert [e.values.known for e in facts.entries
     if e.enum == "NZ_t" and e.kind == "assignment"] == [{7}]
 
-@pytest.mark.skipif(CPPCHECK is None, reason="cppcheck required")
 def raw_bytes_reach_an_enum_variable_as_they_reach_a_field(facts):
   raw = [(e.source, e.member) for e in facts.entries if e.function == "raw_enum"]
   # A copy from a variable of the same enum is a typed one

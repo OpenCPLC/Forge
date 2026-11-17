@@ -342,7 +342,7 @@ Full list:
 
 #### Tools
 
-- `-a --assets`: Downloads helper materials for design _(docs, diagrams)_. Optionally accepts a folder name as destination.
+- `-a --assets`: Downloads helper materials _(chip documents and errata, board pinouts, style guides of Core)_. Optionally accepts a folder name as destination.
 - `-u --update`: Replaces the Forge executable with the given version _(default: `latest`)_; a `pip` install updates through `pip` instead.
 - `--program`: Sends a `.hex` to the board through the programmer. Alone, it takes the one `make dist` left in the active project; of several, the newest, after confirmation.
 - `--keygen`: Makes or takes product key **`NAME`** with spare ones, **`COUNT`** keys in all _(default 1)_, and adds their public parts to `BOOT_KEYS` in `boot.h` of the active project; the password is optional, see [Bootloader](https://github.com/OpenCPLC/Forge/wiki/bootlock).
