@@ -40,16 +40,16 @@ $(BUILD)/boot-dist/%.o: $(OPENCPLC)/%.s $(CONFIG_DEPS)
 
 $(BUILD)/boot/boot.elf: $(addprefix $(BUILD)/boot/,$(BOOT_OBJECTS)) $(BUILD)/boot.ld
 	$(CC) $(filter %.o,$^) $(BOOT_LDFLAGS) -o $@
-	@cd $(WORKSPACE) && $(FORGE) -z $@ $(BOOT_kB) $(RAM_kB)
+	@$(call CD,$(WORKSPACE)) && $(FORGE) -z $@ $(BOOT_kB) $(RAM_kB)
 
 $(BUILD)/boot-dist/boot.elf: $(addprefix $(BUILD)/boot-dist/,$(BOOT_OBJECTS)) $(BUILD)/boot.ld
 	$(CC) $(filter %.o,$^) $(BOOT_LDFLAGS) -o $@
-	@cd $(WORKSPACE) && $(FORGE) -z $@ $(BOOT_kB) $(RAM_kB)
+	@$(call CD,$(WORKSPACE)) && $(FORGE) -z $@ $(BOOT_kB) $(RAM_kB)
 
 # `make update` sends the update image of this build over the console, as a device takes one
 # `FILE=` sends another image, `PORT=` names the console when the computer has several
 update: build
-	@cd $(WORKSPACE) && $(FORGE) --upload $(if $(FILE),$(FILE),$(BUILD)/$(TARGET)-dist.bin) $(PORT)
+	@$(call CD,$(WORKSPACE)) && $(FORGE) --upload $(if $(FILE),$(FILE),$(BUILD)/$(TARGET)-dist.bin) $(PORT)
 
 .PHONY: update
 

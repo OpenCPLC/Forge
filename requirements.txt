@@ -1,2 +1,2 @@
 packaging==26.2
-xaeian[serial]==1.2.0
+xaeian[serial,yaml]==1.2.2

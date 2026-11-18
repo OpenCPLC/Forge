@@ -2,17 +2,21 @@
 
 """What cppcheck proves of real C, read back from its dump: switches, entries, calls, accesses."""
 
+import os
 import xml.etree.ElementTree as ET
 import pytest
 from xaeian import FILE, PATH, file_context
 from xaeian.cmd import run, which
 from opencplc.lint.dump import Tokens, read_dump
-from opencplc.lint.checkers import CPPCHECK_MIN, too_old
+from opencplc.lint.checkers import CPPCHECK_MIN, Unit as Build, run_cppcheck, too_old
+from opencplc.lint.command import read_unit, without_vendor
 from opencplc.utils import tools
 
 # Found as `make lint` finds it: the Forge package on Windows, where PATH plays no part
 CPPCHECK = which(f"{tools.bin_dir('cppcheck')}/cppcheck" if tools.WINDOWS else "cppcheck")
 USABLE = bool(CPPCHECK) and not too_old(CPPCHECK, CPPCHECK_MIN)
+ARM_BIN = tools.bin_dir("arm-gcc")
+GCC = which("arm-none-eabi-gcc", f"{ARM_BIN}/arm-none-eabi-gcc")
 SOURCE = """#include <stdint.h>
 #include <string.h>
 typedef enum { OK = 0, ERR, BUSY } status_t;
@@ -149,6 +153,14 @@ void stepper(void)
     case MODE_Stop: break;
   }
 }
+void dropped(void) { (void)send((const uint8_t *)"x", 1); }
+int half_over(float x) { return x > 0.5; }
+float third_of(float x) { return x * (1.0 / 3.0); }
+int below_half(float x) { return x < -0.5; }
+float scaled_f(float x) { return x * 2.0f; }
+double doubled(double d) { return d * 2.0; }
+void halved(float *x) { *x *= 0.5; }
+float initial(void) { float y = 2.0; return y; }
 """
 
 @pytest.fixture()
@@ -166,8 +178,6 @@ def switches_carry_the_type_of_their_condition(facts):
   assert facts.enums["MODE_t"] == {0, 1, 5}
   switches = {s.function: s for s in facts.switches}
   assert (switches["act"].enum, switches["act"].has_default) == ("MODE_t", False)
-  # `act` dispatches, while `stepper` sets the state it switches on
-  assert (switches["act"].steps, switches["stepper"].steps) == (False, True)
   # `raw & 3` is proven within the labels 0 to 3, so its `switch` needs no `default`
   assert switches["level"].enum == "" and switches["level"].values.within(switches["level"].cases)
 
@@ -187,9 +197,17 @@ def statuses_left_unread_and_variables_shared_come_out(facts):
   # Every call left unread comes out with what it returns, the rule picks the status
   ignored = [(i.callee, i.returns, i.function) for i in facts.ignored]
   assert ("send", "status_t", "channels") in ignored and ("memcpy", "void *", "copied") in ignored
+  # A cast to `void` drops the value on purpose
+  assert not [call for call in ignored if call[2] == "dropped"]
   ticks = {(a.function, a.write) for a in facts.accesses if a.name == "ticks"}
   assert {("TIM2_IRQHandler", True), ("elapsed", False)} <= ticks
   assert all(a.path == "app.c" for a in facts.accesses if a.name == "ticks")
+
+def a_float_meeting_a_double_constant_comes_out(facts):
+  # The constant is the slip: a `double` variable, a literal with `f` or one assigned pass
+  assert {(l.text, l.function) for l in facts.literals} == {
+    ("0.5", "half_over"), ("1.0", "third_of"), ("-0.5", "below_half"), ("0.5", "halved"),
+  }
 
 def returns_loads_raw_bytes_and_unions_enter_an_enum(facts):
   entries = {}
@@ -278,4 +296,35 @@ def raw_bytes_reach_an_enum_variable_as_they_reach_a_field(facts):
   raw = [(e.source, e.member) for e in facts.entries if e.function == "raw_enum"]
   # A copy from a variable of the same enum is a typed one
   assert sorted(raw) == [("bare", ""), ("given", "")]
+
+def a_dump_without_a_configuration_reads_as_none(tmp_path):
+  # All cppcheck leaves of a source an `#error` or an unknown macro stopped: its raw tokens
+  path = f"{PATH.normalize(str(tmp_path))}/app.c.dump"
+  FILE.save(path, '<dumps><rawtokens><tok str="send"/></rawtokens></dumps>')
+  assert read_dump(path) is None
+
+@pytest.mark.skipif(not USABLE or GCC is None, reason="cppcheck and arm-none-eabi-gcc required")
+def a_source_cppcheck_stops_on_goes_again_with_every_path(tmp_path, monkeypatch):
+  root = PATH.normalize(str(tmp_path))
+  paths = [os.path.dirname(CPPCHECK), ARM_BIN, os.environ.get("PATH", "")]
+  monkeypatch.setenv("PATH", os.pathsep.join(paths))
+  # A nanopb message checks the version `pb.h` gives, which the path without `lib` lacks
+  FILE.save(f"{root}/lib/pb.h", "#define PB_PROTO_HEADER_VERSION 40\n")
+  FILE.save(f"{root}/app/msg.h", "#include <pb.h>\n#if PB_PROTO_HEADER_VERSION != 40\n"
+    "#error Regenerate this file\n#endif\ntypedef enum { OK = 0, ERR } status_t;\n"
+    "status_t send(void);\n")
+  FILE.save(f"{root}/app/main.c", '#include "msg.h"\nvoid loop(void) { send(); }\n')
+  FILE.save(f"{root}/app/broken.c", "#error Every path stops here\n")
+  sources = [f"{root}/app/main.c", f"{root}/app/broken.c"]
+  unit = Build("app", "-mcpu=cortex-m0plus -mthumb", sources, [], [f"{root}/app", f"{root}/lib"])
+  vendor = [(root, "lib/")]
+  with file_context(root_path=root):
+    # Facts asked or not, as for a bootloader: the dump tells what cppcheck left unread
+    narrow = run_cppcheck(without_vendor(unit, vendor), f"{root}/lint")
+    found, _, facts, unread = read_unit(unit, vendor, f"{root}/lint", True, ())
+  assert narrow[3] == sources # without `lib` neither source is read
+  assert [(i.callee, i.function) for f in facts for i in f.ignored] == [("send", "loop")]
+  assert unread == [f"{root}/app/broken.c"]
+  # The stop of the narrow path goes, the one every path gives stays
+  assert [(f.rule, f.path) for f in found] == [("preprocessorErrorDirective", "app/broken.c")]
 

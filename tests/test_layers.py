@@ -12,7 +12,7 @@ ORDER = [
   "__init__", "config", "args", "templates", "utils",
   "platforms", "boards", "model", "headers", "workspace",
   "configure", "resolver", "project",
-  "pack", "upload", "runner", "lint", "keygen", "lock", "actions",
+  "pack", "cipher", "upload", "runner", "lint", "keygen", "lock", "actions",
   "__main__",
 ]
 PACKAGES = {"utils", "lint"}

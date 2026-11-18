@@ -7,7 +7,7 @@ Collection rules and shared helpers for the suite.
 so collection is narrowed to the ones each module defines itself.
 """
 
-import inspect, os, json, sys, subprocess
+import inspect, os, json, sys, shutil, subprocess
 
 import pytest
 
@@ -113,6 +113,12 @@ def build_workspace(ws, core:str="1.0.0", project:str="myapp"):
   (pro / "util" / "extra.c").write_text("// extra\n")
   (ws / "opencplc.json").write_text("{}")
   return ws
+
+def local_copy(ws, name:str="app"):
+  """Copy of project `myapp` outside the workspace, in `ext/name` beside it."""
+  pro = ws.parent / "ext" / name
+  shutil.copytree(ws / "projects" / "myapp", pro)
+  return pro
 
 KEY = "8a" * 32 # key `0` of `BOOT_KEYS` of a test product
 
@@ -370,22 +376,17 @@ def lint_finding(rule:str, path:str, function:str=""):
 
 def value_switch(
   enum:str = "MODE_t", default:bool = False, cases:frozenset = frozenset(), values = None,
-  steps:bool = True,
 ):
-  """`switch` of `act` in `mode.c`, steered by `enum` or by a `uint8_t` when it is "".
-
-  By default a state machine: its cases set the value it switches on.
-  """
+  """`switch` of `act` in `mode.c`, steered by `enum` or by a `uint8_t` when it is ""."""
   from opencplc.lint.dump import Switch, Values
-  return Switch("mode.c", 20, "act", enum, enum or "uint8_t", default, cases, values or Values(),
-    steps)
+  return Switch("mode.c", 20, "act", enum, enum or "uint8_t", default, cases, values or Values())
 
 def value_entry(values, kind:str="assignment", param=None, checked:bool=False):
   """A `uint8_t` entering `MODE_t` in `parse` of `frame.c`, a raw copy into its field `mode`."""
   from opencplc.lint.dump import Entry
   return Entry("MODE_t", "frame.c", 7, "parse", kind, "uint8_t", values, param, "mode", checked)
 
-def value_found(*units, opt_ins=frozenset()) -> list[tuple[str, str]]:
+def value_found(*units) -> list[tuple[str, str]]:
   """Rule and message of each finding `check_switches` gives over `units`."""
   from opencplc.lint.values import merge, check_switches
-  return [(f.rule, f.message) for f in check_switches(merge(list(units)), set(opt_ins))]
+  return [(f.rule, f.message) for f in check_switches(merge(list(units)))]

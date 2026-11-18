@@ -1,18 +1,19 @@
 # opencplc/lint/values.py
 
 """
-Rules on types and proven values: switches over enums, statuses nobody reads, shared variables.
+Rules on types and proven values: switches leaving values unhandled, statuses nobody reads,
+`float` math a `double` constant drags along, shared variables.
 
 Each reads the whole application at once.
 An enum is closed when every place a value of another type enters it is proven inside its set,
-so a `switch` over it needs no `default`, and `-Wswitch` keeps naming a new enumerator.
+so a `switch` naming each enumerator handles every value it gets, without `default`.
 A variable an interrupt writes and a thread reads has to be `volatile`.
 """
 
 from dataclasses import dataclass
 from xaeian import PATH
 from .finding import Finding
-from .dump import Unit, Switch, Entry, Values, Ignored, Access
+from .dump import Unit, Switch, Entry, Values, Ignored, Access, Literal
 from .rules import RULES
 
 @dataclass
@@ -24,12 +25,13 @@ class Program:
   arguments: dict[tuple[str, int], list[Values]] # values each argument of a function gets
   ignored: list[Ignored]
   accesses: list[Access]
-  calls: dict[str, set[str]] # workspace-relative keys of the functions each one calls
+  calls: dict[str, set[str]] # `local_key` keys of the functions each one calls
+  literals: list[Literal]
 
 def merge(units:list[Unit]) -> Program:
   """One program of `units`; a header seen by many units gives its facts once."""
   enums, switches, entries, arguments, ignored, accesses = {}, {}, {}, {}, {}, {}
-  calls = {}
+  calls, literals = {}, {}
   for unit in units:
     enums |= unit.enums
     switches |= {(s.path, s.line): s for s in unit.switches}
@@ -39,11 +41,12 @@ def merge(units:list[Unit]) -> Program:
     accesses |= dict.fromkeys(unit.accesses)
     for caller, callee in unit.calls:
       calls.setdefault(local_key(caller), set()).add(local_key(callee))
+    literals |= {(l.path, l.line, l.column): l for l in unit.literals}
   return Program(enums, list(switches.values()), list(entries.values()), arguments,
-    list(ignored.values()), list(accesses), calls)
+    list(ignored.values()), list(accesses), calls, list(literals.values()))
 
 def local_key(key:str) -> str:
-  """Function key with its path workspace-relative, so a dump and a call graph agree."""
+  """Function key with its path as `PATH.local` gives it, so a dump and a call graph agree."""
   path, _, name = key.rpartition(":")
   return f"{PATH.local(path)}:{name}" if path else name
 
@@ -95,37 +98,29 @@ def at(switch:Switch, rule:str, message:str) -> Finding:
   return Finding(rule, PATH.local(switch.path), switch.line, 1, message, switch.function,
     RULES[rule].refs)
 
-def check_switches(
-  program:Program, opt_ins:set[str],
-  vouched = lambda entry: False,
-) -> list[Finding]:
+def check_switches(program:Program, vouched=lambda entry: False) -> list[Finding]:
   """
-  A state machine without `default` over an enum that is open: a stray value stalls it for good.
+  A `switch` without `default` that may get a value no `case` names: every value needs handling.
 
-  A value without a label skips a `switch`, as C defines, which harms no dispatch:
-  a variable its cases set is caught unset by `-Wmaybe-uninitialized`, a missing `return`
-  by `-Wreturn-type`, and a safe value set before it stays.
-  A `switch` whose cases set the very variable it switches on is another matter:
-  a value no case names keeps it where it is.
-  `switch-default` asks for `default` over an integer, as a form a project turns on,
-  and `switch-enum-default` reports the other side: `default` over a closed enum.
-  Proven values of the condition within the labels make `default` needless either way.
+  Over an integer the cases cover what its type allows, `uint8_t` from 0 to 255,
+  or what cppcheck proved, `raw & 3` from 0 to 3.
+  Over a closed enum they name each enumerator, while an open enum may bring any value.
   """
   opened, found = openings(program, vouched), []
   for switch in sorted(program.switches, key=lambda s: (s.path, s.line)):
-    if switch.has_default:
-      if switch.enum and switch.enum not in opened and "switch-enum-default" in opt_ins:
-        found.append(at(switch, "switch-enum-default",
-          f"`default` over `{switch.enum}` keeps `-Wswitch` from naming a new enumerator"))
-      continue
-    if switch.values.within(switch.cases): continue
-    if switch.enum in opened and switch.steps:
-      found.append(at(switch, "switch-enum", f"`switch` over `{switch.enum}` steps the value "
-        f"it switches on and has no `default`, while `{switch.enum}` "
-        f"{opening_text(opened[switch.enum])}: a stray value would stall it"))
-    elif not switch.enum and "switch-default" in opt_ins:
-      found.append(at(switch, "switch-default",
-        f"`switch` over `{switch.source}` has no `default`"))
+    if switch.has_default or switch.values.within(switch.cases): continue
+    if switch.enum in opened:
+      message = (f"`switch` over `{switch.enum}` has no `default`, "
+        f"while `{switch.enum}` {opening_text(opened[switch.enum])}")
+    elif switch.enum:
+      missing = len(program.enums.get(switch.enum, frozenset()) - switch.cases)
+      if not missing: continue
+      message = (f"`switch` over `{switch.enum}` has no `case` for {missing} of its values "
+        "and no `default`")
+    else:
+      message = (f"`switch` over `{switch.source}` has no `default`, "
+        "while its cases leave values out")
+    found.append(at(switch, "switch-default", message))
   return found
 
 #------------------------------------------------------------------------------------------- Status
@@ -135,6 +130,14 @@ def check_status(program:Program, status:str) -> list[Finding]:
   return [Finding("status-used", PATH.local(i.path), i.line, 1,
     f"`{status}` of `{local_key(i.callee).rpartition(':')[2]}` is never read", i.function,
     RULES["status-used"].refs) for i in program.ignored if i.returns == status]
+
+#-------------------------------------------------------------------------------------------- Float
+
+def check_literals(program:Program) -> list[Finding]:
+  """Each `float` operand a `double` constant takes to `double` math, slower on every chip."""
+  return [Finding("float-literal", PATH.local(l.path), l.line, l.column,
+    f"`{l.text}` without `f` takes `float` math to `double`", l.function,
+    RULES["float-literal"].refs) for l in program.literals]
 
 #----------------------------------------------------------------------------------------- Volatile
 
@@ -159,7 +162,7 @@ def check_volatile(
   """
   A variable an interrupt writes and a thread polls, declared without `volatile`.
 
-  `irq` and `thread` are workspace-relative function keys of each context, from the call graph,
+  `irq` and `thread` are `local_key` function keys of each context, from the call graph,
   and `graphed` every function it holds: one gcc inlined away joins the context of its caller.
   A function running in both counts for both.
   Polling is the one read `volatile` saves: a loop with no barrier may keep the value

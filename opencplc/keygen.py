@@ -1,7 +1,7 @@
 # opencplc/keygen.py
 
 """
-`--keygen NAME [COUNT]`: product keys of an application, made or taken, added to its `boot.h`.
+`--sign NAME [COUNT]`: product keys of an application, made or taken, added to its `boot.h`.
 
 `COUNT` keys go in, `NAME` and its spare ones `NAME-1`, `NAME-2`...,
 so the same command in another application of the product writes the same list.
@@ -10,7 +10,7 @@ a key changed or taken out would cut off the devices in the field that trust it.
 A project without the bootloader gets its `boot.h` and the `#include` of it in main.h.
 """
 
-import os, re, sys, getpass
+import re, sys
 from xaeian import Print, Color as c, FILE
 from .args import flag
 from .config import BOOT_H, BOOT_LINE
@@ -20,24 +20,22 @@ from . import utils
 
 p = Print()
 
-NAME = re.compile(r"[A-Za-z0-9_-]+")
 DEV_NAME = keys.DEV_KEY.removesuffix(".key") # `dev`, the development key file
-PASSWORD_MIN = 8
 COUNT_MAX = 16 # past a handful, spare keys only add text to the bootloader
-KEYS_NOTE = "// Product keys, numbered from `0`: `--keygen` adds the next one at the end"
+KEYS_NOTE = "// Product keys, numbered from `0`: `--sign` adds the next one at the end"
 KEYS_DEFINE = re.compile(r"\s*#define\s+BOOT_KEYS\b")
 INCLUDE = re.compile(r"\s*#include\b")
 
 #--------------------------------------------------------------------------------------------- Keys
 
 def key_names(args:list[str]) -> list[str]:
-  """Names of `--keygen NAME [COUNT]`: `NAME`, then `NAME-1` up to `NAME-<COUNT-1>`."""
+  """Names of `--sign NAME [COUNT]`: `NAME`, then `NAME-1` up to `NAME-<COUNT-1>`."""
   if len(args) > 2:
-    p.err(f"Flag {flag.keygen} takes NAME and an optional COUNT")
+    p.err(f"Flag {flag.sign} takes NAME and an optional COUNT")
     sys.exit(1)
   name, count = args[0], args[1] if len(args) > 1 else "1"
   # Windows file names ignore case, so `DEV` would land on the development key
-  if not NAME.fullmatch(name) or name.lower() == DEV_NAME:
+  if not keys.NAME.fullmatch(name) or name.lower() == DEV_NAME:
     p.err(f"Key name {c.MAGNTA}{name}{c.END} takes letters, digits, `-` and `_`, "
       f"`{DEV_NAME}` is reserved")
     sys.exit(1)
@@ -45,19 +43,6 @@ def key_names(args:list[str]) -> list[str]:
     p.err(f"Key count {c.MAGNTA}{count}{c.END} takes a number from 1 to {COUNT_MAX}")
     sys.exit(1)
   return [name] + [f"{name}-{i}" for i in range(1, int(count))]
-
-def new_password(names:list[str]) -> str:
-  """Password of new keys: `OPENCPLC_KEY_PASSWORD`, or typed twice; empty for none."""
-  if os.environ.get(keys.PASSWORD_ENV): return os.environ[keys.PASSWORD_ENV]
-  shown = ", ".join(names)
-  password = getpass.getpass(f"Password of new keys {shown}, empty for none: ")
-  if password and len(password) < PASSWORD_MIN:
-    p.err(f"Password shorter than {PASSWORD_MIN} characters")
-    sys.exit(1)
-  if getpass.getpass("Repeat password: ") != password:
-    p.err("Passwords differ")
-    sys.exit(1)
-  return password
 
 def lost_pub_reject(name:str):
   """A `.key` left without its `.pub` exits: a new key of that name would replace it."""
@@ -77,7 +62,7 @@ def keys_ready(names:list[str]) -> dict[str, bytes]:
   if taken:
     p.inf(f"Keys {c.GOLD}{', '.join(taken)}{c.END} taken from {c.CREAM}{keys.keys_dir()}{c.END}")
   if not new: return publics
-  password = new_password(new)
+  password = keys.new_password(new, "product key")
   for name in new: publics[name] = keys.product_make(name, password)
   p.ok(f"Keys {c.GOLD}{', '.join(new)}{c.END} made in {c.CREAM}{keys.keys_dir()}{c.END}")
   if password:
@@ -153,7 +138,7 @@ def with_include(main_h:str) -> str:
 #------------------------------------------------------------------------------------------ Command
 
 def keygen(args:list[str], name:str, pro_dir:str):
-  """`--keygen NAME [COUNT]` on project `name`: keys made or taken, held by its boot.h."""
+  """`--sign NAME [COUNT]` on project `name`: keys made or taken, held by its boot.h."""
   names = key_names(args)
   main_path, boot_path = f"{pro_dir}/main.h", f"{pro_dir}/{BOOT_H}"
   main_h = text_load(main_path)

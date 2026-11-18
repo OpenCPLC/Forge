@@ -39,7 +39,8 @@ class Args:
   size: list[str]|None = None
   program: str|bool|None = None
   lock: int|None = None
-  keygen: list[str]|None = None
+  sign: list[str]|None = None
+  cipher: list[str]|None = None
   upload: list[str]|None = None
   pack: list[str]|None = None
   test: list[str]|None = None
@@ -87,7 +88,8 @@ def option(*names:str, **kwargs):
     setattr(flag, names[0].lstrip("-"), f"{Color.GREY}{' '.join(names)}{Color.END}")
 
 # Project selection
-option("name", type=str, nargs="?", default="", help="Project name or number from list")
+option("name", type=str, nargs="?", default="",
+  help="Project name, number from list, or path of local project (./app, D:/app)")
 # Project actions
 option("-n", "--new", type=str, nargs="?", const=True, default=False, metavar="NAME",
   help="Create new project (optionally with NAME)")
@@ -138,8 +140,10 @@ option("--program", type=str, nargs="?", const=True, metavar="FILE",
   help="Send a .hex to the board through the programmer; alone, the one make dist left")
 option("--lock", type=int, nargs="?", const=1, choices=(0, 1, 2), metavar="LEVEL",
   help="Lock board for production: 1 RDP1, 2 for good, 0 unlocks, erasing flash")
-option("--keygen", nargs="+", metavar=("NAME", "COUNT"),
-  help="Make or take product key NAME and COUNT-1 spare ones, add them to BOOT_KEYS")
+option("--sign", nargs="+", metavar=("NAME", "COUNT"),
+  help="Make or take product signing key NAME and COUNT-1 spare ones, add them to BOOT_KEYS")
+option("--cipher", nargs="+", metavar=("NAME", "FILE"),
+  help="Make or show cipher key NAME; with FILE, encrypt that update image, a makefile step")
 option("--upload", nargs="+", metavar=("FILE", "PORT"),
   help="Send an update image over the console: FILE [PORT], a makefile step")
 option("-a", "--assets", type=str, nargs="?", const="assets", metavar="DIR",

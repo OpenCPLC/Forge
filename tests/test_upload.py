@@ -3,8 +3,10 @@
 """`--upload`, the step of `make update`: the file checked first, then the port and the board."""
 
 import pytest
+from xaeian.crc import crc32_iso
 from opencplc import upload as upload_mod
 from opencplc.upload import console_port, upload
+from opencplc.pack import TRAILER_SIZE
 from opencplc.project import ANSI
 
 class Port:
@@ -35,9 +37,11 @@ class Board:
 
 @pytest.fixture()
 def image(tmp_path):
-  """Update image of a build, where `make update` takes it."""
+  """Plain update image of a build, where `make update` takes it, its CRC in the trailer."""
+  body = bytes(range(256))
   path = tmp_path / "app-dist.bin"
-  path.write_bytes(bytes(16))
+  trailer = crc32_iso.checksum(body).to_bytes(4, "little") + b"\xff" * (TRAILER_SIZE - 4)
+  path.write_bytes(body + trailer)
   return str(path)
 
 def console_port_is_the_named_one_or_the_only_one(monkeypatch):
@@ -54,6 +58,16 @@ def a_file_that_is_no_image_stops_before_any_port(tmp_path, monkeypatch, image):
   for args in ([str(tmp_path / "app.elf")], [str(tmp_path / "none.bin")], [image, "COM3", "x"]):
     with pytest.raises(SystemExit):
       upload(args)
+
+def encrypted_image_stops_before_any_port(tmp_path, monkeypatch, capsys):
+  """Only the application of a device holds its key, so the console never stages such bytes."""
+  monkeypatch.setattr(upload_mod, "serial_scan", lambda: pytest.fail("port looked for"))
+  path = tmp_path / "app-1.2.0-acme.bin"
+  # A trailer whose CRC belongs to other bytes, as the one of an encrypted image does
+  path.write_bytes(bytes(range(256)) + bytes(4) + b"\xff" * (TRAILER_SIZE - 4))
+  with pytest.raises(SystemExit):
+    upload([str(path)])
+  assert "encrypted" in ANSI.sub("", capsys.readouterr().out)
 
 def staged_image_waits_for_the_board_then_asks_boot_info(monkeypatch, image):
   board = Board()

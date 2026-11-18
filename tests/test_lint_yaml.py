@@ -49,9 +49,25 @@ def a_key_out_of_place_is_an_error_naming_it():
   with pytest.raises(LintFileError, match="turned on by a project"): read("core", core=True)
 
 def a_project_turns_rules_on():
-  FILE.save("app/lint.yaml", "rules: [no-heap, cppcheck-style, nope]\n")
-  assert lint_opt_ins("app") == ({"no-heap", "cppcheck-style"}, ["nope"])
+  FILE.save("app/lint.yaml", "rules: [no-heap, nope]\n")
+  assert lint_opt_ins("app") == ({"no-heap"}, ["nope"])
   assert lint_opt_ins("plain") == (set(), [])
+
+def stack_margin_is_a_quarter_unless_the_project_gives_another_for_all_or_by_thread():
+  FILE.save("app/lint.yaml", "rules: [no-heap]\n")
+  assert read("app", core=False)["stack-margin"].of("loop") == 25
+  FILE.save("app/lint.yaml", "stack-margin: 10\n")
+  assert read("app", core=False)["stack-margin"].of("loop") == 10
+  FILE.save("app/lint.yaml", "stack-margin: {DBG_Loop: 0, loop: 40}\n")
+  margins = read("app", core=False)["stack-margin"]
+  assert (margins.of("DBG_Loop"), margins.of("loop"), margins.of("PLC_Main")) == (0, 40, 25)
+
+def stack_margin_takes_whole_percents_from_a_project_alone():
+  for value in ("100", "-1", "12.5", "25%", "true", "{loop: 75%}"):
+    FILE.save("app/lint.yaml", f"stack-margin: {value}\n")
+    with pytest.raises(LintFileError, match="whole percents from 0 to 99"): read("app", core=False)
+  YAML.save("core/lint.yaml", {"roles": ROLES, "stack-margin": 10})
+  with pytest.raises(LintFileError, match="set by a project"): read("core", core=True)
 
 def an_exception_without_a_reason_is_refused():
   FILE.save("app/lint.yaml", "except:\n  recursion:\n    lib/*:\n  irq-yield:\n"
@@ -77,7 +93,7 @@ def an_exception_explains_its_rule_at_its_place():
 
 def a_project_vouches_for_its_own_entry_into_an_enum_of_core():
   # The `switch` lies in Core, while the value enters it in the project, checked out of reach
-  FILE.save("app/lint.yaml", "except:\n  switch-enum:\n"
+  FILE.save("app/lint.yaml", "except:\n  switch-default:\n"
     "    state.c:apply: Register map refuses other values before apply\n")
   waivers, _ = load_all_waivers("core", "app")
   vouched = vouching(waivers)

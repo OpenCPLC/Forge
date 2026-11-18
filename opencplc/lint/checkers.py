@@ -7,14 +7,18 @@ Each sees a unit of the build, the application or the bootloader, with its own d
 and what they report becomes findings, with their ids and CWE numbers kept.
 """
 
-import os, re
+import os, re, sys
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from xaeian import DIR, FILE, PATH
-from xaeian.cmd import run, version
+from typing import Callable
+from xaeian import DIR, FILE, JSON, PATH
+from xaeian.cmd import run, version, which
 from ..config import WARNINGS
+from ..utils import tree_path
 from .finding import Finding
-from .dump import Unit as Facts, read_dump
+from .dump import Unit as Facts, configured, read_dump
+from .forms import check_forms, trim_directives
+from .rules import MISRA_NAME
 
 CPPCHECK = re.compile(r"^(.+?):(\d+):(\d+): (\w+): (.*) \[(\w+)\] \[(\d+)\]$")
 GCC = re.compile(r"^(.+?):(\d+):(\d+): warning: (.*?)(?: \[(CWE-\d+)\])? \[-W([\w=-]+)\]$")
@@ -26,24 +30,27 @@ SYMBOL = re.compile(r"for [‘'](\w+)[’']")
 SEVERITIES = ("error", "warning", "style", "performance", "portability") # `information` is none
 # Noise in firmware: every thread loop is a `while(1)`, and `print` parses its own format
 ANALYZER = ["-fanalyzer", "-Wno-analyzer-infinite-loop", "-Wno-analyzer-va-arg-type-mismatch"]
-# What gcc, the only compiler of a build, defines: a shift of a negative value extends its sign
-CPPCHECK_OFF = ("shiftNegativeLHS",)
-# Flags of the rules gcc checks, compiled into the sources of the project only:
-# `static-scope` always, the others when `rules` of its `lint.yaml` turns them on
+# Checks of cppcheck left out, each one wrong for this code
+CPPCHECK_OFF = (
+  "shiftNegativeLHS", # gcc, the only compiler of a build, defines it: the sign extends
+  # It takes `x = (int16_t)x` of a `uint16_t x` for the value `x` had, though from `0x8000`
+  # the cast changes it: every finding of it in projects was of that kind, and a fix breaks code
+  "redundantAssignment",
+)
+# Flags of the rules gcc checks, compiled into the sources of the project only
 GCC_RULES = {
   "static-scope": ("-Wmissing-prototypes", "-Wmissing-variable-declarations"),
   "conversion": ("-Wconversion",),
-  "double-promotion": ("-Wdouble-promotion",),
 }
 # Rule of each warning those flags raise: `-Wconversion` names its sign and float cases apart
 OPTION_RULES = {
   "conversion": "conversion",
   "sign-conversion": "conversion",
   "float-conversion": "conversion",
-  "double-promotion": "double-promotion",
   "missing-prototypes": "static-scope",
   "missing-variable-declarations": "static-scope",
 }
+WORKERS = 8 # processes of the MISRA addon at once, each holding a whole dump in memory
 
 @dataclass
 class Unit:
@@ -53,7 +60,7 @@ class Unit:
   sources: list[str]
   defines: list[str]
   include_dirs: list[str]
-  project: str = "" # folder of the project, the only code rules a project turns on look at
+  project: str = "" # folder of the project, the only code rules of form look at
 
   def flags(self) -> list[str]:
     """
@@ -89,32 +96,99 @@ def cppcheck(unit:Unit, folder:str, sources:list[str], *options:str) -> str:
   ])
   return res.stderr + res.stdout
 
+def misra_addon() -> str|None:
+  """`misra.py` of the cppcheck on the path: beside it on Windows, in its tree elsewhere."""
+  found = which("cppcheck")
+  if not found: return None
+  home = PATH.dirname(PATH.real(found))
+  prefix = PATH.dirname(home)
+  folders = [f"{home}/addons", f"{prefix}/share/cppcheck/addons", f"{prefix}/lib/cppcheck/addons"]
+  # Debian keeps it in the folder of its architecture, as `lib/x86_64-linux-gnu`
+  if DIR.exists(f"{prefix}/lib"):
+    folders += [f"{lib}/cppcheck/addons" for lib in DIR.folder_list(f"{prefix}/lib")]
+  return next((f"{f}/misra.py" for f in folders if FILE.exists(f"{f}/misra.py")), None)
+
+def misra_rules(addon:str) -> set[str]:
+  """Rules `addon` checks, as `15.5`, read from its source: each cppcheck brings its own."""
+  numbers = {int(n) for n in re.findall(r"executeCheck\((\d+),", FILE.load(addon))}
+  return {f"{n // 100}.{n % 100}" for n in numbers}
+
+def python_command() -> list[str]:
+  """How to run a script of Python: this interpreter, or `opencplc.exe`, which holds one."""
+  return [sys.executable, "--python"] if getattr(sys, "frozen", False) else [sys.executable]
+
+def misra_command(addon:str, rules:set[str]) -> list[str]:
+  """`addon` over a dump with every rule but `rules` suppressed, which it then never runs."""
+  quiet = ",".join(sorted(misra_rules(addon) - rules))
+  return [*python_command(), addon, "--cli", *(["--suppress-rules", quiet] if quiet else [])]
+
+def misra_reports(command:list[str], dump:str) -> list[dict]:
+  """Reports `command` of the MISRA addon gives over `dump`, those naming a rule."""
+  lines = run([*command, dump]).stdout.splitlines()
+  reports = [JSON.parse(line) for line in lines if line.startswith("{")]
+  # Lines of its log and of a configuration it misses carry no rule
+  return [r for r in reports if str(r.get("errorId", "")).startswith("c2012-")]
+
+def placer(copies:dict[str, str]) -> Callable[[str], str]:
+  """Workspace path of a file a dump names, a copy giving its source, worked out once a name."""
+  places:dict[str, str] = {}
+  def place(file:str) -> str:
+    if file not in places:
+      path = PATH.normalize(file)
+      places[file] = copies.get(path) or PATH.local(path)
+    return places[file]
+  return place
+
+def form_findings(
+  dumps:list[str], copies:dict[str, str],
+  owns:Callable[[str], bool],
+  forms:frozenset[str],
+) -> list[Finding]:
+  """
+  Rules of form `forms` over the dumps of the sources of a project.
+
+  Directives of files outside the project leave each dump first, which halves it.
+  The MISRA addon runs a process a dump while Forge reads the same dumps for its own rules.
+  """
+  place = placer(copies)
+  for dump in dumps: trim_directives(dump, lambda file: owns(place(file)))
+  numbers = {name.removeprefix("misra-") for name in forms if MISRA_NAME.match(name)}
+  addon = misra_addon() if numbers else None
+  with ThreadPoolExecutor(min(os.cpu_count() or 1, WORKERS)) as pool:
+    jobs = {}
+    if addon:
+      command = misra_command(addon, numbers)
+      jobs = {dump: pool.submit(misra_reports, command, dump) for dump in dumps}
+    reports_of = lambda dump: jobs[dump].result() if dump in jobs else []
+    return check_forms(dumps, place, owns, set(forms), reports_of)
+
 def run_cppcheck(
   unit:Unit, folder:str,
-  style:bool = False,
-  dump:bool = False,
+  facts:bool = False,
   loads:tuple[str, ...] = (),
-) -> tuple[list[Finding], list[Finding], list[Facts]]:
+  forms:frozenset[str] = frozenset(),
+) -> tuple[list[Finding], list[Finding], list[Facts], list[str]]:
   """
-  cppcheck over copies of the sources of `unit`: its checks of warnings, performance, portability.
+  cppcheck over copies of the sources of `unit`: its checks of warnings, performance, portability
+  and style, findings of the last on the code of the project alone and apart from the rest.
 
-  With `style` its checks of style run too, on the code of the project alone,
-  and their findings come back apart from the rest.
-  With `dump` the facts it proves of each source come back as well, `loads` naming the functions
+  With `facts` the facts it proves of each source come back as well, `loads` naming the functions
   that write raw bytes into a buffer of their caller.
+  Rules of form, `forms`, read the dumps of the sources of the project before they go,
+  their findings among the first list under their own names.
+  Sources whose dump holds nothing come back last, stopped by an `#error` or an unknown macro.
   cppcheck writes a dump beside the source it reads, so it reads copies under `folder`,
   and the trees of Core and of the project stay clean.
   """
   folder = f"{folder}/{unit.name}"
-  copies = {}
+  copies, origins = {}, {}
   for source in unit.sources:
-    copy = PATH.resolve(f"{folder}/src/{PATH.local(source)}")
+    copy = PATH.resolve(f"{folder}/src/{tree_path(source)}")
     FILE.save(copy, FILE.load(source, binary=True))
     copies[copy] = PATH.local(source)
-  enable = "warning,performance,portability" + (",style" if style else "")
-  output = cppcheck(unit, folder, list(copies), f"--enable={enable}",
-    "--template={file}:{line}:{column}: {severity}: {message} [{id}] [{cwe}]",
-    *(["--dump"] if dump else []))
+    origins[copy] = source
+  output = cppcheck(unit, folder, list(copies), "--enable=warning,performance,portability,style",
+    "--template={file}:{line}:{column}: {severity}: {message} [{id}] [{cwe}]", "--dump")
   found, styled = [], []
   for line in output.splitlines():
     report = CPPCHECK.match(line)
@@ -125,12 +199,19 @@ def run_cppcheck(
       int(report[3]), report[5], refs=refs)
     if report[4] != "style": found.append(finding)
     elif unit.owns(finding.path): styled.append(finding)
-  facts = [read_dump(f"{copy}.dump", copies, loads) for copy in copies
-    if dump and FILE.exists(f"{copy}.dump")]
+  proved, unread = [], []
+  for copy in copies:
+    dump = f"{copy}.dump"
+    if not FILE.exists(dump) or not configured(dump): unread.append(origins[copy])
+    elif facts: proved.append(read_dump(dump, copies, loads))
+  if forms and unit.project:
+    owned = [f"{copy}.dump" for copy in copies
+      if unit.owns(copies[copy]) and origins[copy] not in unread]
+    found += form_findings(owned, copies, unit.owns, forms)
   # What cppcheck wrote beside each copy goes, `.ctu-info` of an addon too. The copies stay
   # for the next run: Windows keeps a fresh `.c` open a moment for whoever indexes or scans it.
   FILE.remove([f"{copy}{suffix}" for copy in copies for suffix in (".dump", ".ctu-info")])
-  return found, styled, facts
+  return found, styled, proved, unread
 
 def too_old(command:str, least:tuple[int, ...]) -> str|None:
   """Version of the tool run as `command` when below `least`, `None` when new enough."""
@@ -150,7 +231,7 @@ def run_analyzer(unit:Unit, folder:str, rules:set[str]) -> list[Finding]:
   flags = unit.flags() + ANALYZER + ["-fdiagnostics-plain-output"]
   extra = [flag for rule in sorted(rules & GCC_RULES.keys()) for flag in GCC_RULES[rule]]
   def compile_one(source:str) -> tuple[str, int, str]:
-    target = f"{folder}/{PATH.local(source).replace('/', '_')}.o"
+    target = f"{folder}/{tree_path(source).replace('/', '_')}.o"
     own = extra if unit.owns(source) else []
     res = run(["arm-none-eabi-gcc", "-c", *flags, *own, source, "-o", target])
     return source, res.returncode, res.stderr

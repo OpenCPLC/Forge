@@ -16,7 +16,7 @@ from fnmatch import fnmatchcase
 from xaeian import DIR, FILE, PATH
 from ..utils import glob_match
 from .finding import Finding
-from .lintfile import LISTS, read, flat
+from .lintfile import LISTS, Margins, read, flat
 from .graph import Graph, Function, INDIRECT, place
 from . import sources
 
@@ -39,7 +39,6 @@ RULES = {
   "no-heap": Rule("vrts", "MISRA 21.3", opt_in=True),
   "recursion": Rule("stack", "MISRA 17.2, CWE-674"),
   "stack-fit": Rule("stack", "CWE-787"),
-  "stack-margin": Rule("stack", "CWE-787", opt_in=True),
   "header-object": Rule("files", "MISRA 8.6, BARR-C 4.2"),
   "header-guard": Rule("files", "MISRA Dir 4.10, CERT PRE06-C"),
   "extern-in-c": Rule("files", "MISRA 8.5, CERT DCL40-C"),
@@ -47,14 +46,18 @@ RULES = {
   "include-form": Rule("files", ""), # a form of OpenCPLC, which no norm asks
   "config-order": Rule("files", "CERT DCL40-C"),
   "config-unread": Rule("files", "MISRA 2.5"),
-  "switch-enum": Rule("values", "CWE-478"),
-  "switch-enum-default": Rule("values", "", opt_in=True),
-  "switch-default": Rule("values", "MISRA 16.4", opt_in=True),
-  "status-used": Rule("values", "MISRA 17.7, CERT ERR33-C, CWE-252", opt_in=True),
-  "conversion": Rule("gcc", "MISRA 10.3, CWE-197", opt_in=True),
-  "double-promotion": Rule("gcc", "", opt_in=True),
+  "switch-default": Rule("values", "CERT MSC01-C, CWE-478"),
+  "status-used": Rule("values", "CERT EXP12-C, CWE-252"),
+  "float-literal": Rule("values", "MISRA 10.7, BARR-C 5.4.b, CWE-1176"),
+  "conversion": Rule("gcc", "MISRA 10.3, CWE-197"),
   "static-scope": Rule("gcc", "MISRA 8.7, MISRA 8.8, CERT DCL15-C"),
-  "cppcheck-style": Rule("tools", "", opt_in=True),
+  "cppcheck-style": Rule("tools", ""),
+  "no-continue": Rule("forms", "BARR-C 1.7.d", opt_in=True),
+  "constant-left": Rule("forms", "BARR-C 8.6.a", opt_in=True),
+  "function-length": Rule("forms", "Power of Ten 4, BARR-C 6.2.a", opt_in=True),
+  "fixed-width": Rule("forms", "MISRA Dir 4.6, BARR-C 5.2"),
+  "no-function-macro": Rule("forms", "MISRA Dir 4.9, BARR-C 6.3.a", opt_in=True),
+  "no-function-pointer": Rule("forms", "Power of Ten 9", opt_in=True),
 }
 GRAPH_RULES = (
   "irq-yield", "irq-heap", "irq-log", "thread-hold", "heap-owner", "heap-cleared",
@@ -63,11 +66,14 @@ GRAPH_RULES = (
 FILE_RULES = ("header-object", "header-guard", "extern-in-c", "own-header-first")
 # Rules of files telling code of others from Core, which only `vendor` of `lint.yaml` does
 TREE_RULES = ("include-form", "config-order", "config-unread")
-VALUE_RULES = ("switch-enum", "irq-volatile")
+VALUE_RULES = ("switch-default", "status-used", "float-literal", "irq-volatile")
 OPT_INS = tuple(name for name, rule in RULES.items() if rule.opt_in)
+# Rules of form on the code a project writes, those of MISRA C by number beside them
+FORM_RULES = tuple(name for name, rule in RULES.items() if rule.family == "forms")
+DEFAULT_FORMS = frozenset(name for name in FORM_RULES if not RULES[name].opt_in)
+MISRA_NAME = re.compile(r"^misra-\d+\.\d+$") # a rule of MISRA C:2012 the addon of cppcheck checks
 START = "Reset_Handler" # the start of the program, in the vector table but no interrupt
-STACK_MARGIN = 25 # % of a stack `stack-margin` keeps free
-HEAP_C = ("malloc", "calloc", "realloc", "free")
+HEAP_C = ("malloc", "calloc", "realloc", "free") # heap of the C library, beside that of VRTS
 CONFIG_HEADERS = ("main.h", "boot.h") # configure the build, every tree takes them in quotes
 FORGE_SETTINGS = ("PRO_", "BOOT_") # names of `main.h` Forge reads itself, no file of the build
 # Where a finding of `include-form` says a file lies
@@ -112,6 +118,7 @@ class Stack:
   frame: int       # bytes a switch leaves on top
   size: int|None   # bytes of the array, `None` when the image does not say
   holes: set[str]  # why the depth is a floor: `pointer`, `dynamic` or `library` calls
+  margin: int      # % of the array the thread keeps free
 
 def load_roles(core_dir:str, pro_dir:str = "") -> Roles|None:
   """
@@ -133,7 +140,8 @@ def load_roles(core_dir:str, pro_dir:str = "") -> Roles|None:
 
 def split_opt_ins(names:list[str]) -> tuple[list[str], list[str]]:
   """Rules a project turns on, and the names among them that are no rule to turn on."""
-  return [n for n in names if n in OPT_INS], [n for n in names if n not in OPT_INS]
+  known = lambda name: name in OPT_INS or bool(MISRA_NAME.match(name))
+  return [n for n in names if known(n)], [n for n in names if not known(n)]
 
 def vendor_code(path:str, vendor:list[tuple[str, str]]) -> bool:
   """`path` lies in code Core or the project carries from others, a glob from the folder each."""
@@ -289,13 +297,14 @@ def check_graph(
   """
   found = []
   api = roles.yields | roles.holds # their insides are VRTS, not the code under check
+  heap = roles.heap | set(HEAP_C)
   log = {title for callees in graph.calls.values() for title, _ in callees
     if any(fnmatchcase(named(graph, title), glob) for glob in roles.log)}
   for root in irq_roots(graph, texts, roles):
     if chain := reach(graph, root, roles.yields, api):
       found.append(at("irq-yield", graph.functions[root],
         f"interrupt hands the core over: {chain_text(graph, chain)}"))
-    if chain := reach(graph, root, roles.heap, api | roles.heap):
+    if chain := reach(graph, root, heap, api | heap):
       found.append(at("irq-heap", graph.functions[root],
         f"interrupt races a thread for the heap: {chain_text(graph, chain)}"))
     if chain := reach(graph, root, log, api | roles.panic):
@@ -408,12 +417,14 @@ def check_stacks(
   graph:Graph, threads:list[Thread],
   sizes:dict[str, int|None],
   frame:int,
-  margin:bool = False,
+  margins:Margins,
 ) -> tuple[list[Stack], list[Finding]]:
   """
   Stack of every thread against its array, `frame` bytes of a switch on top of each.
 
-  With `margin` a thread also keeps `STACK_MARGIN` of its array free.
+  A thread keeps the percent of its array `margins` gives it free,
+  as a call through a pointer or into the C library hides what it adds.
+  A finding stands at the `thread` call, where the array is chosen.
   """
   stacks, found = [], []
   for thread in threads:
@@ -421,15 +432,18 @@ def check_stacks(
     if not fn: continue
     depth, holes = deepest(graph, thread.title)
     size = sizes.get(thread.stack)
-    stacks.append(Stack(fn.name, depth, frame, size, holes))
+    margin = margins.of(fn.name)
+    stacks.append(Stack(fn.name, depth, frame, size, holes, margin))
     if size is None: continue
     used = depth + frame
     if used > size:
-      found.append(at("stack-fit", fn,
-        f"needs at least {used}B, its stack `{thread.stack}` has {size}B"))
-    elif margin and used * 100 > size * (100 - STACK_MARGIN):
-      found.append(at("stack-margin", fn,
-        f"needs at least {used}B of {size}B in `{thread.stack}`, under {STACK_MARGIN}% left"))
+      message = f"`{fn.name}` needs at least {used}B, its stack `{thread.stack}` has {size}B"
+    elif used * 100 > size * (100 - margin):
+      message = (f"`{fn.name}` needs at least {used}B of {size}B in `{thread.stack}`, "
+        f"over the {100 - margin}% its margin allows")
+    else: continue
+    found.append(Finding("stack-fit", PATH.local(thread.path), thread.line, 1, message, fn.name,
+      RULES["stack-fit"].refs))
   return stacks, found
 
 #-------------------------------------------------------------------------------------------- Files

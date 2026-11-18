@@ -21,14 +21,17 @@ from .. import utils
 from .finding import Finding
 from .graph import load_graph, settle_weak, drop_unlinked
 from .rules import (
-  Bodies, Trees, Stack, GRAPH_RULES, FILE_RULES, TREE_RULES, VALUE_RULES, OPT_INS,
-  load_roles, split_opt_ins, vendor_code, find_threads, hidden_calls, contexts, check_graph,
-  check_stacks, check_files, check_includes, check_config,
+  Bodies, Trees, Stack, GRAPH_RULES, FILE_RULES, TREE_RULES, VALUE_RULES, OPT_INS, FORM_RULES,
+  DEFAULT_FORMS, MISRA_NAME, load_roles, split_opt_ins, vendor_code, find_threads, hidden_calls,
+  contexts, check_graph, check_stacks, check_files, check_includes, check_config,
 )
-from .values import merge, local_key, check_switches, check_status, check_volatile
-from .lintfile import LINT, LintFileError, Waiver, read, exceptions, keep
+from .values import (
+  merge, local_key, check_switches, check_status, check_literals, check_volatile,
+)
+from .lintfile import LINT, LintFileError, Margins, Waiver, read, exceptions, keep
 from .checkers import (
-  Unit, GCC_RULES, CPPCHECK_MIN, GCC_MIN, too_old, run_cppcheck, run_analyzer,
+  Unit, GCC_RULES, CPPCHECK_MIN, GCC_MIN, too_old, run_cppcheck, run_analyzer, misra_addon,
+  misra_rules,
 )
 from .dump import Unit as Facts
 from . import sources
@@ -37,8 +40,9 @@ p = Print()
 
 LOAD = re.compile(r"^LOAD (.+\.o)$", re.M)
 SYMBOL = re.compile(r"^[0-9a-fA-F]+ ([WV]) (\S+)$")
-GRAPH_OPT_INS = ("no-heap", "stack-margin")
-VALUE_OPT_INS = ("switch-enum-default", "switch-default", "status-used")
+GRAPH_OPT_INS = ("no-heap",)
+# Ids cppcheck gives a source it stops reading, which the full include path may yet read
+STOPS = ("preprocessorErrorDirective", "unknownMacro", "syntaxError")
 
 @dataclass
 class Check:
@@ -52,6 +56,7 @@ class Check:
   thread: set[str] = field(default_factory=set)    # and of those a thread or `main` runs
   graphed: set[str] = field(default_factory=set)   # and of every function the call graph holds
   hidden: list[str] = field(default_factory=list)  # thread and interrupt starts a macro hides
+  stray: list[str] = field(default_factory=list)   # names `stack-margin` gives that run no thread
 
 def linked_objects(elf:str) -> list[str]:
   """Objects of the application the map beside `elf` names, no bootloader and no library."""
@@ -131,14 +136,15 @@ def forge_check(
   sizes = stack_sizes(elf)
   drop_unlinked(graph, set(sizes))
   threads = find_threads(graph, texts, roles)
-  stacks, misfits = check_stacks(graph, threads, sizes, 4 * roles.frame.get(cpu, 0),
-    "stack-margin" in opt_ins)
+  margins = (read(pro_dir, core=False) or {}).get("stack-margin", Margins())
+  stacks, misfits = check_stacks(graph, threads, sizes, 4 * roles.frame.get(cpu, 0), margins)
   found += check_graph(graph, texts, threads, roles, opt_ins, pro_dir) + misfits
   irq, thread = contexts(graph, texts, threads, roles)
   ran = files + GRAPH_RULES + tuple(rule for rule in GRAPH_OPT_INS if rule in opt_ins)
+  stray = sorted(set(margins.threads) - {stack.thread for stack in stacks})
   return Check(found, stacks, ran, texts, {local_key(t) for t in irq},
     {local_key(t) for t in thread}, {local_key(t) for t in graph.functions},
-    hidden_calls(graph, texts, roles))
+    hidden_calls(graph, texts, roles), stray)
 
 def load_all_waivers(core_dir:str, pro_dir:str) -> tuple[list[Waiver], list[str]]:
   """Exceptions of the Core and of the project, each for its own code."""
@@ -147,9 +153,17 @@ def load_all_waivers(core_dir:str, pro_dir:str) -> tuple[list[Waiver], list[str]
   return waivers + more, refused + bad
 
 def stack_line(stack:Stack) -> str:
-  """`STACK loop 556B / 2048B (27%)`: the deepest path with its switch frame, against the array."""
+  """
+  `STACK loop 556B / 2048B (28%, max 75%)`: the deepest path with its switch frame, then its array.
+
+  The second percent is what the margin of the thread allows, and the first one rounds up,
+  so a thread over its limit never reads as one at it.
+  """
   used = stack.deepest + stack.frame
-  notes = f"{used * 100 // stack.size}%" if stack.size else "array not found"
+  notes = "array not found"
+  if stack.size:
+    percent = (used * 100 + stack.size - 1) // stack.size
+    notes = f"{percent}%, max {100 - stack.margin}%"
   if stack.holes: notes += ", at least"
   size = f" / {stack.size}B" if stack.size else ""
   return f"STACK {stack.thread} {c.GOLD}{used}B{c.END}{size} {grey(f'({notes})')}"
@@ -157,6 +171,15 @@ def stack_line(stack:Stack) -> str:
 def hidden_text(where:str) -> str:
   """Warning for a thread or an interrupt started inside a macro, which the rules cannot read."""
   return f"Rules of threads and interrupts skip the call at {where}, a macro hides its arguments"
+
+def unread_text(path:str) -> str:
+  """Warning for a source cppcheck reads nothing of, even with every path of its build."""
+  return f"cppcheck reads nothing of {fmt_path(PATH.local(path))}, nor do the rules on values"
+
+def stray_text(pro_dir:str, names:list[str]) -> str:
+  """Warning for names `stack-margin` gives that run no thread, a typo most likely."""
+  where = fmt_path(f"{pro_dir}/{LINT}")
+  return f"No thread runs {fmt_list(names)}, which `stack-margin` of {where} names"
 
 def build_report(elf:str, cpu:str, core:str, project:str):
   """
@@ -174,6 +197,7 @@ def build_report(elf:str, cpu:str, core:str, project:str):
     return
   for stack in check.stacks: p(stack_line(stack))
   for where in check.hidden: p.wrn(hidden_text(where))
+  if check.stray: p.wrn(stray_text(pro_dir, check.stray))
   for finding in sorted(keep(check.found, waivers), key=lambda f: (f.path, f.line)):
     p.wrn(finding.text())
 
@@ -212,33 +236,57 @@ def without_vendor(unit:Unit, vendor:list[tuple[str, str]]) -> Unit:
   ours = [d for d in unit.include_dirs if not vendor_code(f"{d}/_.h", vendor)]
   return replace(unit, include_dirs=ours)
 
+def read_unit(
+  unit:Unit, vendor:list[tuple[str, str]], folder:str, facts:bool, loads:tuple[str, ...],
+  forms:frozenset[str] = frozenset(),
+) -> tuple[list[Finding], list[Finding], list[Facts], list[str]]:
+  """
+  `run_cppcheck` over `unit` as `without_vendor` gives it, then over what that left unread.
+
+  A header of others may need another to pass its `#error`, as a nanopb message checks `pb.h`,
+  and cppcheck then reads nothing of any source including it.
+  Such a source goes again with every path of its build, whose findings replace those stops.
+  What stays unread comes back last.
+  """
+  narrow = without_vendor(unit, vendor)
+  found, styled, proved, unread = run_cppcheck(narrow, folder, facts, loads, forms)
+  if not unread: return found, styled, proved, unread
+  again = run_cppcheck(replace(unit, sources=unread), folder, facts, loads, forms)
+  found = [finding for finding in found if finding.rule not in STOPS] + again[0]
+  return found, styled + again[1], proved + again[2], again[3]
+
 def vector_entry(finding:Finding, handlers:tuple[str, ...]) -> bool:
   """`static-scope` at a handler of the vector table, which the startup code declares."""
   return finding.rule == "static-scope" and finding.function.endswith(handlers)
 
 def vouching(waivers:list[Waiver]):
   """
-  Whether an exception of `switch-enum` names the place an entry stands in,
+  Whether an exception of `switch-default` names the place an entry stands in,
   the check the code makes there out of reach of the proof; such an exception counts as used.
   """
   def vouched(entry) -> bool:
-    stand = Finding("switch-enum", PATH.local(entry.path), entry.line, 1, "", entry.function)
+    stand = Finding("switch-default", PATH.local(entry.path), entry.line, 1, "", entry.function)
     found = [waiver for waiver in waivers if waiver.explains(stand)]
     for waiver in found: waiver.used = True
     return bool(found)
   return vouched
 
 def value_check(
-  facts:list[Facts], check:Check, status:str,
-  opt_ins:set[str], waivers:list[Waiver],
+  facts:list[Facts], check:Check, status:str, waivers:list[Waiver],
+  vendor:list[tuple[str, str]],
 ) -> dict[str, list[Finding]]:
-  """Rules on types and proven values over the facts of every source of the application."""
+  """
+  Rules on types and proven values over the facts of every source of the application.
+
+  Headers of others come along with the sources including them, and their findings stay out.
+  """
   program = merge(facts)
-  found = check_switches(program, opt_ins, vouching(waivers))
+  found = check_switches(program, vouching(waivers))
+  found += check_status(program, status)
+  found += check_literals(program)
   found += check_volatile(program, check.irq, check.thread, check.graphed)
-  if "status-used" in opt_ins: found += check_status(program, status)
-  rules = VALUE_RULES + tuple(rule for rule in VALUE_OPT_INS if rule in opt_ins)
-  return {rule: [f for f in found if f.rule == rule] for rule in rules}
+  found = [f for f in found if not vendor_code(f.path, vendor)]
+  return {rule: [f for f in found if f.rule == rule] for rule in VALUE_RULES}
 
 def run_lint(pro:Project) -> int:
   """
@@ -268,7 +316,8 @@ def lint(pro:Project) -> int:
   opt_ins, unknown = lint_opt_ins(pro.pro_dir)
   if unknown:
     p.err(f"{fmt_path(f'{pro.pro_dir}/{LINT}')} turns on no rule named {fmt_list(unknown)}")
-    p.run(f"Name rules under {c.SKY}rules{c.END} from {fmt_list(OPT_INS)}")
+    p.run(f"Name rules under {c.SKY}rules{c.END} from {fmt_list(OPT_INS)}, "
+      f"or MISRA C ones by number, as {c.SKY}misra-15.5{c.END}")
     return 1
   start = time.perf_counter()
   utils.ensure_packages(utils.LINT_TOOLS, True)
@@ -277,6 +326,18 @@ def lint(pro:Project) -> int:
       p.err(f"Lint needs {tool} {'.'.join(map(str, least))} or newer, and finds {old}")
       p.run(f"Install a newer {tool} and run again")
       return 1
+  forms = DEFAULT_FORMS | {n for n in opt_ins if n in FORM_RULES or MISRA_NAME.match(n)}
+  if misra := sorted(n for n in forms if MISRA_NAME.match(n)):
+    addon = misra_addon()
+    if addon is None:
+      p.err("This cppcheck comes without its MISRA addon, `misra.py`")
+      p.run("Install cppcheck with its addons and run again")
+      return 1
+    if missing := [n for n in misra if n.removeprefix("misra-") not in misra_rules(addon)]:
+      p.err(f"The MISRA addon of this cppcheck checks no {fmt_list(missing)}")
+      p.run(f"Name rules it checks under {c.SKY}rules{c.END} of "
+        f"{fmt_path(f'{pro.pro_dir}/{LINT}')}")
+      return 1
   folder = f"{pro.build_dir}/lint"
   check = forge_check(elf, pro.core_dir, pro.pro_dir, pro.cpu, opt_ins)
   roles = load_roles(pro.core_dir, pro.pro_dir)
@@ -284,6 +345,7 @@ def lint(pro:Project) -> int:
     p.wrn(f"VRTS and the stack need {fmt_path(f'{pro.core_dir}/{LINT}')} "
       "and a call graph in the build")
   for where in check.hidden: p.wrn(hidden_text(where))
+  if check.stray: p.wrn(stray_text(pro.pro_dir, check.stray))
   vendor = roles.vendor if roles else []
   loads = tuple(roles.load) if roles else ()
   handlers = tuple(roles.irq_handlers) if roles else ()
@@ -291,7 +353,7 @@ def lint(pro:Project) -> int:
   bodies = Bodies(local) # the function an exception names, for outside findings too
   checks = {rule: [f for f in check.found if f.rule == rule] for rule in check.ran}
   compiled = {rule for rule in GCC_RULES if rule in opt_ins or rule not in OPT_INS}
-  groups = ["cppcheck", "analyzer", *sorted(compiled | (opt_ins & {"cppcheck-style"}))]
+  groups = ["cppcheck", "analyzer", *sorted(compiled | forms | {"cppcheck-style"})]
   outside = {name: {} for name in groups}
   def take(group:str, finding:Finding):
     # Headers of others reach every source, and both units share Core
@@ -308,11 +370,12 @@ def lint(pro:Project) -> int:
     analyzing = background.submit(
       lambda: [finding for unit in every for finding in run_analyzer(unit, folder, compiled)])
     for index, unit in enumerate(every):
-      found, styled, facts = run_cppcheck(without_vendor(unit, vendor), folder,
-        "cppcheck-style" in opt_ins, dump=values and not index, loads=loads)
-      for finding in found: take("cppcheck", finding)
+      found, styled, facts, unread = read_unit(unit, vendor, folder, values and not index, loads,
+        forms)
+      for path in unread: p.wrn(unread_text(path))
+      for finding in found: take(finding.rule if finding.rule in forms else "cppcheck", finding)
       for finding in styled: take("cppcheck-style", finding)
-      if facts: checks |= value_check(facts, check, roles.status, opt_ins, waivers)
+      if facts: checks |= value_check(facts, check, roles.status, waivers, vendor)
     for finding in analyzing.result():
       take(finding.rule if finding.rule in GCC_RULES else "analyzer", finding)
   checks |= {name: list(items.values()) for name, items in outside.items()}

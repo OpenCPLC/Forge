@@ -12,7 +12,7 @@ Without a bootloader the flash image is the application as linked.
 """
 
 import sys
-from xaeian import Print, Color as c, PATH
+from xaeian import Print, Color as c, PATH, FILE, DIR
 from xaeian.crc import crc32_iso
 from .args import flag
 from .platforms import FLASH_BASE
@@ -39,6 +39,38 @@ def image_size(image:hexfile.Memory, origin:int) -> int:
 def update_path(out_path:str) -> str:
   """Update binary beside the flash image, under its name: `app-dist.hex` → `app-dist.bin`."""
   return PATH.with_suffix(out_path, ".bin")
+
+def encrypted_path(update:str, name:str) -> str:
+  """Update binary encrypted with cipher key `name`: `app-1.2.0.bin` → `app-1.2.0-acme.bin`."""
+  return PATH.with_suffix(update, f"-{name}.bin")
+
+def encrypted(data:bytes) -> bool:
+  """Update image `data` whose bytes miss the CRC of its plain trailer: encrypted, or damaged."""
+  if len(data) <= TRAILER_SIZE: return True
+  body, trailer = data[:-TRAILER_SIZE], data[-TRAILER_SIZE:]
+  return crc32_iso.checksum(body) != int.from_bytes(trailer[:4], "little")
+
+def older_images(update:str, skip:str="") -> list[tuple[str, str]]:
+  """
+  Images beside update binary `update` that another build left encrypted, with their key names.
+
+  Encryption leaves the trailer plain, and one build packed twice gives the same one,
+  so the last 72 bytes tell builds apart without a key or a password.
+  Only names of keys in the key folder count, so images of other tags stay out,
+  and key `skip` encrypts anew right after, which overwrites its image.
+  """
+  folder = keys.keys_dir()
+  if not DIR.exists(folder): return []
+  trailer = FILE.load(update, binary=True)[-TRAILER_SIZE:]
+  older = []
+  for key_file in sorted(DIR.file_list(folder, exts=[".cipher"], deep=False)):
+    name = PATH.stem(key_file)
+    path = encrypted_path(update, name)
+    if name == skip or not FILE.exists(path): continue
+    data = FILE.load(path, binary=True)
+    # A plain image of a tag named like a key goes by the same file name
+    if encrypted(data) and data[-TRAILER_SIZE:] != trailer: older.append((name, path))
+  return older
 
 def pack(app_path:str, out_path:str, boot_path:str|None=None, keys_hex:str="", number:int=0,
   release:bool=False):
@@ -82,8 +114,14 @@ def pack(app_path:str, out_path:str, boot_path:str|None=None, keys_hex:str="", n
   hexfile.save_hex(image, out_path)
 
 def pack_command(files:list[str]):
-  """`--pack APP.hex OUT.hex [BOOT [KEYS NUMBER [dist]]]` after linking; exits on failure."""
-  usage = f"{flag.p} takes APP.hex OUT.hex [BOOT [KEYS NUMBER [dist]]]"
+  """
+  `--pack APP.hex OUT.hex [BOOT [KEYS NUMBER [dist [CIPHER]]]]` after linking; exits on failure.
+
+  `CIPHER` names the key `make dist` encrypts with right after.
+  """
+  usage = f"{flag.p} takes APP.hex OUT.hex [BOOT [KEYS NUMBER [dist [CIPHER]]]]"
+  cipher = ""
+  if files[-2:-1] == ["dist"]: files, cipher = files[:-1], files[-1]
   release = files[-1:] == ["dist"]
   files = files[:-1] if release else files
   if len(files) not in (2, 3, 5) or (release and len(files) != 5):
@@ -99,4 +137,9 @@ def pack_command(files:list[str]):
     name = keys.product_name(bytes.fromhex(keys_hex)) or "<name>"
     p.wrn(f"{c.SKY}BOOT_KEYS{c.END} holds one key: its leak would end the updates of every device")
     p.run("Add spare keys before the first unit ships, "
-      f"e.g. {utils.color_command(f'opencplc --keygen {name} 3')}")
+      f"e.g. {utils.color_command(f'opencplc --sign {name} 3')}")
+  if not release: return
+  for name, path in older_images(update_path(out), cipher):
+    p.wrn(f"Image {utils.color_image(PATH.basename(path))} comes from another build")
+    p.run(f"Encrypt this build with {utils.color_command(f'make dist CIPHER={name}')} "
+      "under the same TAG")

@@ -7,7 +7,8 @@ Modules stack up from the bottom, each importing only those below it:
 `platforms` and `boards` describe the hardware, `model` holds the shapes the modules pass on,
 `headers` reads main.h and boot.h, `workspace` settles root, config, refs and project inventory,
 `configure` makes a `Config`, `resolver` the `Project` model of it, `project` writes its files,
-and the commands act on them: `pack`, `upload`, `runner`, `lint`, `keygen`, `lock` and `actions`.
+and the commands act on them: `pack`, `cipher`, `upload`, `runner`, `lint`, `keygen`, `lock`
+and `actions`.
 """
 
 import signal, sys
@@ -26,7 +27,7 @@ from .configure import config_new, config_load, opt_normalize
 from .workspace import (
   enter_workspace, forge_config, persist_config, ensure_refs, framework_version,
   ensure_framework, makefile_info, reload_from_cwd, reload_from_makefile,
-  project_inventory, project_select, stlink_bind,
+  is_path, path_name, project_inventory, project_select, stlink_bind,
 )
 from . import utils
 
@@ -48,18 +49,20 @@ def name_project(args, cwd:str, forge_cfg:dict) -> bool:
   """
   # Mutually exclusive modes; mode flags may also carry the project name
   check_flags(args, ("reload", flag.r), ("info", flag.i))
-  # --keygen writes into boot.h of a project that exists already
-  check_flags(args, ("new", flag.n), ("delete", flag.d), ("get", flag.g), ("keygen", flag.keygen))
+  # --sign writes into boot.h of a project that exists already
+  check_flags(args, ("new", flag.n), ("delete", flag.d), ("get", flag.g), ("sign", flag.sign))
   args.name, args.new = utils.assign_name(args.name, args.new, flag.n)
   args.name, args.reload = utils.assign_name(args.name, args.reload, flag.r)
   args.name, args.delete = utils.assign_name(args.name, args.delete, flag.d)
+  # A path names a project from anywhere: from here on it goes by its name, outside by its path
+  if args.name and is_path(args.name): args.name = path_name(args.name, cwd)
   persist_config(forge_cfg, create=bool(args.new or args.demo)) # a workspace starts here
   if not forge_cfg.get("available-versions"):
     ensure_refs(forge_cfg, args.yes) # first run: the version list must exist
   # -r <name> and -r inside a project directory touch that project only, never the workspace
   scoped = bool(args.reload and args.name)
   # These act on the active project when no name is given
-  acting = args.program or args.keygen or args.lock is not None or args.lint
+  acting = args.program or args.sign or args.lock is not None or args.lint
   if not args.name and (args.reload or args.info or acting):
     scoped = reload_from_cwd(args, cwd)
     if not scoped:
@@ -93,7 +96,8 @@ def pick_project(args, forge_cfg:dict) -> dict:
     p.run(f"Load one with {utils.color_command('opencplc <name>')}, "
       f"or reload the active project with {flag.r}")
     sys.exit(1)
-  if args.name:
+  # A local project goes by its folder, not by a name of the workspace
+  if args.name and not utils.is_local(args.name):
     valid, reason = utils.validate_project_name(args.name)
     if not valid:
       p.err(f"Invalid project name: {c.MAGNTA}{reason}{c.END}")
@@ -104,8 +108,8 @@ def configure_project(args, projects:dict, fw_ver:str, forge_cfg:dict) -> Config
   """Config of the project, over the Core that builds it, with its ST-Link."""
   # The keys go into `boot.h` first, so this very run builds the project under them
   named = utils.project_key(projects, args.name)
-  if args.keygen and named:
-    keygen(args.keygen, named, PATH.resolve(projects[named], read=False))
+  if args.sign and named:
+    keygen(args.sign, named, PATH.resolve(projects[named], read=False))
   if args.new:
     cfg = config_new(args, projects, fw_ver)
   else:
@@ -136,7 +140,9 @@ def main():
   """Parse arguments, settle the workspace and run what the flags ask for."""
   args = load_args()
   templates = load_templates()
-  cwd = enter_workspace()
+  # A local project named by its path finds the workspace through its makefile, from anywhere
+  named = next((n for n in (args.name, args.new, args.delete) if isinstance(n, str) and n), "")
+  cwd = enter_workspace(named)
   forge_cfg = forge_config(templates)
   if info_actions(args, forge_cfg): sys.exit(0)
   scoped = name_project(args, cwd, forge_cfg)

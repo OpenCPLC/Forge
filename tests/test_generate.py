@@ -68,7 +68,7 @@ def one_flash_rule_and_the_debugger_load_the_packed_image(ws):
     make = read_makefile(ws)
     assert make.count(rule) == 1 and "$(TARGET).elf verify" not in make
     launch = json.loads((ws / ".vscode" / "launch.json").read_text())["configurations"][0]
-    assert launch["loadFiles"] == ["build/projects/myapp/myapp-dist.hex"]
+    assert launch["loadFiles"] == ["${workspaceFolder}/build/projects/myapp/myapp-dist.hex"]
     assert launch["executable"].endswith("myapp.elf") # symbols stay with the elf
 
 def dist_packs_the_image_again_with_the_bootloader_of_dist(ws):
@@ -83,10 +83,20 @@ def dist_packs_the_image_again_with_the_bootloader_of_dist(ws):
   dist = make[make.index("\ndist:"):make.index("\nclean:")]
   assert dist.startswith("\ndist: build $(BOOT_DIST_IMAGE)\n")
   packed = ("--pack $(BUILD)/$(TARGET).hex $(PROJECT)/$(DIST).hex $(BOOT_DIST_IMAGE) "
-    "$(if $(BOOT_KEYS),$(BOOT_KEYS) $(SIGNING_KEY) dist)")
+    "$(if $(BOOT_KEYS),$(BOOT_KEYS) $(SIGNING_KEY) dist $(CIPHER))")
   assert packed in dist
   assert dist.index("ifeq ($(BOOT),true)") < dist.index("Full image") < dist.index("Update image")
   assert dist.index("Update image") < dist.index("\nelse\n") < dist.index("Flash image")
+
+def dist_encrypts_the_update_image_only_with_cipher(ws):
+  """Build and signature stay as they are, so a second `CIPHER=` encrypts the same image."""
+  generate(resolve_uno())
+  make = read_makefile(ws)
+  dist = make[make.index("\ndist:"):make.index("\nclean:")]
+  ciphered = ("ifneq ($(CIPHER),)\n"
+    "\t@$(call CD,$(WORKSPACE)) && $(FORGE) --cipher $(CIPHER) $(PROJECT)/$(DIST).bin\nendif\n")
+  assert dist.index("--pack") < dist.index(ciphered) < dist.index("Full image")
+  assert "$(DIST)$(if $(CIPHER),-$(CIPHER)).bin" in dist[dist.index("Update image"):]
 
 def color_codes_stay_whole_under_a_posix_shell(ws, monkeypatch):
   """`/bin/sh` ends a command at the `;` of a 256-color code, so every code goes in quotes."""
@@ -117,7 +127,7 @@ def chip_build_compiles_its_warnings_and_its_call_graph_for_lint(ws):
   assert '-MF"$(@:%.o=%.d)" -fcallgraph-info=su' in make
   # The stack of each thread needs the CPU, and Core and the project for their `lint.yaml`
   assert "$(FORGE) -z $@ $(FLASH_kB) $(RAM_kB) cortex-m0plus $(OPENCPLC) $(PROJECT)" in make
-  assert "lint: build\n\t@cd $(WORKSPACE) && $(FORGE) --lint $(NAME) $(LOAD_FLAGS)" in make
+  assert "lint: build\n\t@$(call CD,$(WORKSPACE)) && $(FORGE) --lint $(NAME) $(LOAD_FLAGS)" in make
 
 def unchanged_regeneration_keeps_bytes_and_mtime(ws):
   generate(resolve_uno())
@@ -286,5 +296,6 @@ def debugger_takes_the_symbols_of_the_bootloader_the_build_makes(ws):
   assert "symbolFiles" not in launch
   generate(resolve_key_uno())
   launch = json.loads((ws / ".vscode" / "launch.json").read_text())["configurations"][0]
-  assert launch["symbolFiles"] == [{"file": "build/projects/myapp/myapp.elf"},
-    {"file": "build/projects/myapp/boot/boot.elf"}]
+  build = "${workspaceFolder}/build/projects/myapp"
+  assert launch["symbolFiles"] == [{"file": f"{build}/myapp.elf"},
+    {"file": f"{build}/boot/boot.elf"}]

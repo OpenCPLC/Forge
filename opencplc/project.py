@@ -30,10 +30,14 @@ def mk_list(items:list[str]) -> str:
   """Backslash-continued makefile list, one entry per line."""
   return " \\\n".join(items)
 
+def shown_path(path:str) -> str:
+  """Path as messages print it, `./` before one from the workspace."""
+  return path if PATH.is_abs(path) else f"./{path}"
+
 def colored_path(path:str, name:str) -> str:
-  """Workspace-relative path with the project name picked out of it, Core version greyed."""
+  """Path with the project name picked out of it, Core version greyed."""
   shown = utils.home_name(name)
-  return f"{c.GREY}./{replace_end(path, shown, '')}{c.END}{c.BLUE}{shown}{c.END}"
+  return f"{c.GREY}{shown_path(replace_end(path, shown, ''))}{c.END}{c.BLUE}{shown}{c.END}"
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -125,6 +129,25 @@ def config_inputs(pro:Project) -> list[str]:
   """Reload inputs of the project makefile, anchored in `$(PROJECT)`: its settings and folders."""
   dirs = [anchored(d, pro.pro_dir, "PROJECT") for d in pro.project_dirs]
   return ["$(PROJECT)/main.h", f"$(PROJECT)/{BOOT_H}"] + dirs
+
+def editor_paths(pro:Project) -> dict[str, str]:
+  """
+  Core, project and build folders as `.vscode` spells them, from the folder VS Code opens.
+
+  The workspace opens at its root.
+  A local project opens its own folder, so Core and build, both in the workspace, go absolute.
+  """
+  if utils.is_local(pro.name):
+    return {
+      "${CORE_PATH}": utils.full_path(pro.core_dir),
+      "${PRO_PATH}": "${workspaceFolder}",
+      "${BUILD_PATH}": utils.full_path(pro.build_dir),
+    }
+  return {
+    "${CORE_PATH}": f"${{workspaceFolder}}/{pro.core_dir}",
+    "${PRO_PATH}": f"${{workspaceFolder}}/{pro.pro_dir}",
+    "${BUILD_PATH}": f"${{workspaceFolder}}/{pro.build_dir}",
+  }
 
 def dev_key(pro:Project) -> str:
   """Development key the bootloader of builds takes in place of every key, "" for `plain`."""
@@ -225,6 +248,10 @@ def project_delete(args, projects:dict, make_info:dict|None, forge_cfg:dict):
   if utils.is_core(key):
     p.err(f"{c.BLUE}{key}{c.END} is a Core, its tests stay with it")
     sys.exit(1)
+  if utils.is_local(key):
+    p.err(f"{c.BLUE}{key}{c.END} lies outside the workspace, where Forge deletes nothing")
+    p.run("Remove its folder by hand")
+    sys.exit(1)
   try:
     active = PATH.local(projects[key])
     if forge_cfg["stlink"].pop(utils.project_dir(key), None) is not None:
@@ -247,12 +274,19 @@ def generate(pro:Project, activate:bool=True):
   With `activate` the workspace follows too: dispatcher points here, VS Code gets its config.
   A reload from inside a project directory leaves both alone.
   Parallel builds never fight over the active project.
+  A local project is never the active one: its VS Code config goes to its own folder.
   """
   templates = load_templates()
   tpl = templates.get(pro.hal, {})
   is_windows = platform.system() == "Windows"
-  up_path = PATH.rel(".", pro.pro_dir)
-  drive = os.path.splitdrive(PATH.resolve("."))[0] # empty off Windows
+  local = utils.is_local(pro.name)
+  # A local project names the workspace in full, which holds on another drive as well
+  if local: workspace = utils.full_path(".")
+  else: workspace = f"$(abspath $(PROJECT)/{PATH.rel('.', pro.pro_dir)})"
+  drive = os.path.splitdrive(PATH.resolve(pro.pro_dir))[0] # empty off Windows
+  editor = editor_paths(pro)
+  # Make of a local project runs in its folder, where a workspace-relative path means nothing
+  build_shown = utils.full_path(pro.build_dir) if local else pro.build_dir
   boot_image = "$(BUILD)/boot/boot.hex" if pro.boot else ""
   # A `plain` bootloader holds no key, so `dist` packs the one of builds
   boot_dist_image = "$(BUILD)/boot-dist/boot.hex" if pro.boot_keys else boot_image
@@ -261,11 +295,10 @@ def generate(pro:Project, activate:bool=True):
     "${LOAD_FLAGS}": pro.load_flags,
     "${TARGET}": pro.target,
     "${STLINK}": pro.stlink,
-    "${UP_PATH}": up_path,
+    "${WORKSPACE}": workspace,
     "${DRIVE}": drive.upper(),
     "${DRIVE_LOWER}": drive.lower(),
     "${CORE_DIR}": pro.core_dir,
-    "${PRO_DIR}": pro.pro_dir,
     "${BUILD_DIR}": pro.build_dir,
     "${CORE_C}": mk_list(rel_from(pro.core_c_sources, pro.core_dir)),
     "${CORE_S}": mk_list(rel_from(pro.core_asm_sources, pro.core_dir)),
@@ -287,7 +320,7 @@ def generate(pro:Project, activate:bool=True):
     "${BOOT}": "true" if pro.boot else "false",
     "${BOOT_IMAGE}": boot_image,
     "${BOOT_DIST_IMAGE}": boot_dist_image,
-    "${BOOT_ELF}": f"{pro.build_dir}/boot/boot.elf" if pro.boot else "",
+    "${BOOT_ELF}": f"{editor['${BUILD_PATH}']}/boot/boot.elf" if pro.boot else "",
     "${BOOT_kB}": pro.boot_kB,
     "${BOOT_C}": mk_list(rel_from(pro.boot_c_sources, pro.core_dir)),
     "${BOOT_S}": mk_list(rel_from(pro.boot_asm_sources, pro.core_dir)),
@@ -312,16 +345,16 @@ def generate(pro:Project, activate:bool=True):
     "${CUBE_PATH}": utils.cube_bin(),
     "${EXE_EXT}": ".exe" if is_windows else "",
     "${PROJECT_COLORED}": colored_path(pro.pro_dir, pro.name),
-    "${BUILD_COLORED}": colored_path(pro.build_dir, pro.name),
+    "${BUILD_COLORED}": colored_path(build_shown, pro.name),
     "${TEST_DIR}": anchored(pro.test_dir, pro.pro_dir, "PROJECT"),
     "${TEST_CORE_C}": mk_list(rel_from(pro.test_core_sources, pro.core_dir)),
     "${TEST_INCLUDES}": mk_list(include_flags(pro, pro.test_include_dirs)),
     "${TEST_DEFS}": " ".join(f"-D{d}" for d in pro.test_defines),
-    "${TEST_COLORED}": f"{c.GREY}./{pro.test_dir}{c.END}",
+    "${TEST_COLORED}": f"{c.GREY}{shown_path(pro.test_dir)}{c.END}",
     "${GOLD}": c.GOLD, "${PINK}": c.PINK, "${RED}": c.RED,
     "${LIME}": c.LIME, "${SKY}": c.SKY, "${VIOLET}": c.VIOLET,
     "${END}": c.END,
-  } | utils.template_paths(pro.platform == "STM32", pro.tests)
+  } | editor | utils.template_paths(pro.platform == "STM32", pro.tests)
   # Linker script and makefile live inside the project, so parallel builds stay disjoint
   if pro.linker:
     ld_template = templates["flash"].get(pro.linker, templates["flash"]["stm32g0.ld"])
@@ -345,21 +378,22 @@ def generate(pro:Project, activate:bool=True):
   # `make` takes this makefile as reloaded, a reload now would only write the same
   FILE.save(f"{pro.build_dir}/.forge", "")
   if not activate: return
-  write_dispatcher(pro.pro_dir, colored_path(pro.pro_dir, pro.name))
-  DIR.ensure(".vscode")
+  if not local: write_dispatcher(pro.pro_dir, colored_path(pro.pro_dir, pro.name))
+  vscode = f"{pro.pro_dir}/.vscode" if local else ".vscode"
+  DIR.ensure(vscode)
   props = tpl.get("properties.json", templates["properties.json"])
   drop = ([] if pro.plc else ["/plc/", '"OpenCPLC"']) + ([] if pro.board else ["/brd/"])
-  drop += [] if utils.is_core(pro.name) else ["${BUILD_DIR}"] # `main.h` of the Core itself
-  utils.create_file("c_cpp_properties.json", without(props, drop), ".vscode", subs)
+  drop += [] if utils.is_core(pro.name) else ["${BUILD_PATH}"] # `main.h` of the Core itself
+  utils.create_file("c_cpp_properties.json", without(props, drop), vscode, subs)
   # `cortex-debug` takes its tools from `PATH` where Forge has no packages to point at
   launch = tpl.get("launch.json", templates["launch.json"])
   drop = [] if pro.stlink else ["openOCDPreConfigLaunchCommands"]
   drop += [] if pro.boot else ["symbolFiles"]
   drop += [] if is_windows else ["TOOLS_ARM_DIR", "TOOLS_OPENOCD_EXE"]
-  utils.create_file("launch.json", without(launch, drop), ".vscode", subs)
-  utils.create_file("tasks.json", templates["tasks.json"], ".vscode", subs)
+  utils.create_file("launch.json", without(launch, drop), vscode, subs)
+  utils.create_file("tasks.json", templates["tasks.json"], vscode, subs)
   # Shared files: created once, kept afterwards
-  if not FILE.exists(".vscode/settings.json"):
-    utils.create_file("settings.json", templates["settings.json"], ".vscode", subs)
-  if not FILE.exists(".vscode/extensions.json"):
-    utils.create_file("extensions.json", templates["extensions.json"], ".vscode", subs)
+  if not FILE.exists(f"{vscode}/settings.json"):
+    utils.create_file("settings.json", templates["settings.json"], vscode, subs)
+  if not FILE.exists(f"{vscode}/extensions.json"):
+    utils.create_file("extensions.json", templates["extensions.json"], vscode, subs)

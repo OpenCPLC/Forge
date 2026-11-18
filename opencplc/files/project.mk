@@ -11,10 +11,11 @@ BOOT := ${BOOT}
 
 # Paths anchored to this file, so `make -C` works from any directory, on the drive in upper case:
 # VS Code starts make on `c:`, a console on `C:`, and `.d` files keep the spelling they got
+# A local project, outside the workspace, names it in full
 THIS_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 MAKEFILE_PATH := $(patsubst ${DRIVE_LOWER}%,${DRIVE}%,$(abspath $(THIS_MAKEFILE)))
 PROJECT := $(patsubst %/,%,$(dir $(MAKEFILE_PATH)))
-WORKSPACE := $(abspath $(PROJECT)/${UP_PATH})
+WORKSPACE := ${WORKSPACE}
 OPENCPLC := $(WORKSPACE)/${CORE_DIR}
 BUILD := $(WORKSPACE)/${BUILD_DIR}
 # Bootloader packed in front of the image, the one of builds and the one of `dist`, empty without
@@ -33,12 +34,15 @@ MKDIR = if not exist "$(subst /,\,$1)" mkdir "$(subst /,\,$1)"
 RMDIR = if exist "$(subst /,\,$1)" rmdir /s /q "$(subst /,\,$1)"
 RMFILE = if exist "$(subst /,\,$1)" del /q "$(subst /,\,$1)"
 TOUCH = type nul > "$(subst /,\,$1)"
+# `cd` of cmd.exe keeps its drive without `/d`, and a local project may lie on another one
+CD = cd /d "$(subst /,\,$1)"
 else
 SHELL := /bin/sh
 MKDIR = mkdir -p $1
 RMDIR = rm -rf $1
 RMFILE = rm -f $1
 TOUCH = touch $1
+CD = cd $1
 endif
 
 # Core sources, relative to `$(OPENCPLC)`
@@ -99,7 +103,7 @@ $(THIS_MAKEFILE): $(FORGE_STAMP) ;
 
 $(FORGE_STAMP): $(CONFIG_INPUTS)
 	@$(call MKDIR,$(BUILD))
-	@cd $(WORKSPACE) && $(FORGE) -r $(NAME) $(LOAD_FLAGS)
+	@$(call CD,$(WORKSPACE)) && $(FORGE) -r $(NAME) $(LOAD_FLAGS)
 	@$(call TOUCH,$@)
 
 .DEFAULT_GOAL := build
@@ -123,7 +127,7 @@ $(BUILD)/project/%.o: $(PROJECT)/%.s $(CONFIG_DEPS)
 $(BUILD)/$(TARGET).elf: $(OBJECTS) $(LD_SCRIPT)
 		$(CC) $(OBJECTS) $(LDFLAGS) -o $@
 	$(SZ) $@
-	@cd $(WORKSPACE) && $(FORGE) -z $@ $(FLASH_kB) $(RAM_kB) ${CPU} $(OPENCPLC) $(PROJECT)
+	@$(call CD,$(WORKSPACE)) && $(FORGE) -z $@ $(FLASH_kB) $(RAM_kB) ${CPU} $(OPENCPLC) $(PROJECT)
 
 $(BUILD)/%.hex: $(BUILD)/%.elf
 	$(HEX) $< $@
@@ -136,7 +140,7 @@ $(BUILD)/%.bin: $(BUILD)/%.elf
 # Under the `key` one the development key signs the image, the one the bootloader of builds holds
 # New bootloader packs again, without a clean
 $(BUILD)/$(TARGET)-dist.hex: $(BUILD)/$(TARGET).hex $(BOOT_IMAGE)
-	@cd $(WORKSPACE) && $(FORGE) --pack $< $@ $(BOOT_IMAGE) $(if $(BOOT_KEYS),$(BOOT_KEYS) $(SIGNING_KEY))
+	@$(call CD,$(WORKSPACE)) && $(FORGE) --pack $< $@ $(BOOT_IMAGE) $(if $(BOOT_KEYS),$(BOOT_KEYS) $(SIGNING_KEY))
 
 ${BOOT_RULES}
 
@@ -181,14 +185,19 @@ stack:
 # Under the bootloader the hex is the full image, <target>-1.2.0.bin the image alone for an update
 # Packed again with the bootloader of `dist`: under `key` the product key signs the image,
 # and the bootloader holds the product keys and keeps its floors in OTP
+# `CIPHER=acme` encrypts the update image with cipher key `acme`, as <target>-1.2.0-acme.bin
+# Packing warns of images that other keys keep from an earlier build
 # Stamp touched, so a new file in the project does not force a reload on the next make
 DIST := $(TARGET)$(if $(TAG),-$(TAG))
 
 dist: build $(BOOT_DIST_IMAGE)
-	@cd $(WORKSPACE) && $(FORGE) --pack $(BUILD)/$(TARGET).hex $(PROJECT)/$(DIST).hex $(BOOT_DIST_IMAGE) $(if $(BOOT_KEYS),$(BOOT_KEYS) $(SIGNING_KEY) dist)
+	@$(call CD,$(WORKSPACE)) && $(FORGE) --pack $(BUILD)/$(TARGET).hex $(PROJECT)/$(DIST).hex $(BOOT_DIST_IMAGE) $(if $(BOOT_KEYS),$(BOOT_KEYS) $(SIGNING_KEY) dist $(CIPHER))
+ifneq ($(CIPHER),)
+	@$(call CD,$(WORKSPACE)) && $(FORGE) --cipher $(CIPHER) $(PROJECT)/$(DIST).bin
+endif
 ifeq ($(BOOT),true)
 	@echo Full image ${LIME}$(DIST).hex${END} to ${PROJECT_COLORED}
-	@echo Update image ${SKY}$(DIST).bin${END} to ${PROJECT_COLORED}
+	@echo Update image ${SKY}$(DIST)$(if $(CIPHER),-$(CIPHER)).bin${END} to ${PROJECT_COLORED}
 else
 	@echo Flash image ${LIME}$(DIST).hex${END} to ${PROJECT_COLORED}
 endif
@@ -196,7 +205,7 @@ endif
 
 # Rules of Forge on the build, cppcheck and the analyzer of gcc; `lint.yaml` holds the exceptions
 lint: build
-	@cd $(WORKSPACE) && $(FORGE) --lint $(NAME) $(LOAD_FLAGS)
+	@$(call CD,$(WORKSPACE)) && $(FORGE) --lint $(NAME) $(LOAD_FLAGS)
 
 ${TEST}
 

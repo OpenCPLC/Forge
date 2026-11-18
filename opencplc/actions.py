@@ -3,7 +3,8 @@
 """
 One-shot CLI actions.
 
-`info_actions()` handles -v, -F, -f, -hl, -u, -a, -z, -p, --test and --upload, without a project.
+`info_actions()` runs the flags that need no project:
+-v, -F, -f, -hl, -u, -a, -z, -p, --test, --cipher and --upload.
 `info_show()` and `program_image()` act on the resolved model, for -i and --program.
 """
 
@@ -15,6 +16,7 @@ from .config import URL_DL, URL_FORGE, URL_CORE, EXE_NAME, ASSETS
 from .args import flag, given
 from .model import Project
 from .pack import pack_command
+from .cipher import cipher_command
 from .upload import upload
 from .runner import run_tests
 from .lint import build_report
@@ -115,6 +117,9 @@ def info_actions(args, forge_cfg:dict) -> bool:
     ran = True
   if args.pack:
     pack_command(args.pack)
+    ran = True
+  if args.cipher:
+    cipher_command(args.cipher, args.yes)
     ran = True
   if args.upload:
     upload(args.upload)

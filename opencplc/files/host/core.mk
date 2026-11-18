@@ -8,7 +8,7 @@ NAME := ${NAME}
 THIS_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 MAKEFILE_PATH := $(patsubst ${DRIVE_LOWER}%,${DRIVE}%,$(abspath $(THIS_MAKEFILE)))
 PROJECT := $(patsubst %/,%,$(dir $(MAKEFILE_PATH)))
-WORKSPACE := $(abspath $(PROJECT)/${UP_PATH})
+WORKSPACE := ${WORKSPACE}
 OPENCPLC := $(WORKSPACE)/${CORE_DIR}
 BUILD := $(WORKSPACE)/${BUILD_DIR}
 
@@ -20,11 +20,14 @@ export PATH := ${TOOLS_PATH};$(PATH)
 MKDIR = if not exist "$(subst /,\,$1)" mkdir "$(subst /,\,$1)"
 RMDIR = if exist "$(subst /,\,$1)" rmdir /s /q "$(subst /,\,$1)"
 RMFILE = if exist "$(subst /,\,$1)" del /q "$(subst /,\,$1)"
+# `cd` of cmd.exe keeps its drive without `/d`
+CD = cd /d "$(subst /,\,$1)"
 else
 SHELL := /bin/sh
 MKDIR = mkdir -p $1
 RMDIR = rm -rf $1
 RMFILE = rm -f $1
+CD = cd $1
 endif
 
 OPT = -${OPT_LEVEL}
@@ -39,7 +42,7 @@ FORGE_STAMP := $(BUILD)/.forge
 $(THIS_MAKEFILE): $(FORGE_STAMP) ;
 
 $(FORGE_STAMP):
-	@cd $(WORKSPACE) && $(FORGE) -r $(NAME)
+	@$(call CD,$(WORKSPACE)) && $(FORGE) -r $(NAME)
 
 .DEFAULT_GOAL := build
 

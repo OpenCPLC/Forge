@@ -15,9 +15,9 @@
     {
       "name": "Debug",
       "cwd": "${workspaceRoot}",
-      "executable": "${BUILD_DIR}/${TARGET}.elf",
-      "symbolFiles": [{"file": "${BUILD_DIR}/${TARGET}.elf"}, {"file": "${BOOT_ELF}"}],
-      "loadFiles": ["${BUILD_DIR}/${TARGET}-dist.hex"],
+      "executable": "${BUILD_PATH}/${TARGET}.elf",
+      "symbolFiles": [{"file": "${BUILD_PATH}/${TARGET}.elf"}, {"file": "${BOOT_ELF}"}],
+      "loadFiles": ["${BUILD_PATH}/${TARGET}-dist.hex"],
       "request": "launch",
       "type": "cortex-debug",
       "servertype": "openocd",
@@ -29,7 +29,7 @@
         "target/${OPENOCD_TARGET}.cfg"
       ],
       "openOCDPreConfigLaunchCommands": ["adapter serial ${STLINK}"],
-      "svdFile": "${CORE_DIR}/hal/svd/${SVD}",
+      "svdFile": "${CORE_PATH}/hal/svd/${SVD}",
       "preLaunchTask": "make"
     }
   ]

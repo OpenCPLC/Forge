@@ -58,6 +58,25 @@ opencplc test/flash -c STM32WB55
 `make` keeps that choice until you load the project without them.
 Tests and demos for any board leave `PRO_BOARD`, `PRO_CHIP` and memory out of `main.h`, so every load names the hardware.
 
+### 📂 Local project
+
+A project can live outside the workspace, in a repository of its own.
+A path names it, `./app` or `D:/repos/app`, while a plain name stays a project of the workspace:
+
+```sh
+cd C:/workspace
+opencplc D:/repos/app
+cd D:/repos/app
+make
+```
+
+The first load runs in the workspace, since nothing ties the project to it before then.
+From then on its `makefile` names the workspace, so `make` and `opencplc -r` work in its folder.
+It builds with the framework of the workspace into its own folder under `build/local/` and never becomes the active project.
+Forge writes `makefile`, `flash.ld` and `.vscode/` into its folder, overwriting them as it does in the workspace.
+They hold paths of this computer, so the repository of the project should ignore them.
+`opencplc -n D:/repos/app` creates a new local project.
+
 ### 📄 Your files
 
 `main.c` is yours and Forge never overwrites it.
@@ -121,7 +140,7 @@ Full list of targets:
 - `make lint`: Checks the build with Forge rules, cppcheck and gcc analyzer, see [Lint](#-lint)
 - **`make clean`** or `make clr`: Removes built files of the project
 - `make clean_all` or `make clr_all`: Removes built files of all projects
-- `make dist`: Packs the release into the project folder: `.hex` for programmers and, under the bootloader, `.bin` for updates; `make dist TAG=1.2.0` names them `<name>-1.2.0.hex` and `.bin`
+- `make dist`: Packs the release into the project folder: `.hex` for programmers and, under the bootloader, `.bin` for updates; `make dist TAG=1.2.0` names them `<name>-1.2.0.hex` and `.bin`, and `CIPHER=` encrypts the `.bin` with a cipher key
 - `make update`: Sends the update image of the build over the console _(under the bootloader, with `CMD_BOOT ON`)_; `FILE=` sends another image, `PORT=` picks the port
 - **`make erase`**: Completely wipes microcontroller memory _(**erase** full chip; on STM32WB the radio stack stays)_
 - `make stack`: Flashes radio stack of the second core _(STM32WB)_; `make stack FUS=1` also provisions a factory-fresh board, once and irreversibly
@@ -129,18 +148,19 @@ Full list of targets:
 Built files land in `build/projects/<project_name>/`: `.elf`, `.hex`, `.bin` and `.map` next to `opencplc/` with framework objects and `project/` with yours.
 Programmers flash `-dist.hex`, and under the bootloader `-dist.bin` beside it carries updates.
 Every project compiles the framework on its own, so switching projects never links objects built with another configuration.
-After linking Forge reports memory use, including stack of each thread:
+After linking Forge reports memory use, including stack of each thread against the limit its margin allows:
 
 ```text
 FLASH 70.7kB / 72kB (98%)
 RAM 34.3kB / 36kB (95%)
-STACK loop 556B / 2048B (27%)
+STACK loop 556B / 2048B (28%, max 75%)
 ```
 
 ## 🥾 Bootloader
 
 A project whose `main.h` includes `boot.h` runs behind Core's bootloader, which Forge builds with it, and takes updates without a programmer; `-B` sets this up for new projects.
-`opencplc --keygen acme 3` adds product keys to `BOOT_KEYS` in `boot.h`, and from then on the bootloader starts only images signed with them.
+`opencplc --sign acme 3` adds product keys to `BOOT_KEYS` in `boot.h`, and from then on the bootloader starts only images signed with them.
+`opencplc --cipher acme-enc` makes a cipher key, and `make dist CIPHER=acme-enc` encrypts the update file with it, so nobody reads it on its way to devices.
 `--lock` closes the board to programmers for production, with or without bootloader.
 Both and their security: [🥾 Bootloader and 🔒 lock](https://github.com/OpenCPLC/Forge/wiki/bootlock).
 
@@ -269,7 +289,8 @@ workspace/
 │  ├─ firm/app/    # projects can be nested
 │  └─ demo/        # projects from the Demo repository, `opencplc -e`
 └─ build/          # compiled binary files
-   └─ projects/myapp/
+   ├─ projects/myapp/
+   └─ local/       # local projects, a folder each
 ```
 
 If IntelliSense stops working, use `F1` → _C/C++: Reset IntelliSense Database_.
@@ -313,7 +334,7 @@ Full list:
 
 ### Basic
 
-- **`name`**: Project name, the default first argument. It also sets project path `projects/name`, and output files _(`.bin`, `.hex`, `.elf`)_ follow it. A number from `-l` works too.
+- **`name`**: Project name, the default first argument. It also sets project path `projects/name`, and output files _(`.bin`, `.hex`, `.elf`)_ follow it. A number from `-l` works too. A path, `./app` or `D:/repos/app`, loads a [local project](#-local-project).
 - `-n --new`: Creates a new project with that name.
 - `-e --demo`: Downloads [Demo](https://github.com/OpenCPLC/Demo) repository into `projects/demo`. Load a demo like any project: `opencplc demo/blinky`.
 - `-r --reload`: Regenerates project files. Without **`name`** it takes the active project, or the one whose folder you're in.
@@ -347,7 +368,8 @@ Full list:
 - `-a --assets`: Downloads helper materials _(chip documents and errata, board pinouts, style guides of Core)_. Optionally takes a destination folder.
 - `-u --update`: Replaces Forge executable with the given version _(default: `latest`)_, while `pip` installs update through `pip`.
 - `--program`: Sends a `.hex` to the board through the programmer. Alone it takes what `make dist` left in the active project, the newest of several after confirmation.
-- `--keygen`: Makes or takes product key **`NAME`** with spares, **`COUNT`** keys in all _(default 1)_, and adds their public parts to `BOOT_KEYS` in `boot.h` of the active project, with an optional password, see [Bootloader](https://github.com/OpenCPLC/Forge/wiki/bootlock).
+- `--sign`: Makes or takes product key **`NAME`** with spares, **`COUNT`** keys in all _(default 1)_, and adds their public parts to `BOOT_KEYS` in `boot.h` of the active project, with an optional password, see [Bootloader](https://github.com/OpenCPLC/Forge/wiki/bootlock).
+- `--cipher`: Makes cipher key **`NAME`** of a product, or shows its fingerprint and, once confirmed, the key; with **`FILE`** encrypts that update image, `make dist CIPHER=` uses it, see [Bootloader](https://github.com/OpenCPLC/Forge/wiki/bootlock).
 - `--upload`: Sends update image **`FILE`** over the console, optionally to **`PORT`**; `make update` uses it.
 - `--lock`: Locks the board for production: RDP1 by default, `2` for good, `0` unlocks and erases flash, see [Lock](https://github.com/OpenCPLC/Forge/wiki/bootlock).
 - `-p --pack`: Packs the image for flash: under the bootloader with it in front and CRC and signature behind, with update binary beside; `make` uses it after linking.

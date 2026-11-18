@@ -6,7 +6,7 @@ Project resolution.
 `resolve_project()` walks framework and project trees once and returns a `Project`.
 That is the single model every generator and `-i` read from.
 Paths in it are workspace-relative and sorted, so identical inputs resolve identically.
-Absolute paths appear only while scanning.
+A local project, outside the workspace, keeps its own paths absolute.
 """
 
 import sys
@@ -20,7 +20,7 @@ from . import utils, __version__
 p = Print()
 
 def rel_tree(root:str, ext:str) -> dict[str, list[str]]:
-  """folder → files under `root`, both workspace-relative."""
+  """folder → files under `root`, both workspace-relative, or absolute outside it."""
   found = utils.files_list(root, ext)
   return {PATH.local(folder): [PATH.local(f) for f in files] for folder, files in found.items()}
 
@@ -189,7 +189,7 @@ def firmware_tree(pro_dir:str, ext:str) -> dict[str, list[str]]:
     if not PATH.is_under(folder, tests)}
 
 def project_sources(pro_dir:str, ext:str) -> list[str]:
-  """Project files with `ext`, sorted and workspace-relative."""
+  """Project files with `ext`, sorted, workspace-relative or absolute outside it."""
   return sorted(f for fs in firmware_tree(pro_dir, ext).values() for f in fs)
 
 def project_includes(pro_dir:str) -> list[str]:
@@ -246,7 +246,7 @@ def resolve_project(cfg:Config) -> Project:
   pro_c = [] if core_itself else project_sources(pro_dir, ".c")
   pro_s = project_sources(pro_dir, ".s") if is_embedded else []
   pro_inc = [] if core_itself else project_includes(pro_dir)
-  build_dir = f"{DIR_BUILD}/{pro_dir}"
+  build_dir = f"{DIR_BUILD}/{utils.tree_path(pro_dir)}"
   test_dir = tests_of(name, pro_dir)
   # `main.h` of the Core itself is Forge's, in its build folder; a module comes by name
   # from any folder of the project, a header of a selected driver too, as the board takes it,

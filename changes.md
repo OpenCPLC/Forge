@@ -1,5 +1,11 @@
 # Changes `opencplc`
 
+## `0.6.0` Encryption
+
+- Path, `./app` or `D:/repos/app`, loads local project from outside workspace
+- `--cipher` and `make dist CIPHER=` encrypt update image, `--sign` replaces `--keygen`
+- Lint turns more rules on by default, MISRA C by number on request
+
 ## `0.5.3` Lint
 
 - `make lint` checks threads, interrupts, stacks, values and headers, then runs cppcheck and gcc `-fanalyzer`

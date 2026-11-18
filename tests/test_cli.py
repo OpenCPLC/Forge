@@ -395,11 +395,11 @@ def program_alone_without_an_image_points_at_dist(ws, monkeypatch, capsys):
   assert run_cli(monkeypatch, "--program") == 1
   assert "No .hex image" in capsys.readouterr().out
 
-def keygen_writes_the_keys_and_the_same_run_builds_behind_the_key_bootloader(ws, monkeypatch):
+def sign_writes_the_keys_and_the_same_run_builds_behind_the_key_bootloader(ws, monkeypatch):
   """A project without the bootloader goes behind it with its first keys."""
   monkeypatch.setenv(keys.PASSWORD_ENV, "correct horse")
   assert run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-y") == 0
-  assert run_cli(monkeypatch, "app", "--keygen", "acme", "2") == 0
+  assert run_cli(monkeypatch, "app", "--sign", "acme", "2") == 0
   pro = ws / "projects" / "app"
   publics = [keys.product_public(name).hex() for name in ("acme", "acme-1")]
   assert '#include "boot.h"' in (pro / "main.h").read_text()

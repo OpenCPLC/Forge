@@ -19,7 +19,7 @@ from .platforms import Chip, parse_chip
 from .boards import load_boards, board_pick, board_list, parse_drivers
 from .model import Hardware, Config
 from .headers import main_h_defines, boot_included, read_boot_h, layers_check, boot_keys
-from .workspace import ensure_refs
+from .workspace import ensure_refs, local_project_at
 from .utils import keys
 from . import utils
 
@@ -70,6 +70,12 @@ def reject_existing(args, projects:dict):
       p.err(f"Cannot create {c.MAGNTA}{args.name}{c.END} - "
         f"project {c.BLUE}{existing}{c.END} already exists inside")
       sys.exit(1)
+  # Outside the workspace no list holds the projects: a folder above with `main.h` is one
+  holder = local_project_at(PATH.dirname(args.name)) if utils.is_local(args.name) else ""
+  if holder:
+    p.err(f"Cannot create {c.MAGNTA}{args.name}{c.END} "
+      f"inside existing project {c.BLUE}{holder}{c.END}")
+    sys.exit(1)
   parent_dir = PATH.dirname(PATH.resolve(utils.project_dir(args.name), read=False))
   if not utils.check_write_permission(parent_dir):
     p.err(f"No write permission in {c.CREAM}{parent_dir}{c.END}")
@@ -189,7 +195,7 @@ def boot_rules(cfg:Config):
   if cfg.signing_key and cfg.signing_key >= count:
     p.err(f"{c.SKY}PRO_SIGNING_KEY{c.END} {c.GOLD}{cfg.signing_key}{c.END} "
       f"is past the {c.GOLD}{count}{c.END} keys of {c.SKY}BOOT_KEYS{c.END}")
-    command = f"opencplc --keygen <name> {cfg.signing_key + 1}"
+    command = f"opencplc --sign <name> {cfg.signing_key + 1}"
     p.run(f"Add keys with {utils.color_command(command)}")
     sys.exit(1)
 

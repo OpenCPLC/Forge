@@ -8,12 +8,14 @@ as a device in the field takes an update over its own link, and resets to instal
 Once it answers again, `boot info` shows what the bootloader made of the image.
 Without `PORT` the one console of the computer goes; with several, `PORT=` names one.
 A board that answers no ping gets no image, so a silent one is never taken for a refusal.
+An encrypted `.bin` is refused, as only the application of a device holds its key.
 """
 
 import sys, time
 from xaeian import Print, Color as c, FILE, PATH
 from xaeian.serial import Shell, serial_scan
 from .args import flag
+from .cipher import encrypted
 from . import utils
 
 p = Print()
@@ -48,6 +50,10 @@ def upload(args:list[str]):
   if not FILE.exists(path):
     p.err(f"Image {name} not found")
     p.run(f"Build it with {utils.color_command('make')}")
+    sys.exit(1)
+  if PATH.ext(path).lower() == ".bin" and encrypted(FILE.load(path, binary=True)):
+    p.err(f"Image {name} encrypted or damaged, its bytes miss the CRC of its trailer")
+    p.run("An encrypted image goes over the link of the application, which holds its key")
     sys.exit(1)
   port = console_port(args[1] if len(args) > 1 else None)
   # The console of a project runs without echo, so the first line of a reply is the reply

@@ -64,7 +64,7 @@ def host_main_h_roundtrip():
 def project_makefile_roundtrip():
   subs = {
     "${NAME}": "myapp", "${TARGET}": "myapp", "${STLINK}": "SER01",
-    "${UP_PATH}": "../..", "${CORE_DIR}": "opencplc/1.0.0",
+    "${WORKSPACE}": "$(abspath $(PROJECT)/../..)", "${CORE_DIR}": "opencplc/1.0.0",
     "${BUILD_DIR}": "build/projects/myapp",
     "${CORE_C}": "hal/arm/core.c", "${CORE_S}": "", "${PRO_C}": "main.c", "${PRO_S}": "",
     "${C_INCLUDES}": "-I$(PROJECT)", "${C_DEFS}": "-DSTM32", "${MCU_FLAGS}": "-mthumb",

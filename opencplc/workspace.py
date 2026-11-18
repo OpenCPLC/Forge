@@ -4,13 +4,14 @@
 Workspace state.
 
 Finds the opencplc.json root from any directory inside the workspace,
-loads and persists configuration, fetches framework refs once per run,
+or from a local project outside it, whose makefile names its workspace.
+Loads and persists configuration, fetches framework refs once per run,
 keeps the Core checkout present and answers what projects exist here.
 """
 
-import os, sys, json
+import os, re, sys, json
 from xaeian import Print, Color as c, Ico, FILE, DIR, JSON, PATH, replace_end, set_context
-from .config import URL_CORE, DIR_PROJECTS, DIR_FRAMEWORK, DIR_TESTS, DIR_BOOT
+from .config import URL_CORE, DIR_PROJECTS, DIR_FRAMEWORK, DIR_TESTS, DIR_BOOT, FORGE_HEADER
 from .args import flag
 from . import utils
 
@@ -42,10 +43,42 @@ def project_from_path(path:str, pro_root:str) -> str|None:
     name = PATH.dirname(name)
   return None
 
-def enter_workspace() -> str:
-  """Move to the nearest workspace root; returns the original working directory."""
+def linked_workspace(start:str=".") -> str|None:
+  """
+  Workspace the makefile of a local project names, in `start` or a folder above it.
+
+  Only a makefile Forge wrote counts, as one of another tool may hold its own `WORKSPACE`.
+  A project of the workspace spells it from its own folder, so only an absolute one counts.
+  A workspace gone from there exits, since the project needs a load from another one.
+  """
+  path = PATH.normalize(os.path.abspath(start)) # the process cwd: no file root is set yet
+  while True:
+    lines = utils.load_lines(f"{path}/makefile")
+    if lines and lines[0].startswith(FORGE_HEADER):
+      found = utils.get_vars(utils.lines_clear(lines, "#"), ["WORKSPACE"], ":=", required=False)
+      root = found.get("WORKSPACE", "")
+      if PATH.is_abs(root):
+        if FILE.exists(f"{root}/opencplc.json"): return root
+        p.err(f"Workspace {c.CREAM}{root}{c.END} of this project "
+          f"has no {c.ORANGE}opencplc.json{c.END}")
+        p.run(f"Load the project from a workspace with {utils.color_command('opencplc <path>')}")
+        sys.exit(1)
+    parent = PATH.dirname(path)
+    if parent == path: return None
+    path = parent
+
+def enter_workspace(named:str="") -> str:
+  """
+  Move to the nearest workspace root, or to the one a local project names.
+
+  The makefile of a local project names it, found from the working directory
+  or from `named`, the path of a project the command line gives.
+  Returns the original working directory.
+  """
   cwd = os.getcwd()
-  root = find_workspace() or cwd
+  root = find_workspace() or linked_workspace()
+  if not root and named and is_path(named): root = linked_workspace(os.path.join(cwd, named))
+  root = root or cwd
   if not os.path.samefile(root, cwd):
     os.chdir(root) # subprocesses (git, make) follow the process cwd
     p.inf(f"Workspace: {c.CREAM}{root}{c.END}")
@@ -148,8 +181,13 @@ def makefile_info() -> dict|None:
   return utils.get_vars(lines, ["ACTIVE"], ":=", required=False) or None
 
 def reload_from_cwd(args, cwd:str) -> bool:
-  """-r/-i inside a project directory, in `projects/` or a Core: that project is the target."""
-  name = utils.project_name(project_from_path(cwd, ".") or "")
+  """
+  -r/-i inside a project directory, in the workspace or outside: that project is the target.
+
+  Outside the workspace it is the local project holding `cwd`.
+  """
+  if PATH.is_under(cwd, "."): name = utils.project_name(project_from_path(cwd, ".") or "")
+  else: name = local_project_at(cwd)
   if not name: return False
   args.name = name
   return True
@@ -177,11 +215,76 @@ def stlink_bind(forge_cfg:dict, pro_id:str, serial:str|None) -> str:
   if serial is not None: persist_config(forge_cfg)
   return bound.get(pro_id, "")
 
+#------------------------------------------------------------------------------------ Local project
+
+# The makefile of a local project holds its path and that of the workspace in full:
+# make cuts a word at a space or `#`, `cmd.exe` a command at `&`, and make reads ANSI alone
+SAFE_PATH = re.compile(r"(?:[A-Za-z]:)?[A-Za-z0-9_.~/-]+")
+
+def is_path(name:str) -> bool:
+  """
+  `True` for a path, which names a project from anywhere: `.` or `..` first, or absolute.
+
+  A name in the workspace never starts so, `validate_project_name` refuses both forms.
+  """
+  return name.replace("\\", "/").split("/")[0] in (".", "..") or PATH.is_abs(name)
+
+def path_name(path:str, cwd:str) -> str:
+  """
+  Project `path` names, going from `cwd`: one in the workspace by its name, one outside by itself.
+
+  A local project goes by its absolute path, as `utils.full_path` spells it.
+  A folder of the workspace beside its projects, or one holding the workspace, exits,
+  and so does a local one on a path its makefile could not hold.
+  """
+  full = utils.full_path(os.path.join(cwd, path))
+  if not FILE.exists("opencplc.json"):
+    p.err("A local project builds with a workspace, and none is found here")
+    p.run(f"Load it once from a workspace with {utils.color_command(f'opencplc {full}')}")
+    sys.exit(1)
+  # Where a folder lies goes by the disk, through links and `subst` drives
+  if PATH.is_under(full, ".", real=True):
+    name = utils.project_name(PATH.rel(PATH.real(full), PATH.real(".")))
+    if name: return name
+    p.err(f"{c.CREAM}{full}{c.END} is no project folder of the workspace")
+    p.run(f"Point at one in {c.GREY}{DIR_PROJECTS}/{c.END}, in a Core or outside the workspace")
+    sys.exit(1)
+  if PATH.is_under(".", full, real=True):
+    p.err(f"{c.CREAM}{full}{c.END} holds the workspace, a project cannot")
+    sys.exit(1)
+  if not PATH.basename(full):
+    p.err(f"{c.CREAM}{full}{c.END} is the root of a drive, a project needs a folder of its own")
+    sys.exit(1)
+  for where in (full, utils.full_path(".")):
+    if SAFE_PATH.fullmatch(where): continue
+    p.err(f"Path {c.CREAM}{where}{c.END} holds a character make or the console reads as syntax")
+    p.run("Keep the project and the workspace on paths "
+      f"of ASCII letters, digits and {c.SKY}_.~-{c.END}")
+    sys.exit(1)
+  return full
+
+def local_project_at(path:str) -> str:
+  """Local project holding `path`: the nearest folder at or above it with `main.h`, "" without."""
+  path = utils.full_path(path)
+  while True:
+    # `.tests/main.h` sets up the tests of the project above
+    if PATH.basename(path) != DIR_TESTS and FILE.exists(f"{path}/main.h"): return path
+    parent = PATH.dirname(path)
+    if parent == path: return ""
+    path = parent
+
 #-------------------------------------------------------------------------------- Project inventory
 
 def project_inventory(name:str|None) -> dict[str, str]:
-  """Projects by name: all of `projects/`, and those of the Core `name` lies in, itself too."""
+  """
+  Projects by name: all of `projects/`, and those of the Core `name` lies in, itself too.
+
+  A local `name` joins them by its path, once it holds `main.h`.
+  """
   projects = utils.get_project_list(DIR_PROJECTS)
+  if name and utils.is_local(name):
+    if FILE.exists(f"{name}/main.h"): projects[name] = name
+    return projects
   core = utils.core_version(name or "")
   if not core: return projects
   home = f"{DIR_FRAMEWORK}/{core}"

@@ -3,11 +3,11 @@
     {
       "name": "${NAME}",
       "includePath": [
-        "${workspaceFolder}/${CORE_DIR}/hal/host/**",
-        "${workspaceFolder}/${CORE_DIR}/lib/**",
-        "${workspaceFolder}/${CORE_DIR}",
-        "${workspaceFolder}/${BUILD_DIR}",
-        "${workspaceFolder}/${PRO_DIR}/**"
+        "${CORE_PATH}/hal/host/**",
+        "${CORE_PATH}/lib/**",
+        "${CORE_PATH}",
+        "${BUILD_PATH}",
+        "${PRO_PATH}/**"
       ],
       "defines": [
         "HOST",

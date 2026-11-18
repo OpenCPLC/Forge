@@ -152,17 +152,47 @@ def dist_under_one_key_says_to_add_spare_ones(tmp_path, key_files, capsys):
   public = keys.product_make("acme", "")
   pack_command([app, out, boot, public.hex(), "0", "dist"])
   shown = ANSI.sub("", capsys.readouterr().out)
-  assert "holds one key" in shown and "--keygen acme 3" in shown
+  assert "holds one key" in shown and "--sign acme 3" in shown
   first, second = keys.product_make("first", ""), keys.product_make("second", "")
   pack_command([app, out, boot, first.hex() + second.hex(), "0", "dist"])
   assert "holds one key" not in capsys.readouterr().out
+
+def dist_warns_of_an_image_another_build_left_encrypted(tmp_path, key_files, capsys):
+  """
+  An encrypted image keeps the plain trailer of its build, and one build packs to one trailer.
+  The image of this build under another key stays quiet, one of another build speaks up
+  unless `CIPHER=` encrypts it anew right after, and a plain image named like a key is none.
+  """
+  app, out, boot = key_files
+  public = keys.product_make("acme", "")
+  for name in ("same", "older", "rc1"): keys.cipher_make(name, "")
+  pack_command([app, out, boot, public.hex(), "0", "dist"])
+  update = (tmp_path / "app-dist.bin").read_bytes()
+  body, trailer = update[:-TRAILER], update[-TRAILER:]
+  scrambled = bytes(byte ^ 0xFF for byte in body) # misses the CRC, as encrypted bytes do
+  (tmp_path / "app-dist-same.bin").write_bytes(scrambled + trailer)
+  (tmp_path / "app-dist-older.bin").write_bytes(scrambled + bytes(TRAILER))
+  zero = bytes(len(body)) # plain: its trailer holds the CRC of its bytes
+  (tmp_path / "app-dist-rc1.bin").write_bytes(zero + zlib.crc32(zero).to_bytes(4, "little")
+    + b"\xff" * (TRAILER - 4))
+  capsys.readouterr()
+  pack_command([app, out, boot, public.hex(), "0", "dist"])
+  shown = ANSI.sub("", capsys.readouterr().out)
+  assert "app-dist-older.bin comes from another build" in shown and "CIPHER=older" in shown
+  assert "app-dist-same.bin" not in shown and "app-dist-rc1.bin" not in shown
+  pack_command([app, out, boot, public.hex(), "0", "dist", "older"])
+  assert "another build" not in capsys.readouterr().out
 
 def update_binary_sits_beside_the_flash_image():
   assert update_path("build/app-dist.hex") == "build/app-dist.bin"
 
 def pack_command_of_other_arguments_exits(tmp_path):
-  """Files, then keys with a number, `dist` only behind them; a failed pack exits as well."""
+  """
+  Files, then keys with a number, `dist` only behind them and a cipher key only behind `dist`;
+  a failed pack exits as well.
+  """
   for args in (["app.hex"], ["a", "b", "c", KEYS], ["a", "b", "dist"], ["a", "b", "c", "dist"],
-    ["a", "b", "c", KEYS, "0", "x", "dist"], [str(tmp_path / "none.hex"), "b"]):
+    ["a", "b", "c", "dist", "acme"], ["a", "b", "c", KEYS, "0", "x", "dist"],
+    [str(tmp_path / "none.hex"), "b"]):
     with pytest.raises(SystemExit):
       pack_command(args)

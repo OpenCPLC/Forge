@@ -5,6 +5,7 @@
 from xaeian import file_context
 import pytest
 from opencplc.lint.graph import Graph, read, settle_weak, drop_unlinked, INDIRECT
+from opencplc.lint.lintfile import Margins
 from opencplc.lint.rules import (
   Roles, Thread, find_threads, hidden_calls, check_graph, check_stacks, deepest, contexts,
 )
@@ -85,6 +86,13 @@ def interrupt_touching_the_heap_races_the_threads():
   found = check_graph(graph, {}, [], ROLES)
   assert [(f.rule, f.function) for f in found] == [("irq-heap", "I2C1_IRQHandler")]
   assert "`heap_free` (i2c.c:20)" in found[0].message and "CWE-364" in found[0].refs
+
+def heap_of_the_c_library_counts_in_an_interrupt_too():
+  graph = graph_of(node("TIM2_IRQHandler", "irq.c:10:6"),
+    edge("TIM2_IRQHandler", "malloc", "irq.c:12:3"))
+  found = check_graph(graph, {}, [], ROLES)
+  assert [(f.rule, f.function) for f in found] == [("irq-heap", "TIM2_IRQHandler")]
+  assert "`malloc` (irq.c:12)" in found[0].message
 
 def the_start_of_the_program_is_no_interrupt():
   graph = graph_of(node("Reset_Handler", "startup.c:5:6"),
@@ -176,9 +184,9 @@ def stack_adds_frames_on_the_deepest_path_and_names_what_it_cannot_see():
   depth, holes = deepest(graph, "loop")
   assert depth == 24 + 100 + 40
   assert holes == {"pointer", "dynamic", "library"}
-  stacks, found = check_stacks(graph, [LOOP], {"stack_loop": 256}, 204)
+  stacks, found = check_stacks(graph, [LOOP], {"stack_loop": 256}, 204, Margins())
   assert stacks[0].size == 256 and [f.rule for f in found] == ["stack-fit"]
-  assert "needs at least 368B" in found[0].message
+  assert "`loop` needs at least 368B" in found[0].message
 
 def threads_are_the_calls_gcc_compiled():
   """A `thread()` an `#if` leaves out has no call in the graph, so it is no thread."""
@@ -224,12 +232,17 @@ def the_heap_is_off_limits_to_the_project_once_turned_on():
   assert [(f.rule, f.path, f.line, f.function) for f in found] == [
     ("no-heap", "app/main.c", 4, "loop")]
 
-def a_margin_keeps_a_quarter_of_each_stack_free_once_turned_on():
-  thread = Thread("loop", "stack_loop", "a.c", 1)
-  for frame, left in (("200 bytes (static)", ["stack-margin"]), ("180 bytes (static)", [])):
-    graph = graph_of(node("loop", "a.c:1:6", frame))
-    assert check_stacks(graph, [thread], {"stack_loop": 256}, 0)[1] == []
-    assert [f.rule for f in check_stacks(graph, [thread], {"stack_loop": 256}, 0, True)[1]] == left
+def a_thread_keeps_a_quarter_of_its_stack_free_unless_its_margin_says_otherwise():
+  """The finding stands where `thread()` chooses the array, in the project."""
+  thread = Thread("DBG_Loop", "stack_dbg", "app/main.c", 12)
+  graph = graph_of(node("DBG_Loop", "core/dbg.c:5:6", "200 bytes (static)")) # over 75% of 256B
+  stacks, found = check_stacks(graph, [thread], {"stack_dbg": 256}, 0, Margins())
+  assert [(f.rule, f.path, f.line, f.function) for f in found] == [
+    ("stack-fit", "app/main.c", 12, "DBG_Loop")]
+  assert "over the 75% its margin allows" in found[0].message and stacks[0].margin == 25
+  for margins in (Margins(every=20), Margins(threads={"DBG_Loop": 20})):
+    assert check_stacks(graph, [thread], {"stack_dbg": 256}, 0, margins)[1] == []
+  assert check_stacks(graph, [thread], {"stack_dbg": 256}, 0, Margins(threads={"loop": 20}))[1]
 
 def interrupts_and_threads_share_what_both_call():
   graph = graph_of(

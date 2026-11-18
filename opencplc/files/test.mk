@@ -44,7 +44,7 @@ $(TEST_BUILD)/%$(TEST_EXT): $(TEST_DIR)/%.c $(TEST_BUILD)/core.a $(CONFIG_DEPS)
 	gcc $(TEST_CFLAGS) -MMD -MP -MF"$(TEST_BUILD)/$*.d" $< $(TEST_BUILD)/core.a $(TEST_LIBS) -o $@
 
 test: $(TEST_PROGRAMS)
-	@$(if $(TEST_PICK),cd $(WORKSPACE) && $(FORGE) --test $(TEST_BUILD) $(TEST_PICK),echo No test programs in ${TEST_COLORED})
+	@$(if $(TEST_PICK),$(call CD,$(WORKSPACE)) && $(FORGE) --test $(TEST_BUILD) $(TEST_PICK),echo No test programs in ${TEST_COLORED})
 
 .PHONY: test
 

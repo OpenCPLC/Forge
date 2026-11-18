@@ -5,7 +5,8 @@
 from .files import (
   load_lines, files_list, last_modification,
   create_file, get_project_list, project_key, glob_match, ignored, check_write_permission,
-  core_version, core_dir, is_core, project_dir, project_name, home_name,
+  core_version, core_dir, is_core, is_local, project_dir, project_name, home_name,
+  full_path, tree_path,
 )
 from .text import (
   line_remove, lines_clear,
@@ -29,7 +30,8 @@ __all__ = [
   "load_lines", "files_list", "last_modification",
   "create_file", "get_project_list", "project_key", "glob_match", "ignored",
   "check_write_permission",
-  "core_version", "core_dir", "is_core", "project_dir", "project_name", "home_name",
+  "core_version", "core_dir", "is_core", "is_local", "project_dir", "project_name", "home_name",
+  "full_path", "tree_path",
   "line_remove", "lines_clear",
   "get_vars", "define_string", "find_missing_keys",
   "version_real", "version_older_than", "version_check",

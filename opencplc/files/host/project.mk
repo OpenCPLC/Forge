@@ -7,10 +7,11 @@ TARGET := ${TARGET}
 
 # Paths anchored to this file, so `make -C` works from any directory, on the drive in upper case:
 # VS Code starts make on `c:`, a console on `C:`, and `.d` files keep the spelling they got
+# A local project, outside the workspace, names it in full
 THIS_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 MAKEFILE_PATH := $(patsubst ${DRIVE_LOWER}%,${DRIVE}%,$(abspath $(THIS_MAKEFILE)))
 PROJECT := $(patsubst %/,%,$(dir $(MAKEFILE_PATH)))
-WORKSPACE := $(abspath $(PROJECT)/${UP_PATH})
+WORKSPACE := ${WORKSPACE}
 OPENCPLC := $(WORKSPACE)/${CORE_DIR}
 BUILD := $(WORKSPACE)/${BUILD_DIR}
 
@@ -25,6 +26,8 @@ RMDIR = if exist "$(subst /,\,$1)" rmdir /s /q "$(subst /,\,$1)"
 RMFILE = if exist "$(subst /,\,$1)" del /q "$(subst /,\,$1)"
 COPY = copy /y "$(subst /,\,$1)" "$(subst /,\,$2)" >nul
 TOUCH = type nul > "$(subst /,\,$1)"
+# `cd` of cmd.exe keeps its drive without `/d`, and a local project may lie on another one
+CD = cd /d "$(subst /,\,$1)"
 C_DEFS = -DHOST -D_WIN64
 LIBS = -lm -lbcrypt
 EXE = $(BUILD)/$(TARGET).exe
@@ -35,6 +38,7 @@ RMDIR = rm -rf $1
 RMFILE = rm -f $1
 COPY = cp $1 $2
 TOUCH = touch $1
+CD = cd $1
 C_DEFS = -DHOST -D_GNU_SOURCE
 LIBS = -lm -lpthread
 EXE = $(BUILD)/$(TARGET)
@@ -78,7 +82,7 @@ $(THIS_MAKEFILE): $(FORGE_STAMP) ;
 
 $(FORGE_STAMP): $(CONFIG_INPUTS)
 	@$(call MKDIR,$(BUILD))
-	@cd $(WORKSPACE) && $(FORGE) -r $(NAME) $(LOAD_FLAGS)
+	@$(call CD,$(WORKSPACE)) && $(FORGE) -r $(NAME) $(LOAD_FLAGS)
 	@$(call TOUCH,$@)
 
 .DEFAULT_GOAL := build

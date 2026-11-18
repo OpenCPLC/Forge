@@ -60,3 +60,50 @@ def signing_seed_finds_the_product_key_and_takes_the_password_from_ci(keys_dir, 
   monkeypatch.setenv(keys.PASSWORD_ENV, "wrong horse")
   with pytest.raises(ValueError, match="wrong password"):
     keys.signing_seed(public)
+
+def cipher_key_unmasks_with_its_password_alone(keys_dir, monkeypatch):
+  key_id = keys.cipher_make("acme-enc", "correct horse")
+  record = (keys_dir / "acme-enc.cipher").read_text()
+  monkeypatch.setenv(keys.PASSWORD_ENV, "correct horse")
+  key = keys.cipher_key("acme-enc")
+  assert keys.cipher_id(key) == key_id and key.hex() not in record
+  monkeypatch.setenv(keys.PASSWORD_ENV, "wrong horse")
+  with pytest.raises(ValueError, match="wrong password"):
+    keys.cipher_key("acme-enc")
+
+def cipher_key_without_a_password_asks_for_none(keys_dir, monkeypatch):
+  monkeypatch.setattr(keys.getpass, "getpass", lambda prompt: pytest.fail("password asked"))
+  key_id = keys.cipher_make("acme-enc", "")
+  assert keys.cipher_id(keys.cipher_key("acme-enc")) == key_id
+
+def cipher_key_is_never_replaced(keys_dir):
+  keys.cipher_make("acme-enc", "")
+  before = (keys_dir / "acme-enc.cipher").read_text()
+  with pytest.raises(ValueError, match="already exists"):
+    keys.cipher_make("acme-enc", "")
+  assert (keys_dir / "acme-enc.cipher").read_text() == before
+
+def cipher_fingerprint_is_the_head_of_its_sha512():
+  """A device computes the same 16 digits, so the key it holds is proven without showing it."""
+  assert keys.cipher_id(bytes(32)) == "5046adc1dba83886"
+
+def a_damaged_key_file_raises_with_its_path_and_never_as_a_wrong_password(keys_dir):
+  keys.cipher_make("acme-enc", "")
+  short, wide = '{"cipher": "00"}', '{"cipher": "' + "00" * 32 + '"}'
+  for text in ("", "{nope", "[]", short, wide):
+    (keys_dir / "acme-enc.cipher").write_text(text)
+    with pytest.raises(ValueError, match="acme-enc.cipher damaged"): keys.cipher_key("acme-enc")
+  keys.product_make("acme", "")
+  (keys_dir / "acme.key").write_text('{"seed": "zz"}')
+  with pytest.raises(ValueError, match="acme.key damaged"): keys.product_seed("acme", "")
+
+def password_prompts_name_the_kind_and_number_of_keys(monkeypatch):
+  asked = []
+  monkeypatch.delenv(keys.PASSWORD_ENV, raising=False)
+  monkeypatch.setattr(keys.getpass, "getpass", lambda prompt: asked.append(prompt) or "horse-123")
+  keys.new_password(["acme-enc"], "cipher key")
+  keys.new_password(["acme", "acme-1"], "product key")
+  keys.password_for("acme", "product key")
+  assert asked[0].startswith("Password of new cipher key acme-enc,")
+  assert asked[2].startswith("Password of new product keys acme, acme-1,")
+  assert asked[4] == "Password of product key acme: "

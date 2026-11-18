@@ -59,9 +59,7 @@ class Switch:
   source: str            # type of the condition as written, for a message
   has_default: bool
   cases: frozenset[int]  # labels with a proven value
-  values: Values         # of the condition
-  # Its cases set the very variable it switches on, a state machine a stray value would stall
-  steps: bool = False
+  values: Values         # of the condition, its type bounding an integer
 
 @dataclass(frozen=True)
 class Entry:
@@ -112,6 +110,15 @@ class Access:
   # Read again and again by a loop with no barrier, where a value kept in a register would do
   polled: bool = False
 
+@dataclass(frozen=True)
+class Literal:
+  """A `double` constant a `float` operand meets, which takes their math to `double`."""
+  text: str # its first literal, as written
+  path: str
+  line: int
+  column: int
+  function: str
+
 @dataclass
 class Unit:
   """Facts of one translation unit."""
@@ -121,6 +128,7 @@ class Unit:
   arguments: list[Argument] = field(default_factory=list)
   ignored: list[Ignored] = field(default_factory=list)
   accesses: list[Access] = field(default_factory=list)
+  literals: list[Literal] = field(default_factory=list)
   # Caller and callee key of each call the source makes, one gcc inlines included
   calls: list[tuple[str, str]] = field(default_factory=list)
 
@@ -389,17 +397,7 @@ def collect_switches(tokens:Tokens, unit:Unit):
     unit.switches.append(Switch(keyword.get("file"), int(keyword.get("linenr")),
       function.get("className") if function is not None else "", tokens.enum_of(condition),
       type_text(condition), scope_id in defaults, frozenset(cases.get(scope_id, ())),
-      tokens.values_of(condition) if condition is not None else Values(),
-      steps(tokens, scope, condition)))
-
-def steps(tokens:Tokens, scope:ET.Element, condition:ET.Element|None) -> bool:
-  """The cases of the `switch` of `scope` assign the variable or field it switches on."""
-  target = path_of(tokens, condition)
-  if not target: return False
-  for token in tokens.order[slice(*span_of(tokens, scope))]:
-    if token.get("isAssignmentOp") == "true" or token.get("str") in ("++", "--"):
-      if path_of(tokens, tokens.get(token, "astOperand1")) == target: return True
-  return False
+      tokens.values_of(condition) if condition is not None else Values()))
 
 def collect_entries(tokens:Tokens, unit:Unit, loads:tuple[str, ...]=()):
   """
@@ -738,6 +736,45 @@ def collect_statics(tokens:Tokens, unit:Unit):
       function.get("className") if function is not None else "")
     started(tokens, unit, variable, initializer(tokens, name_token), where, name_token.get("str"))
 
+# Operators of the usual arithmetic conversions, where a `double` operand takes a `float` one along
+WIDENING = {"+", "-", "*", "/", "<", ">", "<=", ">=", "==", "!=", "+=", "-=", "*=", "/="}
+
+def constant(tokens:Tokens, node:ET.Element|None) -> bool:
+  """`node` a number, or arithmetic of numbers alone, which the compiler folds."""
+  if node is None: return False
+  if node.get("type") == "number": return True
+  if node.get("isArithmeticalOp") != "true": return False
+  left, right = tokens.get(node, "astOperand1"), tokens.get(node, "astOperand2")
+  return constant(tokens, left) and (right is None or constant(tokens, right))
+
+def first_double(tokens:Tokens, node:ET.Element|None) -> ET.Element|None:
+  """First literal of type `double` within constant `node`, left to right."""
+  if node is None: return None
+  if node.get("type") == "number": return node if node.get("valueType-type") == "double" else None
+  # An element without children is false, so `or` would skip a literal found on the left
+  left = first_double(tokens, tokens.get(node, "astOperand1"))
+  return left if left is not None else first_double(tokens, tokens.get(node, "astOperand2"))
+
+def collect_literals(tokens:Tokens, unit:Unit):
+  """
+  Each `double` constant a `float` operand meets: `x > 0.5`, `x * (1.0 / 3.0)`.
+
+  The constant is the slip, a literal without `f`, while a variable of type `double` is a choice.
+  A constant assigned or passed on converts once, at compile time, and costs nothing.
+  """
+  for token in tokens.order:
+    if token.get("str") not in WIDENING: continue
+    function = tokens.function_of(token)
+    sides = (tokens.get(token, "astOperand1"), tokens.get(token, "astOperand2"))
+    if function is None or None in sides: continue
+    for mine, other in (sides, sides[::-1]):
+      if mine.get("valueType-type") != "float" or other.get("valueType-type") != "double": continue
+      literal = first_double(tokens, other) if constant(tokens, other) else None
+      if literal is None: continue
+      unit.literals.append(Literal(literal.get("str"), literal.get("file"),
+        int(literal.get("linenr")), int(literal.get("column")), function.get("className")))
+      break
+
 def collect_accesses(tokens:Tokens, unit:Unit):
   """
   Reads and writes of file-scope variables and of struct fields, function by function.
@@ -956,12 +993,17 @@ def local_copy(tokens:Tokens, member:ET.Element) -> bool:
   return variable.get("access") == "Local" \
     or (variable.get("access") == "Argument" and variable.get("isArray") != "true")
 
-def read_dump(path:str, rename:dict[str, str]|None=None, loads:tuple[str, ...]=()) -> Unit:
+def configured(path:str) -> bool:
+  """Dump `path` holds a configuration, so cppcheck read its source through."""
+  return b'<dump cfg="' in FILE.load(path, binary=True)
+
+def read_dump(path:str, rename:dict[str, str]|None=None, loads:tuple[str, ...]=()) -> Unit|None:
   """
   Facts of the dump `path`, its first configuration: the one the defines of the build pick.
 
   `rename` gives the path a file read under another name had, a copy its source.
   `loads` are globs of functions writing raw bytes into the buffer a caller gives them.
+  `None` comes back for a dump without a configuration, as an `#error` leaves it.
   """
   data = FILE.load(path, binary=True)
   # Raw tokens and directives are a third of a dump and no rule reads them
@@ -969,8 +1011,8 @@ def read_dump(path:str, rename:dict[str, str]|None=None, loads:tuple[str, ...]=(
     start, end = data.find(b"<" + tag), data.find(b"</" + tag + b">")
     if start >= 0 and end > start: data = data[:start] + data[end + len(tag) + 3:]
   config = ET.fromstring(data).find("dump")
+  if config is None: return None
   unit = Unit()
-  if config is None: return unit
   for token in config.iter("token"):
     if (name := token.get("file")) in (rename or {}): token.set("file", rename[name])
   tokens = Tokens(config)
@@ -979,4 +1021,5 @@ def read_dump(path:str, rename:dict[str, str]|None=None, loads:tuple[str, ...]=(
   collect_switches(tokens, unit)
   collect_entries(tokens, unit, loads)
   collect_accesses(tokens, unit)
+  collect_literals(tokens, unit)
   return unit

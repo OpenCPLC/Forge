@@ -26,19 +26,23 @@ def workspace(tmp_path):
     yield root
 
 def names_split_into_rules_to_turn_on_and_the_rest():
-  assert split_opt_ins(["no-heap", "stack-margin", "conversion"]) == (
-    ["no-heap", "stack-margin", "conversion"], [],
-  )
+  assert split_opt_ins(["no-heap"]) == (["no-heap"], [])
   # A rule of the default set is on already, so naming it is a mistake too
-  assert split_opt_ins(["no-heap", "nope", "irq-yield", "static-scope"]) == (
-    ["no-heap"], ["nope", "irq-yield", "static-scope"],
-  )
+  named = ["nope", "irq-yield", "status-used", "float-literal", "conversion", "fixed-width",
+    "cppcheck-style"]
+  assert split_opt_ins(["no-heap", *named]) == (["no-heap"], named)
+  # MISRA C goes by number, which the addon checks later: a number cut short or a directive is none
+  forms = ["misra-15.5", "misra-20.10", "no-continue", "function-length"]
+  wrong = ["misra-15", "misra-d4.6"]
+  assert split_opt_ins([*forms, *wrong]) == (forms, wrong)
 
 @pytest.mark.skipif(GCC is None, reason="arm-none-eabi-gcc required")
-def compiler_rules_turned_on_reach_the_project_alone(workspace, monkeypatch):
+def compiler_rules_reach_the_project_alone(workspace, monkeypatch):
   monkeypatch.setenv("PATH", ARM_BIN + os.pathsep + os.environ.get("PATH", ""))
+  # Narrowing asks for a cast, widening loses nothing and passes
   narrowing = ("#include <stdint.h>\nuint8_t cut(uint32_t value);\n"
-    "uint8_t cut(uint32_t value) { return value; }\n")
+    "uint8_t cut(uint32_t value) { return value; }\nuint32_t wide(uint8_t value);\n"
+    "uint32_t wide(uint8_t value) { return value; }\n")
   FILE.save(f"{workspace}/core/lib.c", narrowing)
   FILE.save(f"{workspace}/project/main.c", narrowing)
   unit = Unit("app", "-mcpu=cortex-m4 -mthumb",

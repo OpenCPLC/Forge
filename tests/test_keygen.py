@@ -1,6 +1,6 @@
 # tests/test_keygen.py
 
-"""`--keygen NAME [COUNT]`: product keys made or taken, held by `BOOT_KEYS` of boot.h."""
+"""`--sign NAME [COUNT]`: product keys made or taken, held by `BOOT_KEYS` of boot.h."""
 
 import os, pytest
 from opencplc.keygen import keygen, key_names, with_keys, with_include, KEYS_NOTE
@@ -27,7 +27,7 @@ def next_keys_go_at_the_end_one_a_line():
   assert numbers == [2] and f'  "{NEXT.hex()}" \\\r\n  "{bytes(32).hex()}"\r\n' in text
 
 def a_boot_h_holding_every_key_comes_back_unchanged():
-  """Whatever the case of its digits: `--keygen acme 3` run again writes nothing."""
+  """Whatever the case of its digits: `--sign acme 3` run again writes nothing."""
   once = with_keys(BOOT_H, [KEY, NEXT])[0]
   assert with_keys(once, [KEY, NEXT]) == (once, [0, 1])
   upper = f'#define BOOT_KEYS "{KEY.hex().upper()}"\r\n'
@@ -82,7 +82,7 @@ def keygen_makes_boot_h_and_its_include(pro, keys_dir, monkeypatch):
   """One password for every new key, typed and repeated."""
   asked = []
   monkeypatch.delenv(keys.PASSWORD_ENV, raising=False)
-  monkeypatch.setattr("opencplc.keygen.getpass.getpass",
+  monkeypatch.setattr(keys.getpass, "getpass",
     lambda prompt: asked.append(prompt) or "correct horse")
   keygen(["acme", "3"], "app", str(pro))
   assert len(asked) == 2
@@ -123,16 +123,16 @@ def a_spare_key_added_later_keeps_the_numbers_of_the_others(pro, keys_dir, monke
 
 def key_without_a_password_signs_without_asking(pro, keys_dir, monkeypatch):
   monkeypatch.delenv(keys.PASSWORD_ENV, raising=False)
-  monkeypatch.setattr("opencplc.keygen.getpass.getpass", lambda prompt: "")
+  monkeypatch.setattr(keys.getpass, "getpass", lambda prompt: "")
   keygen(["acme"], "app", str(pro))
   assert "salt" not in keys.product_record("acme")
-  monkeypatch.setattr("opencplc.keygen.getpass.getpass", lambda prompt: pytest.fail("asked"))
+  monkeypatch.setattr(keys.getpass, "getpass", lambda prompt: pytest.fail("asked"))
   public = keys.product_public("acme")
   assert ed25519.public_key(keys.signing_seed(public)) == public
 
 def short_password_stops_before_any_file(pro, keys_dir, monkeypatch):
   monkeypatch.delenv(keys.PASSWORD_ENV, raising=False)
-  monkeypatch.setattr("opencplc.keygen.getpass.getpass", lambda prompt: "1234567")
+  monkeypatch.setattr(keys.getpass, "getpass", lambda prompt: "1234567")
   with pytest.raises(SystemExit):
     keygen(["acme"], "app", str(pro))
   assert keys.product_public("acme") is None and not (pro / "boot.h").exists()
@@ -140,7 +140,7 @@ def short_password_stops_before_any_file(pro, keys_dir, monkeypatch):
 
 def refused_files_and_lost_pub_stop_the_keys_before_their_password(pro, keys_dir, monkeypatch):
   """`acme.key` without `acme.pub` would fail only after the password was typed twice."""
-  monkeypatch.setattr("opencplc.keygen.new_password", lambda names: pytest.fail("password asked"))
+  monkeypatch.setattr(keys, "new_password", lambda names, kind: pytest.fail("password asked"))
   (pro / "main.h").write_bytes((MAIN_H + f'#define BOOT_KEYS "{KEY.hex()}"\r\n').encode())
   with pytest.raises(SystemExit):
     keygen(["acme"], "app", str(pro))

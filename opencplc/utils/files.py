@@ -2,11 +2,12 @@
 
 """File and directory helpers: listing, mtimes, rendering, project discovery."""
 
-import re
+import os, re
 from datetime import datetime
 from xaeian import Print, Color as c, FILE, DIR, PATH, replace_map
-from ..config import DIR_PROJECTS, DIR_FRAMEWORK, DIR_TESTS
+from ..config import DIR_PROJECTS, DIR_FRAMEWORK, DIR_TESTS, DIR_LOCAL
 from .text import line_remove
+from .hash import hash_string
 
 p = Print()
 
@@ -103,9 +104,14 @@ def ignored(name:str, patterns:list[str]) -> bool:
 
 # A project lives in `projects/`, named from there, or in a Core, named `opencplc/<version>/...`
 # `opencplc/<version>` alone is the Core itself, loaded for its own tests in `.tests/`
+# A local project lies outside the workspace, named by its absolute path
+
+def is_local(name:str) -> bool:
+  """`True` for a local project: a name in the workspace is never absolute."""
+  return PATH.is_abs(name)
 
 def core_version(name:str) -> str:
-  """Core version project `name` lies in, "" for a project in `projects/`."""
+  """Core version project `name` lies in, "" for a project in `projects/` or a local one."""
   parts = name.split("/")
   return parts[1] if len(parts) > 1 and parts[0] == DIR_FRAMEWORK else ""
 
@@ -118,7 +124,8 @@ def is_core(name:str) -> bool:
   return bool(core_version(name)) and name.count("/") == 1
 
 def project_dir(name:str) -> str:
-  """Workspace folder of project `name`; of the Core itself, its tests."""
+  """Workspace folder of project `name`; of the Core itself, its tests; a local one is its own."""
+  if is_local(name): return name
   if is_core(name): return f"{name}/{DIR_TESTS}"
   return name if core_version(name) else f"{DIR_PROJECTS}/{name}"
 
@@ -137,9 +144,45 @@ def project_name(pro_dir:str) -> str:
   return pro_dir[len(prefix):] if pro_dir.startswith(prefix) else ""
 
 def home_name(name:str) -> str:
-  """Name its files and images carry: in a Core the path from its root, the version left out."""
+  """
+  Name its files and images carry: in a Core the path from its root, the version left out.
+
+  A local project carries the name of its folder.
+  """
+  if is_local(name): return PATH.basename(name)
   if is_core(name): return DIR_TESTS
   return name.split("/", 2)[2] if core_version(name) else name
+
+def full_path(path:str) -> str:
+  """
+  `path` absolute, `..` folded and spelled as the disk keeps it, links left as they lie.
+
+  On Windows another case finds the same folder, so each existing folder takes the case
+  its parent lists, and the drive letter goes upper case.
+  A makefile holding the path, or a key of `opencplc.json`, would change with every spelling.
+  """
+  head, *names = PATH.resolve(path).split("/")
+  head = head.upper() if head.endswith(":") else head
+  for name in names:
+    # `DIR.folder_list` leaves links out, and the name of a link spells a path as well
+    try: listed = os.listdir(f"{head}/") if name else []
+    except OSError: listed = []
+    same = (n for n in listed if os.path.normcase(n) == os.path.normcase(name))
+    head = f"{head}/{next(same, name)}"
+  return head
+
+def tree_path(path:str) -> str:
+  """
+  Place of `path` in a tree the workspace keeps, such as `build/`: workspace-relative as it is.
+
+  From outside it goes under `local/`, in a folder named by a hash of the one it lies in,
+  so it stays short however deep it lies: `D:/repos/app` → `local/1a2b3c4d/app`.
+  Make on Windows crashes on a path over 260 characters.
+  """
+  path = PATH.local(path)
+  if not PATH.is_abs(path): return path
+  folder = os.path.normcase(PATH.dirname(path)) # on Windows the case names no other folder
+  return f"{DIR_LOCAL}/{hash_string(folder):08x}/{PATH.basename(path)}"
 
 def check_write_permission(path:str) -> bool:
   """`True` when a probe file can be created in `path`; the directory is created when missing."""

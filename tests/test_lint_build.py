@@ -88,8 +88,14 @@ def rules_read_what_gcc_writes(built):
     ("thread-hold", "project/main.c", "loop"),
   ]
   assert [(s.thread, s.frame, s.size) for s in check.stacks] == [("loop", 68, 256)]
-  assert "/ 256B" in stack_line(check.stacks[0])
+  assert "/ 256B" in stack_line(check.stacks[0]) and "max 75%" in stack_line(check.stacks[0])
   # `loop` runs in a thread, `main` before them, the handlers in interrupts.
   # A static function is keyed by its file.
   assert {"project/main.c:loop", "main"} <= check.thread
   assert {"TIM2_IRQHandler", "let"} <= check.irq
+
+@pytest.mark.skipif(GCC is None, reason="arm-none-eabi-gcc required")
+def a_thread_shows_the_limit_its_margin_gives_and_a_misspelled_one_stands_out(built):
+  FILE.save("project/lint.yaml", "stack-margin: {loop: 40, lop: 10}\n")
+  check = forge_check(built, "core", "project", "cortex-m4")
+  assert "max 60%" in stack_line(check.stacks[0]) and check.stray == ["lop"]

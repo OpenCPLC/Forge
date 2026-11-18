@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Finding:
-  """One place, workspace-relative, so the console opens it in the editor."""
+  """One place, workspace-relative or else absolute, so the console opens it in the editor."""
   rule: str
   path: str
   line: int

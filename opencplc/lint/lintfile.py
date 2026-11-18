@@ -4,14 +4,15 @@
 The `lint.yaml` of a Core or of a project: roles of its API, code of others, rules, exceptions.
 
 A Core gives the roles of VRTS in full, a project adds to their lists for its own drivers,
-turns rules on and keeps exceptions for its own code.
+turns rules on, sets the stack margin of its threads and keeps exceptions for its own code.
 A key the file has no place for is an error, so a misspelled one never passes in silence.
 An exception is a place, a `.gitignore` pattern from the folder of the file with `:function`
 for a rule of the graph, and a reason; one without a reason is refused,
 and one that silences nothing is reported, so no exception outlives its code.
 
 Example:
-  rules: [no-heap, stack-margin]
+  rules: [no-heap]
+  stack-margin: {DBG_Loop: 10}
   roles:
     irq:
       field: [OnFrame]
@@ -21,14 +22,15 @@ Example:
       main.c:calibrate: Measure needs 50ms of quiet bus, other threads wait
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 from xaeian import FILE, PATH, YAML
 from ..utils import glob_match
 from .finding import Finding
 
 LINT = "lint.yaml" # in the root of a Core, and of a project that needs one
-SECTIONS = ("roles", "vendor", "rules", "except")
+SECTIONS = ("roles", "vendor", "rules", "stack-margin", "except")
+STACK_MARGIN = 25 # % of its stack each thread keeps free, unless `stack-margin` says otherwise
 NESTED = ("heap", "irq") # roles grouping others, `heap.any` and `irq.field` among them
 # Roles a list of names gives, which a project extends for its own code
 LISTS = (
@@ -41,13 +43,23 @@ class LintFileError(ValueError):
   """A `lint.yaml` Forge cannot take: its path and what is wrong with it."""
 
 @dataclass
+class Margins:
+  """Percent of its stack a thread keeps free: one for every thread, some threads apart."""
+  every: int = STACK_MARGIN
+  threads: dict[str, int] = field(default_factory=dict) # by thread function
+
+  def of(self, thread:str) -> int:
+    """Margin of the thread running function `thread`."""
+    return self.threads.get(thread, self.every)
+
+@dataclass
 class Waiver:
   """One exception, from the `lint.yaml` of the folder `root`."""
   rule: str
   place: str     # `.gitignore` pattern from `root`
   function: str  # "" for every function of the place
   reason: str
-  root: str      # workspace-relative
+  root: str      # workspace-relative, or absolute outside it
   used: bool = False
 
   def explains(self, finding:Finding) -> bool:
@@ -75,12 +87,27 @@ def names(path:str, key:str, value:Any) -> list[str]:
     raise LintFileError(f"{path}: `{key}` is a list of names")
   return value
 
+def margins(path:str, value:Any) -> Margins:
+  """
+  `stack-margin` of the file at `path`: one percent for every thread,
+  or thread functions with their own percent, the others keeping `STACK_MARGIN`.
+  """
+  def percent(number:Any) -> int:
+    # YAML reads `true` as a `bool`, which Python takes for an `int`
+    if isinstance(number, bool) or not isinstance(number, int) or not 0 <= number < 100:
+      raise LintFileError(f"{path}: `stack-margin` takes whole percents from 0 to 99")
+    return number
+  if isinstance(value, dict):
+    return Margins(threads={str(name): percent(number) for name, number in value.items()})
+  return Margins(every=percent(value))
+
 def read(root:str, core:bool) -> dict|None:
   """
   `root/lint.yaml` checked against what it may hold, `None` when there is none.
 
-  `core` lets the file set the roles a Core sets alone, and keeps `rules` out:
-  rules are turned on by a project.
+  `core` lets the file set the roles a Core sets alone, and keeps `rules` and `stack-margin` out:
+  a project turns rules on and chooses the stacks of its threads.
+  `stack-margin` comes back as `Margins`, the default one when the file sets none.
   """
   path = f"{root}/{LINT}"
   if not FILE.exists(path): return None
@@ -92,6 +119,9 @@ def read(root:str, core:bool) -> dict|None:
   for key in data:
     if key not in SECTIONS: raise LintFileError(f"{path}: no place for `{key}`")
   if core and "rules" in data: raise LintFileError(f"{path}: `rules` are turned on by a project")
+  if core and "stack-margin" in data:
+    raise LintFileError(f"{path}: `stack-margin` is set by a project, which chooses its stacks")
+  data["stack-margin"] = margins(path, data.get("stack-margin", STACK_MARGIN))
   names(path, "vendor", data.setdefault("vendor", []))
   names(path, "rules", data.setdefault("rules", []))
   roles = data.setdefault("roles", {})

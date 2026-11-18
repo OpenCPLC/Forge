@@ -53,8 +53,8 @@ class Config(Hardware):
 class Project:
   """Fully resolved project model."""
   # Identity
-  name: str     # "firm/app", "opencplc/develop/.tests/g081" in a Core
-  pro_dir: str  # workspace-relative source directory
+  name: str     # "firm/app", "opencplc/develop/.tests/g081" in a Core, "D:/repos/app" outside
+  pro_dir: str  # source directory, workspace-relative or absolute outside it
   target: str   # artifact base name, "tests-g081" in a Core
 
   # Core
@@ -85,7 +85,7 @@ class Project:
   defines: list[str]
   mcu_flags: str
 
-  # Sources and includes, workspace-relative and sorted
+  # Sources and includes, sorted, workspace-relative or absolute outside it
   core_c_sources: list[str]
   core_asm_sources: list[str]
   project_c_sources: list[str]

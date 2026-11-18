@@ -58,6 +58,25 @@ opencplc test/flash -c STM32WB55
 `make` trzyma ten wybór, aż załadujesz projekt bez nich.
 Test albo demo na dowolną płytkę nie wpisuje do `main.h` `PRO_BOARD`, `PRO_CHIP` ani pamięci, więc sprzęt podaje każde ładowanie.
 
+### 📂 Projekt lokalny
+
+Projekt może leżeć poza workspace, we własnym repozytorium.
+Wskazuje go ścieżka, `./app` albo `D:/repos/app`, a zwykła nazwa dalej oznacza projekt z workspace:
+
+```sh
+cd C:/workspace
+opencplc D:/repos/app
+cd D:/repos/app
+make
+```
+
+Pierwsze ładowanie odbywa się w workspace, bo wcześniej nic nie łączy z nim projektu.
+Od tej chwili `makefile` projektu wskazuje workspace, więc `make` i `opencplc -r` działają w jego folderze.
+Projekt buduje się z frameworkiem workspace do własnego folderu w `build/local/` i nigdy nie staje się aktywnym projektem.
+Forge zapisuje w jego folderze `makefile`, `flash.ld` i `.vscode/`, nadpisując je tak jak w workspace.
+Te pliki mają ścieżki tego komputera, więc repozytorium projektu powinno je ignorować.
+`opencplc -n D:/repos/app` zakłada nowy projekt lokalny.
+
 ### 📄 Twoje pliki
 
 `main.c` należy do Ciebie i Forge nigdy go nie nadpisuje.
@@ -120,7 +139,7 @@ Pełna lista celów:
 - `make test`: Buduje każdy `.tests/*.c` do programu na komputer i uruchamia go, patrz [Testy](#-testy); `make test T=name` uruchamia jeden
 - **`make clean`** lub `make clr`: Usuwa zbudowane pliki projektu
 - `make clean_all` lub `make clr_all`: Usuwa zbudowane pliki wszystkich projektów
-- `make dist`: Pakuje wydanie do folderu projektu: `.hex` do programatora, a pod bootloaderem także `.bin` do aktualizacji; `make dist TAG=1.2.0` nazywa je `<name>-1.2.0.hex` i `.bin`
+- `make dist`: Pakuje wydanie do folderu projektu: `.hex` do programatora, a pod bootloaderem także `.bin` do aktualizacji; `make dist TAG=1.2.0` nazywa je `<name>-1.2.0.hex` i `.bin`, a `CIPHER=` szyfruje `.bin` kluczem szyfrowania
 - `make update`: Wysyła przez konsolę obraz z tego buildu, tak jak urządzenie dostaje aktualizację _(pod bootloaderem, z `CMD_BOOT ON`)_; `FILE=` wysyła inny obraz, a `PORT=` wskazuje konsolę
 - **`make erase`**: Całkowicie czyści pamięć mikrokontrolera _(**erase** full chip; na STM32WB stos radiowy zostaje)_
 - `make stack`: Wgrywa stos radiowy drugiego rdzenia _(STM32WB)_; `make stack FUS=1` robi też jednorazowy, nieodwracalny provisioning fabrycznej płytki
@@ -138,7 +157,8 @@ RAM 34.3kB / 36kB (95%)
 ## 🥾 Bootloader
 
 Projekt, którego `main.h` dołącza `boot.h`, działa za bootloaderem z Core, który Forge buduje razem z nim, i przyjmuje aktualizacje bez programatora; `-B` ustawia to nowemu projektowi.
-`opencplc --keygen acme 3` dopisuje klucze produktu do `BOOT_KEYS` w `boot.h`, a od tej chwili bootloader uruchamia tylko obrazy nimi podpisane.
+`opencplc --sign acme 3` dopisuje klucze produktu do `BOOT_KEYS` w `boot.h`, a od tej chwili bootloader uruchamia tylko obrazy nimi podpisane.
+`opencplc --cipher acme-enc` robi klucz szyfrowania, a `make dist CIPHER=acme-enc` szyfruje nim plik aktualizacji, więc w drodze do urządzeń nikt go nie odczyta.
 `--lock` zamyka płytkę przed programatorem w produkcji, z bootloaderem albo bez niego.
 Oba mechanizmy i ich bezpieczeństwo: [🥾 Bootloader i 🔒 blokada](https://github.com/OpenCPLC/Forge/wiki/bootlock.pl).
 
@@ -265,7 +285,8 @@ workspace/
 │  ├─ firm/app/    # projekty mogą być zagnieżdżone
 │  └─ demo/        # projekty z repozytorium Demo, `opencplc -e`
 └─ build/          # skompilowane pliki wsadowe
-   └─ projects/myapp/
+   ├─ projects/myapp/
+   └─ local/       # projekty lokalne, każdy we własnym folderze
 ```
 
 Jeśli IntelliSense przestanie działać poprawnie, użyj `F1` → _C/C++: Reset IntelliSense Database_.
@@ -306,7 +327,7 @@ Reguły, normy i wyjątki: [🔍 Lint](https://github.com/OpenCPLC/Forge/wiki/li
 
 ### Podstawowe
 
-- **`name`**: Nazwa projektu, domyślny pierwszy argument. Wyznacza ścieżkę `projects/name` i jest powiązana z plikami wsadowymi _(`.bin`, `.hex`, `.elf`)_. Można też podać numer z listy `-l`.
+- **`name`**: Nazwa projektu, domyślny pierwszy argument. Wyznacza ścieżkę `projects/name` i jest powiązana z plikami wsadowymi _(`.bin`, `.hex`, `.elf`)_. Można też podać numer z listy `-l`. Ścieżka, `./app` albo `D:/repos/app`, ładuje [projekt lokalny](#-projekt-lokalny).
 - `-n --new`: Tworzy nowy projekt o wskazanej nazwie.
 - `-e --demo`: Pobiera repozytorium [Demo](https://github.com/OpenCPLC/Demo) do `projects/demo`. Ładujesz je jak każdy projekt: `opencplc demo/blinky`.
 - `-r --reload`: Regeneruje pliki projektu. Bez `name` bierze projekt aktywny albo ten, w którego katalogu stoisz.
@@ -340,7 +361,8 @@ Reguły, normy i wyjątki: [🔍 Lint](https://github.com/OpenCPLC/Forge/wiki/li
 - `-a --assets`: Pobiera materiały pomocnicze _(dokumentacja i erraty układów, pinouty płytek, przewodniki stylu Core)_. Opcjonalnie przyjmuje nazwę folderu docelowego.
 - `-u --update`: Podmienia plik wykonywalny Forge na wskazaną wersję _(domyślnie `latest`)_; instalację z `pip` aktualizuje się przez `pip`.
 - `--program`: Wysyła `.hex` na płytkę przez programator. Bez pliku bierze ten, który `make dist` zostawił w aktywnym projekcie; z kilku najnowszy, po potwierdzeniu.
-- `--keygen`: Tworzy albo bierze z magazynu klucz produktu **`NAZWA`** z zapasowymi, razem **`LICZBA`** kluczy _(domyślnie 1)_, i dopisuje ich klucze publiczne do `BOOT_KEYS` w `boot.h` aktywnego projektu; hasło jest opcjonalne, patrz [Bootloader](https://github.com/OpenCPLC/Forge/wiki/bootlock.pl).
+- `--sign`: Tworzy albo bierze z magazynu klucz produktu **`NAZWA`** z zapasowymi, razem **`LICZBA`** kluczy _(domyślnie 1)_, i dopisuje ich klucze publiczne do `BOOT_KEYS` w `boot.h` aktywnego projektu; hasło jest opcjonalne, patrz [Bootloader](https://github.com/OpenCPLC/Forge/wiki/bootlock.pl).
+- `--cipher`: Tworzy klucz szyfrowania produktu **`NAZWA`** albo pokazuje jego odcisk, a po potwierdzeniu sam klucz; z **`PLIK`** szyfruje ten obraz aktualizacji, `make dist CIPHER=` używa tego, patrz [Bootloader](https://github.com/OpenCPLC/Forge/wiki/bootlock.pl).
 - `--upload`: Wysyła przez konsolę obraz aktualizacji, **`PLIK`** i opcjonalnie **`PORT`**; `make update` używa tego.
 - `--lock`: Blokuje płytkę na produkcję: domyślnie RDP1, `2` na zawsze, `0` zdejmuje blokadę, kasując flash, patrz [Blokada](https://github.com/OpenCPLC/Forge/wiki/bootlock.pl).
 - `-p --pack`: Pakuje obraz do flasha: pod bootloaderem z nim na początku, CRC i podpisem na końcu oraz binarką do aktualizacji obok; `make` używa tego po linkowaniu.
