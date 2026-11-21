@@ -96,9 +96,9 @@ def build_signs_with_the_development_key(tmp_path, key_files):
   runs = {addr: len(seg) for addr, seg in flash.segments.items()}
   assert runs == {FLASH_BASE: len(BOOT), ORIGIN: SIZE + TRAILER}
 
-def dist_signs_with_the_product_key_of_its_number(tmp_path, key_files):
+def dist_signs_with_the_sign_key_of_its_number(tmp_path, key_files):
   app, out, boot = key_files
-  first, second = keys.product_make("first", ""), keys.product_make("second", "")
+  first, second = keys.sign_make("first", ""), keys.sign_make("second", "")
   pack(app, out, boot, first.hex() + second.hex(), 1, release=True)
   update = (tmp_path / "app-dist.bin").read_bytes()
   assert signed_by(second, update, SIZE) and not signed_by(first, update, SIZE)
@@ -107,12 +107,12 @@ def dist_signs_with_the_product_key_of_its_number(tmp_path, key_files):
 def dist_under_a_password_takes_it_from_ci_and_a_wrong_one_writes_nothing(tmp_path, key_files,
   monkeypatch):
   app, out, boot = key_files
-  public = keys.product_make("acme", "correct horse")
-  monkeypatch.setenv(keys.PASSWORD_ENV, "wrong horse")
+  public = keys.sign_make("acme", "correct horse")
+  monkeypatch.setenv(keys.SIGN_PASSWORD.env, "wrong horse")
   with pytest.raises(ValueError, match="wrong password"):
     pack(app, out, boot, public.hex(), 0, release=True)
   assert not (tmp_path / "app-dist.hex").exists() and not (tmp_path / "app-dist.bin").exists()
-  monkeypatch.setenv(keys.PASSWORD_ENV, "correct horse")
+  monkeypatch.setenv(keys.SIGN_PASSWORD.env, "correct horse")
   pack(app, out, boot, public.hex(), 0, release=True)
   assert signed_by(public, (tmp_path / "app-dist.bin").read_bytes(), SIZE)
 
@@ -126,13 +126,13 @@ def dist_and_build_match_byte_for_byte_under_the_development_key(tmp_path, key_f
   assert (tmp_path / "release.hex").read_text() == (tmp_path / "build.hex").read_text()
 
 def key_this_machine_lacks_stops_before_any_file(tmp_path, key_files):
-  with pytest.raises(ValueError, match="no private key"):
+  with pytest.raises(ValueError, match="no sign key"):
     pack(*key_files, KEYS, 0, release=True)
   assert not (tmp_path / "app-dist.hex").exists() and not (tmp_path / "app-dist.bin").exists()
 
 def key_number_outside_the_keys_stops_before_any_file(tmp_path, key_files):
   for number in (2, -1):
-    with pytest.raises(ValueError, match="among the 2 keys"):
+    with pytest.raises(ValueError, match="among 2 keys"):
       pack(*key_files, KEYS, number)
   assert not (tmp_path / "app-dist.hex").exists() and not (tmp_path / "app-dist.bin").exists()
 
@@ -140,22 +140,11 @@ def pack_command_reads_the_keys_and_the_number(tmp_path, key_files):
   pack_command([*key_files, KEYS, "1"])
   assert signed_by(keys.dev_public(), (tmp_path / "app-dist.bin").read_bytes(), SIZE)
 
-def pack_command_signs_dist_with_the_product_key(tmp_path, key_files):
+def pack_command_signs_dist_with_the_sign_key(tmp_path, key_files):
   app, out, boot = key_files
-  public = keys.product_make("acme", "")
+  public = keys.sign_make("acme", "")
   pack_command([app, out, boot, public.hex(), "0", "dist"])
   assert signed_by(public, (tmp_path / "app-dist.bin").read_bytes(), SIZE)
-
-def dist_under_one_key_says_to_add_spare_ones(tmp_path, key_files, capsys):
-  """A leaked key would end the updates of every device, a spare one takes over."""
-  app, out, boot = key_files
-  public = keys.product_make("acme", "")
-  pack_command([app, out, boot, public.hex(), "0", "dist"])
-  shown = ANSI.sub("", capsys.readouterr().out)
-  assert "holds one key" in shown and "--sign acme 3" in shown
-  first, second = keys.product_make("first", ""), keys.product_make("second", "")
-  pack_command([app, out, boot, first.hex() + second.hex(), "0", "dist"])
-  assert "holds one key" not in capsys.readouterr().out
 
 def dist_warns_of_an_image_another_build_left_encrypted(tmp_path, key_files, capsys):
   """
@@ -164,22 +153,22 @@ def dist_warns_of_an_image_another_build_left_encrypted(tmp_path, key_files, cap
   unless `CIPHER=` encrypts it anew right after, and a plain image named like a key is none.
   """
   app, out, boot = key_files
-  public = keys.product_make("acme", "")
+  public = keys.sign_make("acme", "")
   for name in ("same", "older", "rc1"): keys.cipher_make(name, "")
   pack_command([app, out, boot, public.hex(), "0", "dist"])
   update = (tmp_path / "app-dist.bin").read_bytes()
   body, trailer = update[:-TRAILER], update[-TRAILER:]
   scrambled = bytes(byte ^ 0xFF for byte in body) # misses the CRC, as encrypted bytes do
-  (tmp_path / "app-dist-same.bin").write_bytes(scrambled + trailer)
-  (tmp_path / "app-dist-older.bin").write_bytes(scrambled + bytes(TRAILER))
+  (tmp_path / "app-dist.same.bin").write_bytes(scrambled + trailer)
+  (tmp_path / "app-dist.older.bin").write_bytes(scrambled + bytes(TRAILER))
   zero = bytes(len(body)) # plain: its trailer holds the CRC of its bytes
-  (tmp_path / "app-dist-rc1.bin").write_bytes(zero + zlib.crc32(zero).to_bytes(4, "little")
+  (tmp_path / "app-dist.rc1.bin").write_bytes(zero + zlib.crc32(zero).to_bytes(4, "little")
     + b"\xff" * (TRAILER - 4))
   capsys.readouterr()
   pack_command([app, out, boot, public.hex(), "0", "dist"])
   shown = ANSI.sub("", capsys.readouterr().out)
-  assert "app-dist-older.bin comes from another build" in shown and "CIPHER=older" in shown
-  assert "app-dist-same.bin" not in shown and "app-dist-rc1.bin" not in shown
+  assert "app-dist.older.bin comes from another build" in shown and "CIPHER=older" in shown
+  assert "app-dist.same.bin" not in shown and "app-dist.rc1.bin" not in shown
   pack_command([app, out, boot, public.hex(), "0", "dist", "older"])
   assert "another build" not in capsys.readouterr().out
 

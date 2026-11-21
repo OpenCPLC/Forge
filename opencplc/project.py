@@ -4,6 +4,7 @@
 Files of a project, from its skeleton to its removal.
 
 `prepare_project()` creates skeleton files a project keeps for life: main.c and main.h.
+`settings_save()` writes into main.h what the flags of a load set, once the project resolves.
 `generate()` renders everything Forge owns from the resolved `Project` model:
 makefile and flash.ld in the project, workspace dispatcher, VS Code configuration.
 An unchanged file keeps its bytes and its mtime.
@@ -12,16 +13,20 @@ An unchanged file keeps its bytes and its mtime.
 
 import os, re, sys, platform, subprocess
 from datetime import datetime
-from xaeian import Print, Color as c, FILE, DIR, PATH, replace_end
+from xaeian import Print, Color as c, FILE, DIR, PATH, replace_end, grey
 from xaeian.cmd import which
 from .config import BOOT_H, BOOT_LINE, WARNINGS
 from .templates import load_templates
 from .platforms import FLASH_BASE
 from .model import Config, Project
-from .headers import boot_h_text
+from .headers import boot_h_text, main_h_with, text_load, text_save
 from .resolver import flash_layout, forge_version
 from .workspace import persist_config
 from .utils import keys
+from .utils.palette import (
+  BAD_COLOR, CHIP_COLOR, CHOICE_COLOR, CONFIG_COLOR, FILE_COLOR, FOLDER_COLOR, IMAGE_COLORS,
+  SYMBOL_COLOR, VERSION_COLOR,
+)
 from . import utils
 
 p = Print()
@@ -37,7 +42,7 @@ def shown_path(path:str) -> str:
 def colored_path(path:str, name:str) -> str:
   """Path with the project name picked out of it, Core version greyed."""
   shown = utils.home_name(name)
-  return f"{c.GREY}{shown_path(replace_end(path, shown, ''))}{c.END}{c.BLUE}{shown}{c.END}"
+  return f"{grey(shown_path(replace_end(path, shown, '')))}{utils.color_file(shown)}"
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -57,9 +62,9 @@ def write_dispatcher(active:str, colored:str=""):
   subs = recipe_safe({
     "${ACTIVE}": active,
     "${ACTIVE_COLORED}": colored,
-    "${GOLD}": c.GOLD, "${GREY}": c.GREY,
+    "${CHOICE_COLOR}": CHOICE_COLOR, "${FOLDER_COLOR}": FOLDER_COLOR,
     "${END}": c.END,
-    "${ERR}": f"{c.RED}ERR{c.END}",
+    "${ERR}": utils.color_bad("ERR"),
   })
   # `$(error)` prints its text without a shell, so the codes stay bare
   subs["${CMD}"] = utils.color_command("opencplc <name>")
@@ -98,10 +103,10 @@ def without(text:str, phrases:list[str]) -> str:
 def stack_command(pro:Project) -> str:
   """Radio stack rule of a project: Core script, or a refusal saying what is missing."""
   if not pro.stack_script:
-    return f"echo Chip {c.PINK}{pro.chip}{c.END} has no radio stack&& exit 1"
+    return f"echo Chip {utils.color_chip(pro.chip)} has no radio stack&& exit 1"
   if not utils.cube_found():
-    missing = f"{c.YELLOW}STM32CubeProgrammer{c.END} not found"
-    source = f"install it from {utils.color_url(utils.CUBE_URL)}"
+    missing = f"{utils.color_program('STM32CubeProgrammer')} not found"
+    source = f"install it from {utils.color_link(utils.CUBE_URL)}"
     reload = f"reload with {utils.color_command('opencplc -r')}"
     return f"echo {missing}, {source} and {reload}&& exit 1"
   script = f'{bash_exe()} "$(OPENCPLC)/bin/{pro.stack_script}"'
@@ -120,8 +125,8 @@ def test_rules(pro:Project, block:str) -> str:
     return block.strip()
   separator = block.splitlines()[0] # the `Tests` section keeps its line in the makefile
   programs = f"$(wildcard {anchored(pro.test_dir, pro.pro_dir, 'PROJECT')}/*.c)"
-  refusal = (f"Core ${{VIOLET}}{pro.core_ref}${{END}} has no test harness: "
-    "raise ${SKY}PRO_FRAMEWORK${END} in main.h")
+  refusal = (f"Core ${{VERSION_COLOR}}{pro.core_ref}${{END}} has no test harness: "
+    "raise ${SYMBOL_COLOR}PRO_FRAMEWORK${END} in main.h")
   return (f"{separator}\ntest:\n\t@$(if {programs},echo {refusal}&& exit 1,"
     "echo No test programs in ${TEST_COLORED})\n\n.PHONY: test")
 
@@ -163,38 +168,43 @@ def include_flags(pro:Project, dirs:list[str]) -> list[str]:
     flags.append("-I" + anchored(d, *base) if base else "-I$(WORKSPACE)/" + d)
   return flags
 
-def project_header(cfg:Config, new:bool=False):
+def project_header(cfg:Config):
   """
   Print which project and configuration this run works on.
 
-  A new project under the bootloader says what that costs.
+  A project this run puts behind the bootloader says what that costs.
   The flag halves flash it can use and nothing else on screen would show it.
   """
   shown = utils.home_name(cfg.name)
   path_prefix = replace_end(utils.project_dir(cfg.name), shown, "")
-  p.inf(f"Project {c.GREY}{path_prefix}{c.END}{c.BLUE}{shown}{c.END}")
+  p.inf(f"Project {grey(path_prefix)}{utils.color_file(shown)}")
   is_windows = platform.system() == "Windows"
-  plc_msg = f" {c.TURQUS}PLC{c.END}" if cfg.plc else ""
+  plc_msg = f" {utils.color_board('PLC')}" if cfg.plc else ""
   if cfg.board:
-    chip_msg = f"{c.TURQUS}{cfg.board_title}{c.END}{plc_msg}"
+    chip_msg = f"{utils.color_board(cfg.board_title)}{plc_msg}"
   elif cfg.chip.platform == "STM32":
-    chip_msg = f"{c.PINK}{cfg.chip.name}{c.END}{plc_msg}"
+    chip_msg = f"{utils.color_chip(cfg.chip.name)}{plc_msg}"
   else:
     host_os = "Windows" if is_windows else "Linux"
-    chip_msg = f"{c.PINK}{cfg.chip.platform}{c.END} {c.GREY}({host_os}){c.END}"
-  p.gap(f"using framework version {c.VIOLET}{cfg.fw_ver}{c.END} configured for {chip_msg}")
-  if new and cfg.boot:
+    chip_msg = f"{utils.color_chip(cfg.chip.platform)} {grey(f'({host_os})')}"
+  p.gap(f"using framework version {utils.color_version(cfg.fw_ver)} configured for {chip_msg}")
+  if cfg.boot_new:
     origin, slot_kB, _ = flash_layout(cfg)
-    p.gap(f"bootloader takes {c.GOLD}{cfg.chip.boot_kB}{c.END}kB, "
-      f"image at {c.GOLD}0x{origin:08X}{c.END} in one of two {c.GOLD}{slot_kB}{c.END}kB slots")
+    p.gap(f"bootloader takes {utils.color_value(cfg.chip.boot_kB)}kB, "
+      f"image at {utils.color_value(f'0x{origin:08X}')} "
+      f"in one of two {utils.color_value(slot_kB)}kB slots")
 
 def prepare_project(cfg:Config):
-  """Create the project skeleton: its directory plus main.c/main.h when missing."""
+  """
+  Create the project skeleton: its directory, main.c, main.h and boot.h under the bootloader.
+
+  A file there already stays as it is.
+  """
   templates = load_templates()
   chip = cfg.chip
   tpl = templates.get(chip.hal, {})
   pro_dir = utils.project_dir(cfg.name)
-  project_header(cfg, new=not FILE.exists(f"{pro_dir}/main.h"))
+  project_header(cfg)
   if utils.is_core(cfg.name): return # the Core itself: its tests are all there is
   DIR.ensure(pro_dir)
   if cfg.plc:
@@ -230,26 +240,43 @@ def prepare_project(cfg:Config):
       main_c = templates["main.c"] if on_plc else templates["main-none.c"]
     else:
       main_c = tpl.get("main.c", templates["main-none.c"])
-    utils.create_file("main.c", without(main_c, pinless), pro_dir, subs, color=c.BLUE)
+    utils.create_file("main.c", without(main_c, pinless), pro_dir, subs, color=FILE_COLOR)
   if not FILE.exists(f"{pro_dir}/main.h"):
     main_h = tpl.get("main.h", templates["main.h"])
     drop = ([] if cfg.project_drivers else ["PRO_DRIVERS"]) + pinless
     drop += [] if cfg.boot else [BOOT_LINE]
-    utils.create_file("main.h", without(main_h, drop), pro_dir, subs, color=c.BLUE)
+    utils.create_file("main.h", without(main_h, drop), pro_dir, subs, color=FILE_COLOR)
   if cfg.boot and not FILE.exists(f"{pro_dir}/{BOOT_H}"):
-    utils.create_file(BOOT_H, boot_h_text(cfg.name), pro_dir, color=c.BLUE)
+    utils.create_file(BOOT_H, boot_h_text(cfg.name), pro_dir, color=FILE_COLOR)
+
+def settings_save(cfg:Config):
+  """
+  main.h with what the flags of the load set: their `#define` values, the include of boot.h.
+
+  A load without them leaves main.h alone.
+  The project resolves first, so main.h never takes a setting the Core refuses.
+  """
+  if utils.is_core(cfg.name) or not (cfg.settings or cfg.boot_new): return
+  path = f"{utils.project_dir(cfg.name)}/main.h"
+  text = text_load(path)
+  written = main_h_with(text, cfg.settings, cfg.boot_new)
+  if written == text: return
+  text_save(path, written)
+  shown = [utils.color_symbol(f"{name} {value}") for name, value in cfg.settings.items()]
+  if cfg.boot_new: shown.insert(0, utils.color_include(BOOT_LINE))
+  p.ok(f"Written into {utils.color_main_h(cfg.name)}: {', '.join(shown)}")
 
 def project_delete(args, projects:dict, make_info:dict|None, forge_cfg:dict):
   """Remove the project folder, its ST-Link binding and, when active, the dispatcher target."""
   key = utils.project_key(projects, args.name)
   if key is None:
-    p.err(f"Project {c.MAGNTA}{args.name}{c.END} does not exist")
+    p.err(f"Project {utils.color_wrong(args.name)} does not exist")
     sys.exit(1)
   if utils.is_core(key):
-    p.err(f"{c.BLUE}{key}{c.END} is a Core, its tests stay with it")
+    p.err(f"{utils.color_file(key)} is a Core, its tests stay with it")
     sys.exit(1)
   if utils.is_local(key):
-    p.err(f"{c.BLUE}{key}{c.END} lies outside the workspace, where Forge deletes nothing")
+    p.err(f"{utils.color_file(key)} lies outside the workspace, where Forge deletes nothing")
     p.run("Remove its folder by hand")
     sys.exit(1)
   try:
@@ -261,7 +288,7 @@ def project_delete(args, projects:dict, make_info:dict|None, forge_cfg:dict):
       write_dispatcher("")
       p.inf("Active project removed - "
         f"select another with {utils.color_command('opencplc <name>')}")
-    p.ok(f"Project {c.BLUE}{args.name}{c.END} deleted")
+    p.ok(f"Project {utils.color_file(args.name)} deleted")
     sys.exit(0)
   except Exception as e:
     p.err(f"Failed to delete: {e}")
@@ -350,9 +377,12 @@ def generate(pro:Project, activate:bool=True):
     "${TEST_CORE_C}": mk_list(rel_from(pro.test_core_sources, pro.core_dir)),
     "${TEST_INCLUDES}": mk_list(include_flags(pro, pro.test_include_dirs)),
     "${TEST_DEFS}": " ".join(f"-D{d}" for d in pro.test_defines),
-    "${TEST_COLORED}": f"{c.GREY}{shown_path(pro.test_dir)}{c.END}",
-    "${GOLD}": c.GOLD, "${PINK}": c.PINK, "${RED}": c.RED,
-    "${LIME}": c.LIME, "${SKY}": c.SKY, "${VIOLET}": c.VIOLET,
+    "${TEST_COLORED}": grey(shown_path(pro.test_dir)),
+    "${CHOICE_COLOR}": CHOICE_COLOR, "${SYMBOL_COLOR}": SYMBOL_COLOR,
+    "${CONFIG_COLOR}": CONFIG_COLOR, "${VERSION_COLOR}": VERSION_COLOR,
+    "${CHIP_COLOR}": CHIP_COLOR, "${BAD_COLOR}": BAD_COLOR,
+    "${HEX_COLOR}": IMAGE_COLORS[".hex"], "${BIN_COLOR}": IMAGE_COLORS[".bin"],
+    "${EXE_COLOR}": IMAGE_COLORS[".exe"],
     "${END}": c.END,
   } | editor | utils.template_paths(pro.platform == "STM32", pro.tests)
   # Linker script and makefile live inside the project, so parallel builds stay disjoint

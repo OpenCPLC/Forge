@@ -225,7 +225,7 @@ def unknown_driver_exits(ws):
     resolve_project(cfg)
 
 def plc_layer_without_any_board(ws):
-  """`-P` on your own hardware: the PLC layer compiles, no board directory does."""
+  """`--plc` on your own hardware: the PLC layer compiles, no board directory does."""
   cfg = replace(uno_cfg(), board=None)
   pro = resolve_project(cfg)
   assert "opencplc/1.0.0/plc/plc.c" in pro.core_c_sources

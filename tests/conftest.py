@@ -22,10 +22,21 @@ def the_suite_leaves_no_droppings():
   assert not new, f"the test run dropped files in the repo root: {sorted(new)}"
 
 @pytest.fixture(autouse=True)
-def keys_dir(tmp_path, monkeypatch):
-  """Keys of a machine made for the test, so no test reads or makes the real development key."""
+def machine_dir(tmp_path, monkeypatch):
+  """Key folder of a machine made for the test: no test reads or makes the real development key."""
+  monkeypatch.setattr(keys, "machine_dir", lambda: (tmp_path / "machine").as_posix())
+  return tmp_path / "machine"
+
+@pytest.fixture(autouse=True)
+def keys_dir(tmp_path, monkeypatch, machine_dir):
+  """Sign and cipher keys of the test, in a folder `OPENCPLC_KEYS` moves apart from the machine."""
   monkeypatch.setenv(keys.KEYS_ENV, str(tmp_path / "keys"))
   return tmp_path / "keys"
+
+@pytest.fixture(autouse=True)
+def console(monkeypatch):
+  """A person sits at the console, so a password a test asks for goes to its `getpass`."""
+  monkeypatch.setattr(keys, "console", lambda: True)
 
 def pytest_pycollect_makeitem(collector, name, obj):
   # Library functions imported into a test file are no tests, decorated ones such as `@cache` too
@@ -47,11 +58,11 @@ def render(template:str, subs:dict) -> str:
 
 from opencplc import utils
 from opencplc.utils import keys
-from opencplc.headers import main_h_defines
+from opencplc.headers import main_h_defines, header_lines
 
 def parse_main_h(text:str) -> dict:
   """Read `PRO_*` definitions the exact way `config_load` does."""
-  return main_h_defines(utils.lines_clear(text.splitlines(), "//"))
+  return main_h_defines(header_lines(text.split("\n")))
 
 def parse_dispatcher(text:str) -> str:
   """Read `ACTIVE` the exact way `makefile_info` does."""

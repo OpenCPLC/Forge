@@ -38,13 +38,13 @@ static void loop(void)
 
 //-------------------------------------------------------------------------------------------- main
 
-stack(stack_dbg, 256); // memory stack for debugger thread (logs + bash)
+stack(stack_dbg, 320); // memory stack for debugger thread (logs + bash)
 stack(stack_loop, 256); // memory stack for `loop` function
 
 int main(void)
 {
   sys_init(); // configure system clock, systick and heap
-  RTC_Init(); // enable real-time clock (RTC)
+  (void)RTC_Init(); // enable real-time clock (RTC)
   DBG_Init(&dbg_uart); // initialize debugger (logs + bash)
   DBG_Enter();
   LOG_Info("OpenCPLC framework version: " ANSI_VIOLET "%s" ANSI_END, PRO_FRAMEWORK);

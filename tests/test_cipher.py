@@ -38,7 +38,7 @@ def image_encrypted_once_is_never_encrypted_again(image):
 
 def command_makes_a_key_then_shows_its_fingerprint_and_the_key_once_confirmed(monkeypatch, capsys):
   """With no console to confirm, as under CI, the key never lands in a log."""
-  monkeypatch.setenv(keys.PASSWORD_ENV, "correct horse")
+  monkeypatch.setenv(keys.CIPHER_PASSWORD.env, "correct horse")
   cipher_command(["acme-enc"], False)
   key_id = keys.cipher_record("acme-enc")["id"]
   assert key_id in ANSI.sub("", capsys.readouterr().out)
@@ -55,10 +55,10 @@ def command_makes_a_key_then_shows_its_fingerprint_and_the_key_once_confirmed(mo
 def command_encrypts_the_image_beside_and_removes_the_plain_one(image, monkeypatch):
   """A release never ships the plain image by mistake."""
   keys.cipher_make("acme-enc", "correct horse")
-  monkeypatch.setenv(keys.PASSWORD_ENV, "correct horse")
+  monkeypatch.setenv(keys.CIPHER_PASSWORD.env, "correct horse")
   plain = image.read_bytes()
   cipher_command(["acme-enc", str(image)], False)
-  sealed = image.with_name("app-1.2.0-acme-enc.bin").read_bytes()
+  sealed = image.with_name("app-1.2.0.acme-enc.bin").read_bytes()
   assert not image.exists() and sealed == encrypt(plain, keys.cipher_key("acme-enc"))
 
 def a_failed_encryption_leaves_no_plain_image_either(image, monkeypatch, capsys):
@@ -67,23 +67,23 @@ def a_failed_encryption_leaves_no_plain_image_either(image, monkeypatch, capsys)
   and says it took it away, after the reason.
   """
   keys.cipher_make("acme-enc", "correct horse")
-  monkeypatch.setenv(keys.PASSWORD_ENV, "wrong horse")
+  monkeypatch.setenv(keys.CIPHER_PASSWORD.env, "wrong horse")
   plain = image.read_bytes()
   for name, reason in (("other", "No cipher key other"), ("acme-enc", "Cipher failed")):
     image.write_bytes(plain)
     with pytest.raises(SystemExit):
       cipher_command([name, str(image)], False)
-    assert not image.exists() and not list(image.parent.glob(f"*-{name}.bin"))
+    assert not image.exists() and not list(image.parent.glob(f"*.{name}.bin"))
     shown = ANSI.sub("", capsys.readouterr().out)
     assert shown.index(reason) < shown.index("Plain image app-1.2.0.bin removed")
 
 def unsigned_image_stops_before_any_password(tmp_path, image, monkeypatch, capsys):
   """A `plain` bootloader leaves the signature erased: no nonce, so the refusal points at `key`."""
   keys.cipher_make("acme-enc", "correct horse")
-  monkeypatch.delenv(keys.PASSWORD_ENV, raising=False)
-  monkeypatch.setattr(keys.getpass, "getpass", lambda prompt: pytest.fail("password asked"))
+  monkeypatch.delenv(keys.CIPHER_PASSWORD.env, raising=False)
+  monkeypatch.setattr(keys.getpass, "getpass", lambda prompt, **_: pytest.fail("password asked"))
   pack(str(tmp_path / "app.hex"), str(tmp_path / "unsigned.hex"), str(tmp_path / "boot.hex"))
-  with pytest.raises(ValueError, match="without a signature"):
+  with pytest.raises(ValueError, match="without signature"):
     nonce((tmp_path / "unsigned.bin").read_bytes())
   with pytest.raises(SystemExit):
     cipher_command(["acme-enc", str(tmp_path / "unsigned.bin")], False)
@@ -92,16 +92,17 @@ def unsigned_image_stops_before_any_password(tmp_path, image, monkeypatch, capsy
 
 def command_refusals_before_the_image_leave_it_and_ask_nothing(tmp_path, image, monkeypatch):
   """
-  No image, a `.hex`, a name with a space, arguments past FILE, or one encrypted already,
-  which stays as it is.
+  No image, a `.hex`, a file of no image kind, a name with a space, arguments past FILE,
+  or one encrypted already, which stays as it is.
   """
   keys.cipher_make("acme-enc", "correct horse")
-  monkeypatch.delenv(keys.PASSWORD_ENV, raising=False)
-  monkeypatch.setattr(keys.getpass, "getpass", lambda prompt: pytest.fail("password asked"))
+  monkeypatch.delenv(keys.CIPHER_PASSWORD.env, raising=False)
+  monkeypatch.setattr(keys.getpass, "getpass", lambda prompt, **_: pytest.fail("password asked"))
   sealed = tmp_path / "app-1.2.0-old.bin"
   sealed.write_bytes(encrypt(image.read_bytes(), KEY))
   for args in (["acme-enc", str(tmp_path / "none.bin")], ["acme-enc", str(tmp_path / "app.hex")],
+    ["acme-enc", str(tmp_path / "notes.txt")],
     ["acme enc", str(image)], ["acme-enc", str(image), "x"], ["acme-enc", str(sealed)]):
     with pytest.raises(SystemExit):
       cipher_command(args, False)
-  assert image.exists() and sealed.exists() and not list(tmp_path.glob("*-acme-enc.bin"))
+  assert image.exists() and sealed.exists() and not list(tmp_path.glob("*.acme-enc.bin"))

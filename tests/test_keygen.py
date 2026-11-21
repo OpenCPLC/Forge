@@ -1,9 +1,9 @@
 # tests/test_keygen.py
 
-"""`--sign NAME [COUNT]`: product keys made or taken, held by `BOOT_KEYS` of boot.h."""
+"""`--sign NAME [COUNT]`: sign keys made or taken, held by `BOOT_KEYS` of boot.h."""
 
 import os, pytest
-from opencplc.keygen import keygen, key_names, with_keys, with_include, KEYS_NOTE
+from opencplc.keygen import keygen, key_names, with_keys, KEYS_NOTE
 from opencplc.utils import keys, ed25519
 
 MAIN_H = ("#ifndef MAIN_H_\r\n#define MAIN_H_\r\n\r\n#include <xdef.h>\r\n\r\n"
@@ -46,13 +46,13 @@ def keys_ending_the_file_in_a_backslash_take_the_next_key():
   text, numbers = with_keys(f'#define BOOT_KEYS "{KEY.hex()}" \\', [NEXT])
   assert numbers == [1] and text.endswith(f'  "{KEY.hex()}" \\\n  "{NEXT.hex()}"')
 
-def include_goes_behind_the_last_include_once():
-  """A commented one includes nothing, so the real one goes in beside it."""
-  text = with_include(MAIN_H)
-  assert '#include <xdef.h>\r\n#include "boot.h"\r\n' in text
-  assert with_include(text) == text
-  commented = MAIN_H.replace("#include <xdef.h>", '#include <xdef.h>\r\n// #include "boot.h"')
-  assert with_include(commented).count('\r\n#include "boot.h"') == 1
+def keys_go_into_a_boot_h_of_mixed_endings_once():
+  """Every line keeps its ending, and the keys take the one most lines have."""
+  boot_h = f'#ifndef BOOT_H_\r\n#define BOOT_H_\n#define BOOT_KEYS "{KEY.hex()}"\n#endif\n'
+  text, numbers = with_keys(boot_h, [KEY, NEXT])
+  assert numbers == [0, 1]
+  assert text == (f'#ifndef BOOT_H_\r\n#define BOOT_H_\n#define BOOT_KEYS \\\n'
+    f'  "{KEY.hex()}" \\\n  "{NEXT.hex()}"\n#endif\n')
 
 def a_boot_h_a_load_refuses_exits():
   with pytest.raises(SystemExit):
@@ -81,19 +81,19 @@ def pro(tmp_path):
 def keygen_makes_boot_h_and_its_include(pro, keys_dir, monkeypatch):
   """One password for every new key, typed and repeated."""
   asked = []
-  monkeypatch.delenv(keys.PASSWORD_ENV, raising=False)
+  monkeypatch.delenv(keys.SIGN_PASSWORD.env, raising=False)
   monkeypatch.setattr(keys.getpass, "getpass",
-    lambda prompt: asked.append(prompt) or "correct horse")
+    lambda prompt, **_: asked.append(prompt) or "correct horse")
   keygen(["acme", "3"], "app", str(pro))
   assert len(asked) == 2
   boot_h = (pro / "boot.h").read_text()
   assert boot_h.startswith("// app/boot.h\n")
-  assert all(keys.product_public(name).hex() in boot_h for name in ("acme", "acme-1", "acme-2"))
+  assert all(keys.sign_public(name).hex() in boot_h for name in ("acme", "acme-1", "acme-2"))
   assert '#include "boot.h"' in (pro / "main.h").read_text()
 
 def keygen_run_again_touches_no_file(pro, keys_dir, monkeypatch):
   """A main.h written again would rebuild every object that includes it."""
-  monkeypatch.setenv(keys.PASSWORD_ENV, "correct horse")
+  monkeypatch.setenv(keys.SIGN_PASSWORD.env, "correct horse")
   keygen(["acme"], "app", str(pro))
   files = [pro / "main.h", pro / "boot.h"]
   for path in files: os.utime(path, ns=(0, 0))
@@ -106,41 +106,41 @@ def another_application_of_the_product_takes_the_keys_without_a_password(tmp_pat
   for folder in (first, second):
     folder.mkdir()
     (folder / "main.h").write_bytes(MAIN_H.encode())
-  monkeypatch.setenv(keys.PASSWORD_ENV, "correct horse")
+  monkeypatch.setenv(keys.SIGN_PASSWORD.env, "correct horse")
   keygen(["acme", "2"], "a", str(first))
-  monkeypatch.delenv(keys.PASSWORD_ENV)
+  monkeypatch.delenv(keys.SIGN_PASSWORD.env)
   keygen(["acme", "2"], "b", str(second)) # a password prompt would fail here, nothing answers it
   block = lambda folder: (folder / "boot.h").read_text().split("BOOT_KEYS")[1]
   assert block(first) == block(second)
 
 def a_spare_key_added_later_keeps_the_numbers_of_the_others(pro, keys_dir, monkeypatch):
-  monkeypatch.setenv(keys.PASSWORD_ENV, "correct horse")
+  monkeypatch.setenv(keys.SIGN_PASSWORD.env, "correct horse")
   keygen(["acme"], "app", str(pro))
   keygen(["acme", "2"], "app", str(pro))
   boot_h = (pro / "boot.h").read_text()
-  first, spare = keys.product_public("acme").hex(), keys.product_public("acme-1").hex()
+  first, spare = keys.sign_public("acme").hex(), keys.sign_public("acme-1").hex()
   assert boot_h.index(first) < boot_h.index(spare)
 
 def key_without_a_password_signs_without_asking(pro, keys_dir, monkeypatch):
-  monkeypatch.delenv(keys.PASSWORD_ENV, raising=False)
-  monkeypatch.setattr(keys.getpass, "getpass", lambda prompt: "")
+  monkeypatch.delenv(keys.SIGN_PASSWORD.env, raising=False)
+  monkeypatch.setattr(keys.getpass, "getpass", lambda prompt, **_: "")
   keygen(["acme"], "app", str(pro))
-  assert "salt" not in keys.product_record("acme")
-  monkeypatch.setattr(keys.getpass, "getpass", lambda prompt: pytest.fail("asked"))
-  public = keys.product_public("acme")
-  assert ed25519.public_key(keys.signing_seed(public)) == public
+  assert "salt" not in keys.sign_record("acme")
+  monkeypatch.setattr(keys.getpass, "getpass", lambda prompt, **_: pytest.fail("asked"))
+  public = keys.sign_public("acme")
+  assert ed25519.public_key(keys.seed_for(public)) == public
 
 def short_password_stops_before_any_file(pro, keys_dir, monkeypatch):
-  monkeypatch.delenv(keys.PASSWORD_ENV, raising=False)
-  monkeypatch.setattr(keys.getpass, "getpass", lambda prompt: "1234567")
+  monkeypatch.delenv(keys.SIGN_PASSWORD.env, raising=False)
+  monkeypatch.setattr(keys.getpass, "getpass", lambda prompt, **_: "1234567")
   with pytest.raises(SystemExit):
     keygen(["acme"], "app", str(pro))
-  assert keys.product_public("acme") is None and not (pro / "boot.h").exists()
+  assert keys.sign_public("acme") is None and not (pro / "boot.h").exists()
   assert (pro / "main.h").read_bytes() == MAIN_H.encode()
 
 def refused_files_and_lost_pub_stop_the_keys_before_their_password(pro, keys_dir, monkeypatch):
   """`acme.key` without `acme.pub` would fail only after the password was typed twice."""
-  monkeypatch.setattr(keys, "new_password", lambda names, kind: pytest.fail("password asked"))
+  monkeypatch.setattr(keys, "new_password", lambda _: pytest.fail("password asked"))
   (pro / "main.h").write_bytes((MAIN_H + f'#define BOOT_KEYS "{KEY.hex()}"\r\n').encode())
   with pytest.raises(SystemExit):
     keygen(["acme"], "app", str(pro))
@@ -149,6 +149,11 @@ def refused_files_and_lost_pub_stop_the_keys_before_their_password(pro, keys_dir
   with pytest.raises(SystemExit):
     keygen(["acme"], "app", str(pro))
   (pro / "boot.h").unlink()
+  (pro / "main.h").write_bytes(MAIN_H.replace("STM32G081", "HOST").encode())
+  with pytest.raises(SystemExit):
+    keygen(["acme"], "app", str(pro))
+  assert not (pro / "boot.h").exists()
+  (pro / "main.h").write_bytes(MAIN_H.encode())
   keys_dir.mkdir()
   (keys_dir / "acme.key").write_text("{}\n")
   with pytest.raises(SystemExit):

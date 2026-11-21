@@ -10,6 +10,7 @@ from opencplc import actions, utils, project
 from opencplc.project import generate, prepare_project
 from opencplc.resolver import resolve_project
 from opencplc.utils import keys
+from opencplc.utils.palette import CHOICE_COLOR
 from dataclasses import replace
 from conftest import build_workspace, uno_cfg, wb55_cfg, parse_dispatcher, resolve_uno
 from conftest import KEY, key_boot, resolve_key_uno, read_makefile
@@ -71,38 +72,59 @@ def one_flash_rule_and_the_debugger_load_the_packed_image(ws):
     assert launch["loadFiles"] == ["${workspaceFolder}/build/projects/myapp/myapp-dist.hex"]
     assert launch["executable"].endswith("myapp.elf") # symbols stay with the elf
 
+def dist_builds_a_release_tree_of_its_own_from_nothing(ws):
+  """The tree of `make` stays as it is, a release starts from nothing, dated by its commit."""
+  generate(resolve_uno())
+  make = read_makefile(ws)
+  dist = make[make.index("\ndist:"):make.index("\nverify:")]
+  built = '"$(MAKE)" $(RELEASE_FLAGS) $(RELEASE)/$(TARGET).hex $(RELEASE)/$(TARGET).bin'
+  assert dist.startswith(f"\ndist:\n\t@$(call RMDIR,$(RELEASE))\n\t@{built} $(RELEASE_BOOT)\n")
+  tree = "--no-print-directory BUILD=$(RELEASE) FORGE_STAMP=$(FORGE_STAMP)"
+  assert f"RELEASE_FLAGS = {tree}" in make
+  assert "$(if $(EPOCH),SOURCE_DATE_EPOCH=$(EPOCH))" in make
+
 def dist_packs_the_image_again_with_the_bootloader_of_dist(ws):
   """
-  Two files: the full image for a bare chip, the image alone for `UPDATE`.
+  Two files: the full image for a bare chip, the image alone for `UPDATE`, and their record.
 
-  Packed again rather than copied: under the `key` bootloader the product key signs them,
-  behind the bootloader that holds the product keys.
+  Packed again rather than copied: under the `key` bootloader the sign key signs them,
+  behind the bootloader that holds the sign keys.
   """
   generate(resolve_uno())
   make = read_makefile(ws)
-  dist = make[make.index("\ndist:"):make.index("\nclean:")]
-  assert dist.startswith("\ndist: build $(BOOT_DIST_IMAGE)\n")
-  packed = ("--pack $(BUILD)/$(TARGET).hex $(PROJECT)/$(DIST).hex $(BOOT_DIST_IMAGE) "
+  dist = make[make.index("\ndist:"):make.index("\nverify:")]
+  packed = ("--pack $(RELEASE)/$(TARGET).hex $(PROJECT)/$(DIST).hex $(RELEASE_BOOT) "
     "$(if $(BOOT_KEYS),$(BOOT_KEYS) $(SIGNING_KEY) dist $(CIPHER))")
-  assert packed in dist
-  assert dist.index("ifeq ($(BOOT),true)") < dist.index("Full image") < dist.index("Update image")
-  assert dist.index("Update image") < dist.index("\nelse\n") < dist.index("Flash image")
+  recorded = ("--record $(RELEASE)/$(TARGET).bin $(PROJECT)/$(DIST) $(OPENCPLC) "
+    "$(if $(BOOT_KEYS),$(BOOT_KEYS) $(SIGNING_KEY) $(CIPHER))")
+  assert dist.index(packed) < dist.index(recorded) < dist.index("Full image")
+  assert dist.index("ifeq ($(BOOT),true)") < dist.index("Full image")
+  assert dist.index("Full image") < dist.index("Update image") < dist.index("\nelse\n")
+  assert dist.index("\nelse\n") < dist.index("Flash image") < dist.index("Release record")
 
 def dist_encrypts_the_update_image_only_with_cipher(ws):
   """Build and signature stay as they are, so a second `CIPHER=` encrypts the same image."""
   generate(resolve_uno())
   make = read_makefile(ws)
-  dist = make[make.index("\ndist:"):make.index("\nclean:")]
+  dist = make[make.index("\ndist:"):make.index("\nverify:")]
   ciphered = ("ifneq ($(CIPHER),)\n"
     "\t@$(call CD,$(WORKSPACE)) && $(FORGE) --cipher $(CIPHER) $(PROJECT)/$(DIST).bin\nendif\n")
-  assert dist.index("--pack") < dist.index(ciphered) < dist.index("Full image")
-  assert "$(DIST)$(if $(CIPHER),-$(CIPHER)).bin" in dist[dist.index("Update image"):]
+  assert dist.index("--pack") < dist.index(ciphered) < dist.index("--record")
+  assert "$(DIST)$(if $(CIPHER),.$(CIPHER)).bin" in dist[dist.index("Update image"):]
+
+def verify_builds_as_dist_and_compares_with_the_record_of_its_tag(ws):
+  generate(resolve_uno())
+  make = read_makefile(ws)
+  verify = make[make.index("\nverify:"):make.index("\nlint:")]
+  assert '"$(MAKE)" $(RELEASE_FLAGS) $(RELEASE)/$(TARGET).bin' in verify
+  record = "$(if $(RECORD),$(RECORD),$(PROJECT)/$(DIST).json)"
+  assert f"--verify $(RELEASE)/$(TARGET).bin {record}" in verify
 
 def color_codes_stay_whole_under_a_posix_shell(ws, monkeypatch):
   """`/bin/sh` ends a command at the `;` of a 256-color code, so every code goes in quotes."""
   monkeypatch.setattr(project.platform, "system", lambda: "Linux")
   generate(resolve_uno())
-  quoted = f"for '{c.GOLD}'build'{c.END}'"
+  quoted = f"for '{CHOICE_COLOR}'build'{c.END}'"
   assert quoted in read_makefile(ws)
   assert quoted in (ws / "makefile").read_text() # the dispatcher too
 
@@ -125,8 +147,8 @@ def chip_build_compiles_its_warnings_and_its_call_graph_for_lint(ws):
   make = read_makefile(ws)
   assert "WARNINGS = -Wall -Wundef -Wvla" in make
   assert '-MF"$(@:%.o=%.d)" -fcallgraph-info=su' in make
-  # The stack of each thread needs the CPU, and Core and the project for their `lint.yaml`
-  assert "$(FORGE) -z $@ $(FLASH_kB) $(RAM_kB) cortex-m0plus $(OPENCPLC) $(PROJECT)" in make
+  # A build reports its FLASH and RAM alone, the stack of each thread is analysis of `make lint`
+  assert "$(FORGE) -z $@ $(FLASH_kB) $(RAM_kB)\n" in make
   assert "lint: build\n\t@$(call CD,$(WORKSPACE)) && $(FORGE) --lint $(NAME) $(LOAD_FLAGS)" in make
 
 def unchanged_regeneration_keeps_bytes_and_mtime(ws):
@@ -222,7 +244,7 @@ def key_bootloader_of_builds_takes_the_development_key(ws):
   assert "BOOT_kB := 30\n" in make
   assert "ORIGIN = 0x08000000, LENGTH = 30K" in (ws / BUILD / "boot.ld").read_text()
   assert f"BOOT_DEV_KEY := {keys.dev_public().hex()}\n" in make
-  # The flag goes to the objects of `boot/` alone, `boot-dist/` takes the product keys
+  # The flag goes to the objects of `boot/` alone, `boot-dist/` takes the sign keys
   desk = make[make.index("$(BUILD)/boot/%.o: $(OPENCPLC)/%.c"):]
   dist = make[make.index("$(BUILD)/boot-dist/%.o: $(OPENCPLC)/%.c"):]
   assert "$(BOOT_DEV)" in desk.split("\n\n")[0] and "$(BOOT_DEV)" not in dist.split("\n\n")[0]

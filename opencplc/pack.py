@@ -6,13 +6,13 @@ Flash image packing, `--pack`: the application hex made into what goes into flas
 Under the bootloader the application gets the CRC in its trailer and the bootloader in front.
 One file then flashes a bare chip, and the update binary lands beside it.
 Under the `key` bootloader the trailer also takes the signature:
-a build signs with the development key, which its bootloader holds in place of each product key,
-`dist` signs with the product key `PRO_SIGNING_KEY` names.
+a build signs with the development key, which its bootloader holds in place of each sign key,
+`dist` signs with the sign key `PRO_SIGNING_KEY` names.
 Without a bootloader the flash image is the application as linked.
 """
 
 import sys
-from xaeian import Print, Color as c, PATH, FILE, DIR
+from xaeian import Print, PATH, FILE, DIR
 from xaeian.crc import crc32_iso
 from .args import flag
 from .platforms import FLASH_BASE
@@ -41,8 +41,8 @@ def update_path(out_path:str) -> str:
   return PATH.with_suffix(out_path, ".bin")
 
 def encrypted_path(update:str, name:str) -> str:
-  """Update binary encrypted with cipher key `name`: `app-1.2.0.bin` → `app-1.2.0-acme.bin`."""
-  return PATH.with_suffix(update, f"-{name}.bin")
+  """Update binary encrypted with cipher key `name`: `app-1.2.0.bin` → `app-1.2.0.acme.bin`."""
+  return PATH.with_suffix(update, f".{name}.bin")
 
 def encrypted(data:bytes) -> bool:
   """Update image `data` whose bytes miss the CRC of its plain trailer: encrypted, or damaged."""
@@ -95,8 +95,8 @@ def pack(app_path:str, out_path:str, boot_path:str|None=None, keys_hex:str="", n
   if keys_hex:
     public = [bytes.fromhex(key) for key in keys.keys_split(keys_hex)]
     if not 0 <= number < len(public):
-      raise ValueError(f"no key {number} among the {len(public)} keys of BOOT_KEYS")
-    seed = keys.signing_seed(public[number]) if release else keys.dev_seed()
+      raise ValueError(f"no key {number} among {len(public)} keys of BOOT_KEYS")
+    seed = keys.seed_for(public[number]) if release else keys.dev_seed()
   origin = min(image.segments)
   end = max(addr + len(seg) for addr, seg in image.segments.items())
   size = image_size(image, origin)
@@ -133,13 +133,7 @@ def pack_command(files:list[str]):
   except (OSError, ValueError) as e:
     p.err(f"Pack failed: {e}")
     sys.exit(1)
-  if release and keys_hex and len(keys.keys_split(keys_hex)) == 1:
-    name = keys.product_name(bytes.fromhex(keys_hex)) or "<name>"
-    p.wrn(f"{c.SKY}BOOT_KEYS{c.END} holds one key: its leak would end the updates of every device")
-    p.run("Add spare keys before the first unit ships, "
-      f"e.g. {utils.color_command(f'opencplc --sign {name} 3')}")
   if not release: return
   for name, path in older_images(update_path(out), cipher):
     p.wrn(f"Image {utils.color_image(PATH.basename(path))} comes from another build")
-    p.run(f"Encrypt this build with {utils.color_command(f'make dist CIPHER={name}')} "
-      "under the same TAG")
+    p.tip(f"Encrypt this build with same TAG: {utils.color_command(f'make dist CIPHER={name}')}")

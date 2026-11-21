@@ -108,13 +108,13 @@ endif
 
 ifeq ($(BUILD_SAYS),yes)
 build:
-	@"$(MAKE)" --no-print-directory -q $(EXE) && echo Nothing to be done for ${GOLD}build${END}|| "$(MAKE)" --no-print-directory $(EXE)
+	@"$(MAKE)" --no-print-directory -q $(EXE) && echo Nothing to be done for ${CHOICE_COLOR}build${END}|| "$(MAKE)" --no-print-directory $(EXE)
 else
 build: $(EXE)
 endif
 
 run: build
-	@echo Running ${LIME}$(notdir $(EXE))${END}
+	@echo Running ${EXE_COLOR}$(notdir $(EXE))${END}
 	@$(EXE)
 
 # `make dist TAG=1.2.0` names the copy <target>-1.2.0
@@ -124,7 +124,7 @@ DIST := $(TARGET)$(if $(TAG),-$(TAG))$(suffix $(EXE))
 dist: build
 	@$(call COPY,$(EXE),$(PROJECT)/$(DIST))
 	@$(call TOUCH,$(FORGE_STAMP))
-	@echo Copied ${LIME}$(DIST)${END} to ${PROJECT_COLORED}
+	@echo Copied ${EXE_COLOR}$(DIST)${END} to ${PROJECT_COLORED}
 
 ${TEST}
 

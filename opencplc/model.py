@@ -3,7 +3,8 @@
 """
 Data shapes the modules hand to each other.
 
-`Config` is what `configure` reads: flags of a new project, or main.h and boot.h of one.
+`Config` is what `configure` reads: flags of a new project, or main.h and boot.h of one
+under the flags of its load.
 `Project` is what `resolve_project()` makes of it: the model every generator,
 `-i`, `--program` and `--lock` read from.
 """
@@ -36,11 +37,15 @@ class Config(Hardware):
   fw_ver: str           # version of Core that builds it
   opt_level: str = OPT_DEFAULT
   log_level: str = LOG_LEVEL_DEFAULT
-  boot: bool = False    # main.h includes boot.h: the image runs behind the bootloader
+  boot: bool = False    # image behind the bootloader: main.h includes boot.h, or --boot adds it
+  # --boot of this load adds the bootloader: to a new project, or to a main.h lacking it
+  boot_new: bool = False
   boot_keys: str = ""   # `BOOT_KEYS` of boot.h, "" for a `plain` bootloader
   signing_key: int = 0  # `PRO_SIGNING_KEY`, the key `make dist` signs with
   project_drivers: list[str] = field(default_factory=list)
   load_flags: str = ""  # -f, -b and -c of the load, which the reloads of make keep
+  # `#define` values the flags of the load write into main.h, as written there
+  settings: dict[str, str] = field(default_factory=dict)
   stlink: str = ""      # ST-Link bound to the project in opencplc.json
 
   @property

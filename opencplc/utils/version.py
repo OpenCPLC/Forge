@@ -5,9 +5,10 @@
 import sys, re
 from typing import Literal
 import packaging.version
-from xaeian import Print, Color as c, DIR, PATH
+from xaeian import Print, DIR, PATH, grey
+from .palette import color_folder, color_link, color_version, color_wrong
 from xaeian.cmd import run, output
-from .common import is_yes, color_url
+from .common import is_yes
 
 p = Print()
 
@@ -39,7 +40,7 @@ def version_older_than(a:str, b:str) -> bool:
 def version_check(ver:str, available:list[str], err_msg:str):
   """Exit with `err_msg` when `ver` is not among the available refs."""
   if ver not in available:
-    p.err(f"Framework version {c.MAGNTA}{ver}{c.END} does not exist")
+    p.err(f"Framework version {color_wrong(ver)} does not exist")
     p(err_msg)
     sys.exit(1)
 
@@ -51,8 +52,8 @@ def git_clone(url:str, path:str, ref:str|None=None, drop_on_err:bool=False):
   res = run(cmd)
   if res.returncode:
     if drop_on_err and DIR.exists(path): DIR.remove(path, force=True)
-    p.err(f"Clone of {color_url(url)} failed")
-    for line in res.stderr.strip().splitlines()[-2:]: p.gap(f"{c.GREY}{line}{c.END}")
+    p.err(f"Clone of {color_link(url)} failed")
+    for line in res.stderr.strip().splitlines()[-2:]: p.gap(grey(line))
     sys.exit(1)
 
 def git_get_refs(url:str, option:Literal["--heads", "--tags", "--ref"]="--ref") -> list[str]:
@@ -69,17 +70,17 @@ def git_clone_missing(url:str, path:str, ref:str, yes:bool=False, required:bool=
   """Clone when `path` is missing, after confirmation; `False` when declined and not required."""
   full_path = PATH.resolve(path, read=False)
   if DIR.exists(full_path): return True
-  p.wrn(f"Missing {c.CREAM}{PATH.local(full_path)}{c.END}, "
-    f"clone from {color_url(url)} {c.GREY}({ref}){c.END}")
+  p.wrn(f"Missing {color_folder(PATH.local(full_path))}, "
+    f"clone from {color_link(url)} {grey(f'({ref})')}")
   if not yes and not is_yes():
     if not required: return False
-    p.err(f"You can download it manually from {color_url(url)}")
+    p.err(f"You can download it manually from {color_link(url)}")
     sys.exit(0)
   git_clone(url, full_path, ref)
   loc = PATH.local(full_path)
   if loc.endswith(ref):
-    loc = f"{c.GREY}{loc[:len(loc)-len(ref)]}{c.END}{c.VIOLET}{ref}{c.END}"
+    loc = f"{grey(loc[:len(loc)-len(ref)])}{color_version(ref)}"
   else:
-    loc = f"{c.GREY}{loc}{c.END}"
-  p.ok(f"Cloned {color_url(url)} to {loc}")
+    loc = grey(loc)
+  p.ok(f"Cloned {color_link(url)} to {loc}")
   return True

@@ -11,7 +11,8 @@ A run of a single program shows its output whatever the verdict.
 """
 
 import os, re, subprocess, time
-from xaeian import Print, Color as c, DIR, PATH
+from xaeian import Print, DIR, PATH, grey
+from . import utils
 
 p = Print()
 
@@ -48,13 +49,14 @@ def run_one(build:str, name:str) -> tuple[int|None, int, str, list[str]]:
   return ok, err, why, lines[:-1]
 
 def fraction(passed:int, total:int) -> str:
-  """`passed/total`: what passed in cream, magenta when short of the whole, the whole in grey."""
-  return f"{c.CREAM if passed == total else c.MAGNTA}{passed}{c.END}{c.GREY}/{total}{c.END}"
+  """`passed/total`: what passed, wrong when short of the whole, then the whole in grey."""
+  shown = utils.color_passed(passed) if passed == total else utils.color_wrong(passed)
+  return f"{shown}{grey(f'/{total}')}"
 
 def shown(name:str) -> str:
   """Program name with `test_` greyed, so the modules stand out down the list."""
   if not name.startswith("test_"): return name
-  return f"{c.GREY}test_{c.END}{name.removeprefix('test_')}"
+  return f"{grey('test_')}{name.removeprefix('test_')}"
 
 def run_tests(build:str, names:list[str]) -> int:
   """Programs `names` built in `build`: a line each and a total; `1` when any of them failed."""
@@ -66,7 +68,7 @@ def run_tests(build:str, names:list[str]) -> int:
     passed = ok is not None and not err and not why
     line = shown(name)
     if ok is not None: line += f" {fraction(ok, ok + err)}"
-    if why: line += f" {c.GREY}({why}){c.END}"
+    if why: line += f" {grey(f'({why})')}"
     if passed: p.ok(line)
     else: p.err(line)
     if len(names) == 1 or not passed:

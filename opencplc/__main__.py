@@ -12,12 +12,12 @@ and `actions`.
 """
 
 import signal, sys
-from xaeian import Print, Color as c, PATH
+from xaeian import Print, PATH, grey
 from .config import URL_DEMO, DIR_DEMO, DIR_PROJECTS
-from .args import flag, load_args, check_flags
+from .args import flag, load_args, check_flags, given
 from .templates import load_templates
 from .model import Config
-from .project import prepare_project, generate, project_delete
+from .project import prepare_project, settings_save, generate, project_delete
 from .resolver import resolve_project, has_tests, tests_of
 from .actions import info_actions, info_show, program_image
 from .lint import run_lint
@@ -35,16 +35,22 @@ p = Print()
 
 def handle_sigint(signum, frame):
   """Ctrl+C ends the run quietly."""
-  p.wrn(f"Closing {c.GREY}(Ctrl+C){c.END}...")
+  p.wrn(f"Closing {grey('(Ctrl+C)')}...")
   sys.exit(0)
 
 signal.signal(signal.SIGINT, handle_sigint)
+
+# Fields of the flags that work on an existing project
+ON_PROJECT = {
+  "reload", "info", "board", "chip", "framework", "opt_level", "memory", "plc", "drv", "boot",
+  "stlink", "program", "lock", "sign", "lint",
+}
 
 def name_project(args, cwd:str, forge_cfg:dict) -> bool:
   """
   Project of the run named, after the flags that may carry its name; `True` when scoped to it.
 
-  Without a name, a reload and the commands on a project take the folder of `cwd`,
+  Without a name, the flags on a project take the folder of `cwd`,
   then the active project of the dispatcher.
   """
   # Mutually exclusive modes; mode flags may also carry the project name
@@ -61,9 +67,9 @@ def name_project(args, cwd:str, forge_cfg:dict) -> bool:
     ensure_refs(forge_cfg, args.yes) # first run: the version list must exist
   # -r <name> and -r inside a project directory touch that project only, never the workspace
   scoped = bool(args.reload and args.name)
-  # These act on the active project when no name is given
-  acting = args.program or args.sign or args.lock is not None or args.lint
-  if not args.name and (args.reload or args.info or acting):
+  # -n, -d and -g name a project of their own, never the active one
+  on_project = bool(given(args) & ON_PROJECT) and not (args.new or args.delete or args.get)
+  if not args.name and on_project:
     scoped = reload_from_cwd(args, cwd)
     if not scoped:
       reload_from_makefile(args, makefile_info())
@@ -83,7 +89,7 @@ def fetch_project(args, fw_ver:str, forge_cfg:dict):
   if args.demo:
     utils.ensure_git(args.yes)
     utils.git_clone_missing(URL_DEMO, DIR_DEMO, "main", args.yes)
-    p.inf(f"Demo in {c.GREY}{DIR_DEMO}{c.END}, "
+    p.inf(f"Demo in {grey(DIR_DEMO)}, "
       f"load one with {utils.color_command('opencplc demo/<name>')}")
     sys.exit(0)
 
@@ -100,7 +106,7 @@ def pick_project(args, forge_cfg:dict) -> dict:
   if args.name and not utils.is_local(args.name):
     valid, reason = utils.validate_project_name(args.name)
     if not valid:
-      p.err(f"Invalid project name: {c.MAGNTA}{reason}{c.END}")
+      p.err(f"Invalid project name: {utils.color_wrong(reason)}")
       sys.exit(1)
   return projects
 
@@ -133,8 +139,11 @@ def run_project(args, cfg:Config, scoped:bool):
     if args.program: program_image(model, args.program, args.yes)
     if args.lock is not None: lock_board(model, args.lock, args.yes)
     sys.exit(0)
+  resolve_project(cfg) # a project the Core refuses stops before any file of it is written
   prepare_project(cfg)
-  generate(resolve_project(cfg), activate=not scoped)
+  model = resolve_project(cfg)
+  settings_save(cfg)
+  generate(model, activate=not scoped)
 
 def main():
   """Parse arguments, settle the workspace and run what the flags ask for."""

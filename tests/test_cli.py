@@ -8,7 +8,7 @@ from xaeian import file_context
 import opencplc.__main__ as forge
 import opencplc.workspace as ws_mod
 from opencplc import actions, lock, project
-from opencplc.args import Args
+from opencplc.args import Args, PARSER
 from opencplc.utils import keys
 from conftest import build_workspace, write_forge_config, run_cli, refs_cfg
 from conftest import frozen_forge, _raise_disk_full, make_board, INI, age, core_test, CORE_TEST
@@ -72,10 +72,69 @@ def info_prints_resolved_config(ws, monkeypatch, capsys):
   out = capsys.readouterr().out
   assert "STM32G0C1" in out and "Uno" in out and "492" in out
 
-def config_flags_on_existing_project_fail(ws, monkeypatch):
-  run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-y")
-  assert run_cli(monkeypatch, "app", "-o", "O2") == 1
-  assert run_cli(monkeypatch, "app", "-m", "128", "36") == 1
+def settings_flags_write_main_h_of_an_existing_project(ws, monkeypatch):
+  """The flags of creation, the lines of creation, and the same run builds with them."""
+  assert run_cli(monkeypatch, "-n", "app", "-c", "STM32G081", "-y") == 0
+  assert run_cli(monkeypatch, "app", "-o", "O2", "-m", "64", "18", "--plc", "--drv", "shtc3") == 0
+  main_h = (ws / "projects" / "app" / "main.h").read_text()
+  assert 'PRO_OPT_LEVEL "O2"' in main_h and "PRO_PLC true" in main_h
+  assert "PRO_FLASH_kB 64" in main_h and "PRO_RAM_kB 18" in main_h
+  assert 'PRO_DRIVERS "shtc3"' in main_h # the template left it out without a driver
+  make = read_makefile(ws, "app")
+  assert "OPT = -O2" in make and "plc/plc.c" in make and "drv/shtc3.c" in make
+  assert "LENGTH = 64K" in (ws / "projects" / "app" / "flash.ld").read_text()
+
+def a_setting_the_core_refuses_leaves_the_files_as_they_were(ws, monkeypatch):
+  assert run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-y") == 0
+  main_h = (ws / "projects" / "app" / "main.h").read_text()
+  assert run_cli(monkeypatch, "app", "--drv", "nonesuch") == 1
+  (ws / "opencplc" / "1.0.0" / ".boot" / "main.c").unlink()
+  assert run_cli(monkeypatch, "app", "--boot") == 1
+  assert (ws / "projects" / "app" / "main.h").read_text() == main_h
+  assert not (ws / "projects" / "app" / "boot.h").exists()
+
+def a_new_project_the_core_refuses_leaves_no_file(ws, monkeypatch):
+  """Its name stays free for the next try."""
+  assert run_cli(monkeypatch, "-n", "app", "-c", "STM32G0C1", "--drv", "nonesuch", "-y") == 1
+  assert not (ws / "projects" / "app").exists()
+
+def a_plain_load_leaves_main_h_byte_for_byte(ws, monkeypatch):
+  """Behind the bootloader too, with a line of another ending: only flags write main.h."""
+  assert run_cli(monkeypatch, "-n", "app", "-c", "STM32G0C1", "--boot", "-y") == 0
+  main_h = ws / "projects" / "app" / "main.h"
+  mixed = main_h.read_bytes().replace(b"#define MAIN_H_\n", b"#define MAIN_H_\r\n")
+  main_h.write_bytes(mixed)
+  assert run_cli(monkeypatch, "app") == 0
+  assert main_h.read_bytes() == mixed
+
+def an_unknown_optimization_level_writes_nothing(ws, monkeypatch):
+  """A typo of -o would land in main.h as `Og`, so it stops the run instead."""
+  assert run_cli(monkeypatch, "-n", "app", "-c", "STM32G081", "-o", "02", "-y") == 1
+  assert not (ws / "projects" / "app").exists()
+  assert run_cli(monkeypatch, "-n", "app", "-c", "STM32G081", "-o", "O2", "-y") == 0
+  main_h = (ws / "projects" / "app" / "main.h").read_text()
+  assert run_cli(monkeypatch, "app", "-o", "02") == 1
+  assert (ws / "projects" / "app" / "main.h").read_text() == main_h
+
+def long_flags_take_their_whole_names():
+  """A prefix never stands for a flag: `--lo` would lock a board."""
+  for argv in (["--lo"], ["--loc", "2"], ["--ver"], ["--del"]):
+    with pytest.raises(SystemExit):
+      PARSER.parse_args(argv)
+  assert PARSER.parse_args(["--lock", "2"]).lock == 2
+
+def no_two_flags_differ_in_case_alone():
+  """`-d` deletes a project, so no `-D` stands beside it for a typo to reach."""
+  shorts = [name for action in PARSER._actions for name in action.option_strings
+    if len(name) == 2]
+  assert len({name.lower() for name in shorts}) == len(shorts), sorted(shorts)
+
+def flags_without_a_name_work_on_the_active_project(ws, monkeypatch):
+  assert run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-y") == 0
+  assert run_cli(monkeypatch, "-s", "066AFF49") == 0
+  assert '"projects/app": "066AFF49"' in (ws / "opencplc.json").read_text()
+  assert run_cli(monkeypatch, "-o", "O1") == 0
+  assert 'PRO_OPT_LEVEL "O1"' in (ws / "projects" / "app" / "main.h").read_text()
 
 def forced_chip_lasts_through_the_reloads_of_make(ws, monkeypatch):
   """The makefile hands -c to its reloads, a plain load goes back to main.h."""
@@ -90,9 +149,10 @@ def forced_chip_lasts_through_the_reloads_of_make(ws, monkeypatch):
   assert run_cli(monkeypatch, "app") == 0
   assert "LOAD_FLAGS := \n" in read_makefile(ws, "app")
 
-def core_itself_takes_no_board_or_chip(ws, monkeypatch):
+def core_itself_takes_no_board_chip_or_setting(ws, monkeypatch):
   core_test(ws)
   assert run_cli(monkeypatch, "opencplc/1.0.0", "-c", "STM32G081") == 1
+  assert run_cli(monkeypatch, "opencplc/1.0.0", "-o", "O2") == 1
 
 def listing_and_numeric_pick(ws, monkeypatch, capsys):
   run_cli(monkeypatch, "-n", "alpha", "-b", "Uno", "-y")
@@ -204,7 +264,7 @@ def memory_usage_reads_the_size_table(monkeypatch):
   assert actions.memory_usage("x.elf") == (68208 + 4144, 4144 + 30960)
 
 def plc_layer_without_a_board(ws, monkeypatch):
-  assert run_cli(monkeypatch, "-n", "app", "-c", "STM32G081", "-P", "-y") == 0
+  assert run_cli(monkeypatch, "-n", "app", "-c", "STM32G081", "--plc", "-y") == 0
   main_h = (ws / "projects" / "app" / "main.h").read_text()
   assert "PRO_BOARD_None" in main_h
   assert "PRO_PLC true" in main_h
@@ -220,7 +280,7 @@ def bare_metal_writes_a_void_board(ws, monkeypatch):
   assert "plc/plc.c" not in (ws / "projects" / "app" / "makefile").read_text()
 
 def drivers_flag_seeds_pro_drivers(ws, monkeypatch):
-  assert run_cli(monkeypatch, "-n", "app", "-c", "STM32G081", "-D", "shtc3", "-y") == 0
+  assert run_cli(monkeypatch, "-n", "app", "-c", "STM32G081", "--drv", "shtc3", "-y") == 0
   assert 'PRO_DRIVERS "shtc3"' in (ws / "projects" / "app" / "main.h").read_text()
   assert "drv/shtc3.c" in (ws / "projects" / "app" / "makefile").read_text()
 
@@ -243,7 +303,7 @@ def board_without_the_plc_layer_gets_the_plain_skeleton(ws, monkeypatch):
 def board_without_the_plc_layer_takes_it_from_the_flag(ws, monkeypatch):
   make_board(ws / "opencplc" / "1.0.0", "bare",
     INI.replace("plc = true", "plc = false"), title="Bare")
-  assert run_cli(monkeypatch, "-n", "app", "-b", "bare", "-P", "-y") == 0
+  assert run_cli(monkeypatch, "-n", "app", "-b", "bare", "--plc", "-y") == 0
   assert "PRO_PLC true" in (ws / "projects" / "app" / "main.h").read_text()
   assert "plc/plc.c" in (ws / "projects" / "app" / "makefile").read_text()
 
@@ -256,27 +316,57 @@ def chip_flag_overrides_the_board_manifest(ws, monkeypatch):
   assert run_cli(monkeypatch, "app") == 0     # and it loads back the same way
 
 def boot_flag_writes_boot_h_and_its_include(ws, monkeypatch):
-  assert run_cli(monkeypatch, "-n", "app", "-c", "STM32G0C1", "-B", "-y") == 0
+  assert run_cli(monkeypatch, "-n", "app", "-c", "STM32G0C1", "--boot", "-y") == 0
   pro = ws / "projects" / "app"
   assert '#include "boot.h"' in (pro / "main.h").read_text()
   assert (pro / "boot.h").read_text().startswith("// app/boot.h\n")
   make = read_makefile(ws, "app")
   assert "-DBOOT_SLOT_PAGES=125" in make and "BOOT := true" in make # (512 − 12) / 2 = 250kB
   assert "ORIGIN = 0x08003000, LENGTH = 250K" in (pro / "flash.ld").read_text()
-  assert run_cli(monkeypatch, "app", "-B") == 1 # the `#include` is edited in main.h afterwards
   assert run_cli(monkeypatch, "-n", "plain", "-c", "STM32G0C1", "-y") == 0
   plain = ws / "projects" / "plain"
   assert "boot.h" not in (plain / "main.h").read_text() and not (plain / "boot.h").exists()
 
+def boot_flag_alone_puts_the_active_project_behind_the_bootloader(ws, monkeypatch, capsys):
+  """Forgotten at creation, it comes later with what it costs; once there, nothing changes."""
+  assert run_cli(monkeypatch, "-n", "app", "-c", "STM32G0C1", "-y") == 0
+  capsys.readouterr()
+  assert run_cli(monkeypatch, "--boot") == 0
+  pro = ws / "projects" / "app"
+  main_h = (pro / "main.h").read_text()
+  assert '#include <xdef.h>\n#include "boot.h"\n' in main_h
+  assert (pro / "boot.h").read_text().startswith("// app/boot.h\n")
+  assert "BOOT := true" in read_makefile(ws, "app")
+  assert "250" in capsys.readouterr().out
+  assert run_cli(monkeypatch, "app", "--boot") == 0
+  assert (pro / "main.h").read_text() == main_h
+  assert "250" not in capsys.readouterr().out
+
+def boot_flag_brings_back_a_lost_boot_h(ws, monkeypatch):
+  """As the error of a lost boot.h says, --boot starts a `plain` one again."""
+  assert run_cli(monkeypatch, "-n", "app", "-c", "STM32G0C1", "--boot", "-y") == 0
+  boot_h = ws / "projects" / "app" / "boot.h"
+  boot_h.unlink()
+  assert run_cli(monkeypatch, "app") == 1
+  assert run_cli(monkeypatch, "app", "--boot") == 0
+  assert boot_h.read_text().startswith("// app/boot.h\n")
+  assert run_cli(monkeypatch, "app") == 0
+
 def a_new_boot_project_says_what_the_flag_costs(ws, monkeypatch, capsys):
   """The flag halves the flash, so creation says so; a later load stays quiet."""
-  assert run_cli(monkeypatch, "-n", "app", "-c", "STM32G0C1", "-B", "-y") == 0
+  assert run_cli(monkeypatch, "-n", "app", "-c", "STM32G0C1", "--boot", "-y") == 0
   assert "250" in capsys.readouterr().out
   assert run_cli(monkeypatch, "app") == 0
   assert "250" not in capsys.readouterr().out
 
 def boot_flag_needs_an_stm32_chip(ws, monkeypatch):
-  assert run_cli(monkeypatch, "-n", "sim", "-c", "HOST", "-B", "-y") == 1
+  """A host project it refuses keeps its files as they are."""
+  assert run_cli(monkeypatch, "-n", "sim", "-c", "HOST", "--boot", "-y") == 1
+  assert run_cli(monkeypatch, "-n", "sim", "-c", "HOST", "-y") == 0
+  main_h = (ws / "projects" / "sim" / "main.h").read_text()
+  assert run_cli(monkeypatch, "sim", "--boot") == 1
+  assert (ws / "projects" / "sim" / "main.h").read_text() == main_h
+  assert not (ws / "projects" / "sim" / "boot.h").exists()
 
 def update_outside_a_frozen_build_points_at_pip(tmp_path, monkeypatch, capsys):
   monkeypatch.setattr(actions, "FROZEN", False)
@@ -397,11 +487,11 @@ def program_alone_without_an_image_points_at_dist(ws, monkeypatch, capsys):
 
 def sign_writes_the_keys_and_the_same_run_builds_behind_the_key_bootloader(ws, monkeypatch):
   """A project without the bootloader goes behind it with its first keys."""
-  monkeypatch.setenv(keys.PASSWORD_ENV, "correct horse")
+  monkeypatch.setenv(keys.SIGN_PASSWORD.env, "correct horse")
   assert run_cli(monkeypatch, "-n", "app", "-b", "Uno", "-y") == 0
   assert run_cli(monkeypatch, "app", "--sign", "acme", "2") == 0
   pro = ws / "projects" / "app"
-  publics = [keys.product_public(name).hex() for name in ("acme", "acme-1")]
+  publics = [keys.sign_public(name).hex() for name in ("acme", "acme-1")]
   assert '#include "boot.h"' in (pro / "main.h").read_text()
   assert all(key in (pro / "boot.h").read_text() for key in publics)
   make = read_makefile(ws, "app")

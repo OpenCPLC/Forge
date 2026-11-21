@@ -46,16 +46,17 @@ opencplc <project_name>
 opencplc -r
 ```
 
-Flags such as `-m` and `-o` configure a project only when it's created.
-Later configuration lives in `main.h`: edit it and reload.
+`-o`, `-m`, `--plc`, `--drv` and `--boot` write their settings into `main.h`, for a new project and an existing one alike.
+A flag forgotten at creation comes in with any later load, and `main.h` can always be edited by hand.
 
-`-b` and `-c` also build an existing project for other hardware, with its memory and clock, while `main.h` stays as it is:
+`-b` and `-c` work otherwise: they build an existing project for other hardware, with its memory and clock, while `main.h` stays as it is:
 
 ```sh
 opencplc test/flash -c STM32WB55
 ```
 
 `make` keeps that choice until you load the project without them.
+A flag that writes `main.h` cannot be combined with them, or with `-f` of another Core, so `main.h` takes only what was checked against it.
 Tests and demos for any board leave `PRO_BOARD`, `PRO_CHIP` and memory out of `main.h`, so every load names the hardware.
 
 ### 📂 Local project
@@ -96,7 +97,7 @@ static void loop(void)
 }
 
 stack(stack_plc, 256);
-stack(stack_dbg, 256);
+stack(stack_dbg, 320);
 stack(stack_loop, 1024);
 
 int main(void)
@@ -140,7 +141,8 @@ Full list of targets:
 - `make lint`: Checks the build with Forge rules, cppcheck and gcc analyzer, see [Lint](#-lint)
 - **`make clean`** or `make clr`: Removes built files of the project
 - `make clean_all` or `make clr_all`: Removes built files of all projects
-- `make dist`: Packs the release into the project folder: `.hex` for programmers and, under the bootloader, `.bin` for updates; `make dist TAG=1.2.0` names them `<name>-1.2.0.hex` and `.bin`, and `CIPHER=` encrypts the `.bin` with a cipher key
+- `make dist`: Packs the release into the project folder: `.hex` for programmers and, under the bootloader, `.bin` for updates; `make dist TAG=1.2.0` names them `<name>-1.2.0.hex` and `.bin`, and `CIPHER=` encrypts the `.bin` with a cipher key; built from nothing in a tree of its own, dated by the commit, with a `.json` record beside
+- `make verify`: Builds as `make dist` does and compares the image with the record of `TAG=`, or of `RECORD=`
 - `make update`: Sends the update image of the build over the console _(under the bootloader, with `CMD_BOOT ON`)_; `FILE=` sends another image, `PORT=` picks the port
 - **`make erase`**: Completely wipes microcontroller memory _(**erase** full chip; on STM32WB the radio stack stays)_
 - `make stack`: Flashes radio stack of the second core _(STM32WB)_; `make stack FUS=1` also provisions a factory-fresh board, once and irreversibly
@@ -148,18 +150,17 @@ Full list of targets:
 Built files land in `build/projects/<project_name>/`: `.elf`, `.hex`, `.bin` and `.map` next to `opencplc/` with framework objects and `project/` with yours.
 Programmers flash `-dist.hex`, and under the bootloader `-dist.bin` beside it carries updates.
 Every project compiles the framework on its own, so switching projects never links objects built with another configuration.
-After linking Forge reports memory use, including stack of each thread against the limit its margin allows:
+After linking Forge reports memory use, and `make lint` the stack of each thread:
 
 ```text
 FLASH 70.7kB / 72kB (98%)
 RAM 34.3kB / 36kB (95%)
-STACK loop 556B / 2048B (28%, max 75%)
 ```
 
 ## 🥾 Bootloader
 
-A project whose `main.h` includes `boot.h` runs behind Core's bootloader, which Forge builds with it, and takes updates without a programmer; `-B` sets this up for new projects.
-`opencplc --sign acme 3` adds product keys to `BOOT_KEYS` in `boot.h`, and from then on the bootloader starts only images signed with them.
+A project whose `main.h` includes `boot.h` runs behind Core's bootloader, which Forge builds with it, and takes updates without a programmer; `--boot` sets this up, at creation or later.
+`opencplc --sign acme 3` adds sign keys to `BOOT_KEYS` in `boot.h`, and from then on the bootloader starts only images signed with them.
 `opencplc --cipher acme-enc` makes a cipher key, and `make dist CIPHER=acme-enc` encrypts the update file with it, so nobody reads it on its way to devices.
 `--lock` closes the board to programmers for production, with or without bootloader.
 Both and their security: [🥾 Bootloader and 🔒 lock](https://github.com/OpenCPLC/Forge/wiki/bootlock).
@@ -170,7 +171,7 @@ With the first project ⚒️Forge creates config file **`opencplc.json`**.
 It contains:
 
 - **`version`**: Default OpenCPLC framework version for new projects. Value `latest` means newest stable version.
-- `stlink`: Programmer bound to a project, so `make flash` hits the right board when several ST-Links are connected. Set it with `opencplc myapp -s <serial>`, clear it with `opencplc myapp -s`. Read the serial from OpenOCD log of `make flash` with one programmer connected.
+- `stlink`: Programmer bound to a project, so `make flash` hits the right board when several ST-Links are connected. Set it on the active project with `opencplc -s <serial>`, clear it with `opencplc -s`. Read the serial from OpenOCD log of `make flash` with one programmer connected.
 - `ignore`: Projects left off `-l` and its numbers, as `.gitignore` patterns, e.g. `["demo/"]` hides all demos. Projects named directly still load. Add this key by hand when needed.
 - `available-versions`: List of all available framework versions. Set automatically, used offline.
 
@@ -248,12 +249,12 @@ These are defaults, not rules: `-c` swaps chips _(memory follows the chip, clock
 Only `plc = true` binds: such boards do not build without their layer.
 
 Without a board `main.h` holds `PRO_BOARD_None`, and `PRO_PLC` decides the rest:
-`-c <chip>` alone is bare metal _(HAL and libraries only)_, `-c <chip> -P` adds the PLC layer on your own hardware, where peripheral mapping and `PLC_Main` are yours to write.
+`-c <chip>` alone is bare metal _(HAL and libraries only)_, `-c <chip> --plc` adds the PLC layer on your own hardware, where peripheral mapping and `PLC_Main` are yours to write.
 
 Device drivers live in `drv/`, outside the PLC layer, so any project can use them.
 Folders under `drv/` group them by kind: `temp/` for thermometers, `acc/` for accelerometers, `disp/` for displays.
 A driver goes by its file name, wherever it sits.
-Boards take the ones their manifests name, and projects add more with `--drv` at creation or in `main.h`: `#define PRO_DRIVERS "shtc3, hd44780"`.
+Boards take the ones their manifests name, and projects add more with `--drv` or in `main.h`: `#define PRO_DRIVERS "shtc3, hd44780"`.
 Only named drivers reach the build.
 
 Above all, **Forge** writes these files:
@@ -334,7 +335,7 @@ Full list:
 
 ### Basic
 
-- **`name`**: Project name, the default first argument. It also sets project path `projects/name`, and output files _(`.bin`, `.hex`, `.elf`)_ follow it. A number from `-l` works too. A path, `./app` or `D:/repos/app`, loads a [local project](#-local-project).
+- **`name`**: Project name, the default first argument. It also sets project path `projects/name`, and output files _(`.bin`, `.hex`, `.elf`)_ follow it. A number from `-l` works too. A path, `./app` or `D:/repos/app`, loads a [local project](#-local-project). Without it, flags that work on a project take the one whose folder you're in, or the active one.
 - `-n --new`: Creates a new project with that name.
 - `-e --demo`: Downloads [Demo](https://github.com/OpenCPLC/Demo) repository into `projects/demo`. Load a demo like any project: `opencplc demo/blinky`.
 - `-r --reload`: Regenerates project files. Without **`name`** it takes the active project, or the one whose folder you're in.
@@ -345,9 +346,9 @@ Full list:
 
 - `-b --board`: Board from the framework _(`uno`)_. It sets chip, memory, clock and PLC layer of new projects; `-c` and `--plc` override that. On an existing project it picks another board until a load without it.
 - `-c --chip`: Microcontroller or platform: `STM32G081`, `STM32G0C1`, `STM32WB55`, `HOST` _(compile for PC)_. Without `-b --board` a project has no PLC layer, only HAL and standard framework libraries, as on Nucleo boards or custom hardware. On an existing project it picks another chip until a load without it.
-- `-P --plc`: Adds PLC layer to projects without a board, on your own hardware.
-- `-D --drv`: Framework drivers of a new project, comma separated _(`shtc3, hd44780`)_. Later ones go into `PRO_DRIVERS` in `main.h`.
-- `-B --boot`: Puts new projects behind Core's bootloader: `boot.h` beside `main.h` and its `#include`, see [Bootloader](#-bootloader).
+- `--plc`: Adds PLC layer to projects without a board, on your own hardware.
+- `--drv`: Adds framework drivers to `PRO_DRIVERS` in `main.h`, comma separated _(`shtc3, hd44780`)_.
+- `--boot`: Puts the project behind Core's bootloader: `boot.h` beside `main.h` and its `#include`, see [Bootloader](#-bootloader).
 - `-m --memory`: Memory in kB: `FLASH RAM [RESERVED]`. `RESERVED` is memory for config and EEPROM, taken off FLASH in linker file `flash.ld` _(STM32 only)_.
 
 ### Build config
@@ -360,7 +361,7 @@ Full list:
 
 - `-l --list`: Lists existing projects.
 - `-i --info`: Basic info of the given or active project, project and framework versions included.
-- `-F --framework-versions`: Lists all available OpenCPLC framework versions.
+- `-fv --framework-versions`: Lists all available OpenCPLC framework versions.
 - `-v --version`: Shows ⚒️Forge version and repository link.
 
 ### Tools
@@ -368,12 +369,14 @@ Full list:
 - `-a --assets`: Downloads helper materials _(chip documents and errata, board pinouts, style guides of Core)_. Optionally takes a destination folder.
 - `-u --update`: Replaces Forge executable with the given version _(default: `latest`)_, while `pip` installs update through `pip`.
 - `--program`: Sends a `.hex` to the board through the programmer. Alone it takes what `make dist` left in the active project, the newest of several after confirmation.
-- `--sign`: Makes or takes product key **`NAME`** with spares, **`COUNT`** keys in all _(default 1)_, and adds their public parts to `BOOT_KEYS` in `boot.h` of the active project, with an optional password, see [Bootloader](https://github.com/OpenCPLC/Forge/wiki/bootlock).
+- `--sign`: Makes or takes sign key **`NAME`** with spares, **`COUNT`** keys in all _(default 1)_, and adds their public parts to `BOOT_KEYS` in `boot.h` of the active project, with an optional password, see [Bootloader](https://github.com/OpenCPLC/Forge/wiki/bootlock).
 - `--cipher`: Makes cipher key **`NAME`** of a product, or shows its fingerprint and, once confirmed, the key; with **`FILE`** encrypts that update image, `make dist CIPHER=` uses it, see [Bootloader](https://github.com/OpenCPLC/Forge/wiki/bootlock).
 - `--upload`: Sends update image **`FILE`** over the console, optionally to **`PORT`**; `make update` uses it.
 - `--lock`: Locks the board for production: RDP1 by default, `2` for good, `0` unlocks and erases flash, see [Lock](https://github.com/OpenCPLC/Forge/wiki/bootlock).
 - `-p --pack`: Packs the image for flash: under the bootloader with it in front and CRC and signature behind, with update binary beside; `make` uses it after linking.
-- `-z --size`: Reports FLASH and RAM use of an `.elf`, and, given CPU, Core and project, stack of each thread; `make` uses it after linking.
+- `-z --size`: Reports FLASH and RAM use of an `.elf`; `make` uses it after linking.
+- `--record`: Writes the record of a release; `make dist` uses it last.
+- `--verify`: Compares the image of a build with a release record; `make verify` uses it.
 - `--test`: Runs test programs, each in a clean folder of its own with one minute to finish; `make test` uses it.
 - `--lint`: Checks the project's build with Forge rules, cppcheck and gcc analyzer; `make lint` uses it.
 - `-y --yes`: Auto-confirms all prompts _(non-interactive mode)_.
@@ -415,12 +418,13 @@ opencplc -n myapp -c STM32G081 --drv shtc3  # bare metal with the shtc3 driver
 opencplc -n myapp -c host                   # desktop project (Windows/Linux)
 
 # Managing projects
-opencplc myapp              # load project 'myapp'
-opencplc 3                  # load project #3 from list
-opencplc -r                 # reload active project
-opencplc -l                 # list all projects
-opencplc -i                 # info about active project
-opencplc myapp -s 066AFF49  # bind ST-Link to 'myapp'
+opencplc myapp        # load project 'myapp'
+opencplc 3            # load project #3 from list
+opencplc -r           # reload active project
+opencplc -l           # list all projects
+opencplc -i           # info about active project
+opencplc -s 066AFF49  # bind ST-Link to active project
+opencplc --boot       # put active project behind bootloader
 
 # Demo projects
 opencplc -e           # download Demo to projects/demo
@@ -431,6 +435,6 @@ opencplc -g https://github.com/user/repo
 opencplc -g https://github.com/user/repo v1.0.0
 
 # Updates
-opencplc -u  # update Forge to latest version
-opencplc -F  # show available Core versions
+opencplc -u   # update Forge to latest version
+opencplc -fv  # show available Core versions
 ```

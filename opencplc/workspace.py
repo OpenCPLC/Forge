@@ -10,7 +10,7 @@ keeps the Core checkout present and answers what projects exist here.
 """
 
 import os, re, sys, json
-from xaeian import Print, Color as c, Ico, FILE, DIR, JSON, PATH, replace_end, set_context
+from xaeian import Print, Ico, FILE, DIR, JSON, PATH, replace_end, set_context, grey
 from .config import URL_CORE, DIR_PROJECTS, DIR_FRAMEWORK, DIR_TESTS, DIR_BOOT, FORGE_HEADER
 from .args import flag
 from . import utils
@@ -59,8 +59,8 @@ def linked_workspace(start:str=".") -> str|None:
       root = found.get("WORKSPACE", "")
       if PATH.is_abs(root):
         if FILE.exists(f"{root}/opencplc.json"): return root
-        p.err(f"Workspace {c.CREAM}{root}{c.END} of this project "
-          f"has no {c.ORANGE}opencplc.json{c.END}")
+        p.err(f"Workspace {utils.color_folder(root)} of this project "
+          f"has no {utils.color_config('opencplc.json')}")
         p.run(f"Load the project from a workspace with {utils.color_command('opencplc <path>')}")
         sys.exit(1)
     parent = PATH.dirname(path)
@@ -81,7 +81,7 @@ def enter_workspace(named:str="") -> str:
   root = root or cwd
   if not os.path.samefile(root, cwd):
     os.chdir(root) # subprocesses (git, make) follow the process cwd
-    p.inf(f"Workspace: {c.CREAM}{root}{c.END}")
+    p.inf(f"Workspace: {utils.color_folder(root)}")
   # `xaeian` file API follows its own root: import-time cwd, or exe dir when frozen
   set_context(root_path=root)
   return cwd
@@ -94,16 +94,18 @@ def forge_config(templates:dict) -> dict:
   cfg = JSON.load("opencplc.json", template)
   missing = utils.find_missing_keys(template, cfg)
   if missing:
-    p.err(f"Missing key {c.SKY}{missing[0]}{c.END} in {c.ORANGE}opencplc.json{c.END}")
-    p.run(f"Add it back, or remove {c.ORANGE}opencplc.json{c.END} to start from defaults")
+    p.err(f"Missing key {utils.color_symbol(missing[0])} in {utils.color_config('opencplc.json')}")
+    p.run(f"Add it back, or remove {utils.color_config('opencplc.json')} to start from defaults")
     sys.exit(1)
   # A save keeps only documented fields, `ignore` when set and Forge's own version cache
   cfg = {k: cfg[k] for k in (*template, "ignore", "available-versions") if k in cfg}
   cfg["stlink"] = cfg["stlink"] if isinstance(cfg["stlink"], dict) else {}
   ignore = cfg.get("ignore", [])
   if not isinstance(ignore, list) or not all(isinstance(pattern, str) for pattern in ignore):
-    p.err(f"Key {c.SKY}ignore{c.END} in {c.ORANGE}opencplc.json{c.END} takes a list of patterns")
-    p.run(f'Write it as {c.SKY}"ignore": ["demo/"]{c.END}')
+    p.err(f"Key {utils.color_symbol('ignore')} in {utils.color_config('opencplc.json')} "
+      "takes a list of patterns")
+    example = '"ignore": ["demo/"]'
+    p.run(f"Write it as {utils.color_symbol(example)}")
     sys.exit(1)
   return cfg
 
@@ -138,7 +140,7 @@ def ensure_refs(forge_cfg:dict, yes:bool) -> list[str]:
     _refs_fresh = True
     persist_config(forge_cfg)
   else:
-    p.wrn(f"No internet access or {c.TEAL}GitHub{c.END} is not responding")
+    p.wrn(f"No internet access or {utils.color_link('GitHub')} is not responding")
     if not forge_cfg.get("available-versions"):
       p.err("First run requires network access to fetch available framework versions")
       sys.exit(1)
@@ -153,7 +155,7 @@ def framework_version(args, forge_cfg:dict) -> str:
   fw_ver = utils.version_active(args.framework, forge_cfg)
   core = utils.core_version(args.name or "")
   if core and args.framework and fw_ver != core:
-    p.err(f"Project {c.BLUE}{args.name}{c.END} lies in Core {c.VIOLET}{core}{c.END} "
+    p.err(f"Project {utils.color_file(args.name)} lies in Core {utils.color_version(core)} "
       "and builds with it")
     p.run(f"Drop flag {flag.f}")
     sys.exit(1)
@@ -165,11 +167,11 @@ def ensure_framework(fw_ver:str, forge_cfg:dict, yes:bool):
   # Already cloned versions work offline, even when gone from remote
   if not DIR.exists(fw_dir):
     utils.version_check(fw_ver, ensure_refs(forge_cfg, yes),
-      f"{Ico.RUN} Check version list: {flag.F}")
+      f"{Ico.RUN} Check version list: {flag.fv}")
     utils.git_clone_missing(URL_CORE, fw_dir, fw_ver, yes)
   if not DIR.exists(f"{fw_dir}/hal") or not DIR.exists(f"{fw_dir}/lib"):
-    p.err(f"Framework {c.VIOLET}{fw_ver}{c.END} is incomplete or corrupted")
-    p.inf(f"Try removing {c.CREAM}{fw_dir}{c.END} and run again")
+    p.err(f"Framework {utils.color_version(fw_ver)} is incomplete or corrupted")
+    p.inf(f"Try removing {utils.color_folder(fw_dir)} and run again")
     sys.exit(1)
 
 #----------------------------------------------------------------------------------- Active project
@@ -182,7 +184,7 @@ def makefile_info() -> dict|None:
 
 def reload_from_cwd(args, cwd:str) -> bool:
   """
-  -r/-i inside a project directory, in the workspace or outside: that project is the target.
+  A run on a project without its name, inside a project directory: that project is the target.
 
   Outside the workspace it is the local project holding `cwd`.
   """
@@ -193,7 +195,7 @@ def reload_from_cwd(args, cwd:str) -> bool:
   return True
 
 def reload_from_makefile(args, make_info:dict|None):
-  """-r/-i without a name: recover the active project from the dispatcher."""
+  """A run on a project without its name, outside any project: the active one of the dispatcher."""
   args.name = utils.project_name((make_info or {}).get("ACTIVE", ""))
   if not args.name:
     p.err("No active project in this workspace")
@@ -209,9 +211,9 @@ def stlink_bind(forge_cfg:dict, pro_id:str, serial:str|None) -> str:
   bound = forge_cfg["stlink"]
   if serial:
     bound[pro_id] = serial
-    p.ok(f"ST-Link {c.GOLD}{serial}{c.END} bound to {c.BLUE}{pro_id}{c.END}")
+    p.ok(f"ST-Link {utils.color_value(serial)} bound to {utils.color_file(pro_id)}")
   elif serial == "" and bound.pop(pro_id, None) is not None:
-    p.ok(f"ST-Link binding of {c.BLUE}{pro_id}{c.END} cleared")
+    p.ok(f"ST-Link binding of {utils.color_file(pro_id)} cleared")
   if serial is not None: persist_config(forge_cfg)
   return bound.get(pro_id, "")
 
@@ -246,20 +248,22 @@ def path_name(path:str, cwd:str) -> str:
   if PATH.is_under(full, ".", real=True):
     name = utils.project_name(PATH.rel(PATH.real(full), PATH.real(".")))
     if name: return name
-    p.err(f"{c.CREAM}{full}{c.END} is no project folder of the workspace")
-    p.run(f"Point at one in {c.GREY}{DIR_PROJECTS}/{c.END}, in a Core or outside the workspace")
+    p.err(f"{utils.color_folder(full)} is no project folder of the workspace")
+    p.run(f"Point at one in {grey(f'{DIR_PROJECTS}/')}, in a Core or outside the workspace")
     sys.exit(1)
   if PATH.is_under(".", full, real=True):
-    p.err(f"{c.CREAM}{full}{c.END} holds the workspace, a project cannot")
+    p.err(f"{utils.color_folder(full)} holds the workspace, a project cannot")
     sys.exit(1)
   if not PATH.basename(full):
-    p.err(f"{c.CREAM}{full}{c.END} is the root of a drive, a project needs a folder of its own")
+    p.err(f"{utils.color_folder(full)} is the root of a drive, "
+      "a project needs a folder of its own")
     sys.exit(1)
   for where in (full, utils.full_path(".")):
     if SAFE_PATH.fullmatch(where): continue
-    p.err(f"Path {c.CREAM}{where}{c.END} holds a character make or the console reads as syntax")
+    p.err(f"Path {utils.color_folder(where)} holds a character "
+      "make or the console reads as syntax")
     p.run("Keep the project and the workspace on paths "
-      f"of ASCII letters, digits and {c.SKY}_.~-{c.END}")
+      f"of ASCII letters, digits and {utils.color_symbol('_.~-')}")
     sys.exit(1)
   return full
 
@@ -306,8 +310,8 @@ def project_select(args, projects:dict, ignore:list[str]):
   for i, (name, path) in enumerate(listed.items(), 1):
     if args.project_list:
       path = replace_end(PATH.local(path), name, "")
-      nbr = f"{c.GOLD}{str(i).ljust(3)}{c.END}"
-      p(f"{nbr} {c.GREY}{path}{c.END}{c.BLUE}{name}{c.END}")
+      nbr = utils.color_value(str(i).ljust(3))
+      p(f"{nbr} {grey(path)}{utils.color_file(name)}")
     elif int(args.name) == i:
       args.name = name
       break

@@ -14,14 +14,14 @@ endif
 .DEFAULT_GOAL := build
 
 ifeq ($(ACTIVE),)
-build run flash erase stack dist update test lint clean clr:
+build run flash erase stack dist verify update test lint clean clr:
 	$(error No active project, select one with: ${CMD})
 else
 build:
 	@echo Entering directory: ${ACTIVE_COLORED}
-	@"$(MAKE)" --no-print-directory -q -C $(ACTIVE) build && echo Nothing to be done for ${GOLD}build${END}|| "$(MAKE)" --no-print-directory -C $(ACTIVE) build || (echo ${ERR} Build failed in ${ACTIVE_COLORED}&& exit 1)
+	@"$(MAKE)" --no-print-directory -q -C $(ACTIVE) build && echo Nothing to be done for ${CHOICE_COLOR}build${END}|| "$(MAKE)" --no-print-directory -C $(ACTIVE) build || (echo ${ERR} Build failed in ${ACTIVE_COLORED}&& exit 1)
 
-run flash erase stack dist update test lint clean clr:
+run flash erase stack dist verify update test lint clean clr:
 	@echo Entering directory: ${ACTIVE_COLORED}
 	@"$(MAKE)" --no-print-directory -C $(ACTIVE) $@
 endif
@@ -29,8 +29,8 @@ endif
 # Builds of projects from `projects/` and from Core alike
 clean_all:
 	@$(call RMDIR,build)
-	@echo Removed ${GREY}./build${END}
+	@echo Removed ${FOLDER_COLOR}./build${END}
 
 clr_all: clean_all
 
-.PHONY: build run flash erase stack dist update test lint clean clr clean_all clr_all
+.PHONY: build run flash erase stack dist verify update test lint clean clr clean_all clr_all

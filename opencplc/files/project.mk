@@ -36,6 +36,7 @@ RMFILE = if exist "$(subst /,\,$1)" del /q "$(subst /,\,$1)"
 TOUCH = type nul > "$(subst /,\,$1)"
 # `cd` of cmd.exe keeps its drive without `/d`, and a local project may lie on another one
 CD = cd /d "$(subst /,\,$1)"
+NULL := nul
 else
 SHELL := /bin/sh
 MKDIR = mkdir -p $1
@@ -43,6 +44,7 @@ RMDIR = rm -rf $1
 RMFILE = rm -f $1
 TOUCH = touch $1
 CD = cd $1
+NULL := /dev/null
 endif
 
 # Core sources, relative to `$(OPENCPLC)`
@@ -127,7 +129,7 @@ $(BUILD)/project/%.o: $(PROJECT)/%.s $(CONFIG_DEPS)
 $(BUILD)/$(TARGET).elf: $(OBJECTS) $(LD_SCRIPT)
 		$(CC) $(OBJECTS) $(LDFLAGS) -o $@
 	$(SZ) $@
-	@$(call CD,$(WORKSPACE)) && $(FORGE) -z $@ $(FLASH_kB) $(RAM_kB) ${CPU} $(OPENCPLC) $(PROJECT)
+	@$(call CD,$(WORKSPACE)) && $(FORGE) -z $@ $(FLASH_kB) $(RAM_kB)
 
 $(BUILD)/%.hex: $(BUILD)/%.elf
 	$(HEX) $< $@
@@ -158,7 +160,7 @@ endif
 
 ifeq ($(BUILD_SAYS),yes)
 build:
-	@"$(MAKE)" --no-print-directory -q build && echo Nothing to be done for ${GOLD}build${END}|| "$(MAKE)" --no-print-directory build
+	@"$(MAKE)" --no-print-directory -q build && echo Nothing to be done for ${CHOICE_COLOR}build${END}|| "$(MAKE)" --no-print-directory build
 else
 build: $(ARTIFACTS)
 endif
@@ -169,12 +171,12 @@ OPENOCD = ${OPENOCD} -c
 # One file with or without a bootloader, `--pack` already put it in front
 # Looked for when `flash` runs, so `make run` finds the image its build just made
 flash:
-	@$(if $(wildcard $(BUILD)/$(TARGET)-dist.hex),$(OPENOCD) "program $(BUILD)/$(TARGET)-dist.hex verify reset exit" && echo Flashed ${LIME}$(TARGET)-dist.hex${END}|| (echo Flashing ${RED}failed${END}&& exit 1),echo No image ${LIME}$(TARGET)-dist.hex${END} to flash, build it with make)
+	@$(if $(wildcard $(BUILD)/$(TARGET)-dist.hex),$(OPENOCD) "program $(BUILD)/$(TARGET)-dist.hex verify reset exit" && echo Flashed ${HEX_COLOR}$(TARGET)-dist.hex${END}|| (echo Flashing ${BAD_COLOR}failed${END}&& exit 1),echo No image ${HEX_COLOR}$(TARGET)-dist.hex${END} to flash, build it with make)
 
 run: build flash
 
 erase:
-	@$(OPENOCD) "init; reset init; ${ERASE_CMD}; reset halt; exit" && echo Erased ${PINK}${CHIP}${END}|| (echo Erasing ${RED}failed${END}&& exit 1)
+	@$(OPENOCD) "init; reset init; ${ERASE_CMD}; reset halt; exit" && echo Erased ${CHIP_COLOR}${CHIP}${END}|| (echo Erasing ${BAD_COLOR}failed${END}&& exit 1)
 
 # Radio stack of CPU2: `FUS=1` provisions a factory board, `FAST=1` trusts the installed one
 stack: export PATH := ${CUBE_PATH};$(PATH)
@@ -183,25 +185,48 @@ stack:
 
 # `make dist TAG=1.2.0` gives <target>-1.2.0.hex, the flash image for a programmer
 # Under the bootloader the hex is the full image, <target>-1.2.0.bin the image alone for an update
-# Packed again with the bootloader of `dist`: under `key` the product key signs the image,
-# and the bootloader holds the product keys and keeps its floors in OTP
-# `CIPHER=acme` encrypts the update image with cipher key `acme`, as <target>-1.2.0-acme.bin
+# Packed again with the bootloader of `dist`: under `key` the sign key signs the image,
+# and the bootloader holds the sign keys and keeps its floors in OTP
+# `CIPHER=acme` encrypts the update image with cipher key `acme`, as <target>-1.2.0.acme.bin
+# <target>-1.2.0.json records what the release was made of, `make verify` checks a build against it
 # Packing warns of images that other keys keep from an earlier build
 # Stamp touched, so a new file in the project does not force a reload on the next make
 DIST := $(TARGET)$(if $(TAG),-$(TAG))
 
-dist: build $(BOOT_DIST_IMAGE)
-	@$(call CD,$(WORKSPACE)) && $(FORGE) --pack $(BUILD)/$(TARGET).hex $(PROJECT)/$(DIST).hex $(BOOT_DIST_IMAGE) $(if $(BOOT_KEYS),$(BOOT_KEYS) $(SIGNING_KEY) dist $(CIPHER))
+# A release builds in a tree of its own, from nothing and dated by its commit:
+# one commit gives the same image on every computer, and the tree of `make` stays as it is
+RELEASE = $(BUILD)/release
+# Time of the commit; a format with `%` would lose it to cmd.exe, `--timestamp` needs none
+EPOCH = $(firstword $(shell git -C "$(PROJECT)" rev-list -1 --timestamp HEAD 2>$(NULL)))
+# What the make of the release tree takes over from this one
+RELEASE_FLAGS = --no-print-directory BUILD=$(RELEASE) FORGE_STAMP=$(FORGE_STAMP) \
+  $(if $(BOOT_LD),BOOT_LD=$(BOOT_LD)) $(if $(EPOCH),SOURCE_DATE_EPOCH=$(EPOCH))
+# Bootloader of `dist` as the release tree holds it, empty without one
+RELEASE_BOOT = $(subst $(BUILD)/,$(RELEASE)/,$(BOOT_DIST_IMAGE))
+
+dist:
+	@$(call RMDIR,$(RELEASE))
+	@"$(MAKE)" $(RELEASE_FLAGS) $(RELEASE)/$(TARGET).hex $(RELEASE)/$(TARGET).bin $(RELEASE_BOOT)
+	@$(call CD,$(WORKSPACE)) && $(FORGE) --pack $(RELEASE)/$(TARGET).hex $(PROJECT)/$(DIST).hex $(RELEASE_BOOT) $(if $(BOOT_KEYS),$(BOOT_KEYS) $(SIGNING_KEY) dist $(CIPHER))
 ifneq ($(CIPHER),)
 	@$(call CD,$(WORKSPACE)) && $(FORGE) --cipher $(CIPHER) $(PROJECT)/$(DIST).bin
 endif
+	@$(call CD,$(WORKSPACE)) && $(FORGE) --record $(RELEASE)/$(TARGET).bin $(PROJECT)/$(DIST) $(OPENCPLC) $(if $(BOOT_KEYS),$(BOOT_KEYS) $(SIGNING_KEY) $(CIPHER))
 ifeq ($(BOOT),true)
-	@echo Full image ${LIME}$(DIST).hex${END} to ${PROJECT_COLORED}
-	@echo Update image ${SKY}$(DIST)$(if $(CIPHER),-$(CIPHER)).bin${END} to ${PROJECT_COLORED}
+	@echo Full image ${HEX_COLOR}$(DIST).hex${END} to ${PROJECT_COLORED}
+	@echo Update image ${BIN_COLOR}$(DIST)$(if $(CIPHER),.$(CIPHER)).bin${END} to ${PROJECT_COLORED}
 else
-	@echo Flash image ${LIME}$(DIST).hex${END} to ${PROJECT_COLORED}
+	@echo Flash image ${HEX_COLOR}$(DIST).hex${END} to ${PROJECT_COLORED}
 endif
+	@echo Release record ${CONFIG_COLOR}$(DIST).json${END} to ${PROJECT_COLORED}
 	@$(call TOUCH,$(FORGE_STAMP))
+
+# `make verify TAG=1.2.0` builds as `dist` does and compares the image with that release,
+# `RECORD=` names a record lying elsewhere
+verify:
+	@$(call RMDIR,$(RELEASE))
+	@"$(MAKE)" $(RELEASE_FLAGS) $(RELEASE)/$(TARGET).bin
+	@$(call CD,$(WORKSPACE)) && $(FORGE) --verify $(RELEASE)/$(TARGET).bin $(if $(RECORD),$(RECORD),$(PROJECT)/$(DIST).json)
 
 # Rules of Forge on the build, cppcheck and the analyzer of gcc; `lint.yaml` holds the exceptions
 lint: build
@@ -215,6 +240,6 @@ clean:
 
 clr: clean
 
-.PHONY: build run flash erase stack dist lint clean clr
+.PHONY: build run flash erase stack dist verify lint clean clr
 
 -include $(OBJECTS:.o=.d)

@@ -17,7 +17,7 @@ from xaeian import DIR, FILE, PATH
 from ..utils import glob_match
 from .finding import Finding
 from .lintfile import LISTS, Margins, read, flat
-from .graph import Graph, Function, INDIRECT, place
+from .graph import Graph, Function, place
 from . import sources
 
 @dataclass(frozen=True)
@@ -114,11 +114,25 @@ class Thread:
 class Stack:
   """Stack of one thread: the deepest path the graph shows, what a switch adds, and its array."""
   thread: str
-  deepest: int     # bytes
-  frame: int       # bytes a switch leaves on top
-  size: int|None   # bytes of the array, `None` when the image does not say
-  holes: set[str]  # why the depth is a floor: `pointer`, `dynamic` or `library` calls
-  margin: int      # % of the array the thread keeps free
+  deepest: int    # bytes
+  frame: int      # bytes a switch leaves on top
+  size: int|None  # bytes of the array, `None` when the image does not say
+  margin: int     # % of the array the thread keeps free
+
+  @property
+  def used(self) -> int:
+    """Bytes of the deepest path with the frame a switch leaves on top."""
+    return self.deepest + self.frame
+
+  @property
+  def limit(self) -> int:
+    """Percent of its array the thread may take, what its margin leaves."""
+    return 100 - self.margin
+
+  @property
+  def over(self) -> bool:
+    """The thread takes more of its array than its margin leaves, the whole array included."""
+    return self.size is not None and self.used * 100 > self.size * self.limit
 
 def load_roles(core_dir:str, pro_dir:str = "") -> Roles|None:
   """
@@ -394,22 +408,21 @@ def check_recursion(graph:Graph) -> list[Finding]:
 
 #-------------------------------------------------------------------------------------------- Stack
 
-def deepest(graph:Graph, root:str) -> tuple[int, set[str]]:
-  """Bytes on the deepest call path from `root`, and why the graph may hide a deeper one."""
-  memo:dict[str, tuple[int, set[str]]] = {}
-  def walk(title:str, seen:frozenset) -> tuple[int, set[str]]:
+def deepest(graph:Graph, root:str) -> int:
+  """
+  Bytes on the deepest call path from `root`, a floor of the real depth.
+
+  A call through a pointer or into a library adds what the graph cannot see, so it counts nothing.
+  """
+  memo:dict[str, int] = {}
+  def walk(title:str, seen:frozenset) -> int:
     if title in memo: return memo[title]
-    if title == INDIRECT: return 0, {"pointer"}
     fn = graph.functions.get(title)
-    if fn is None: return 0, {"library"}
-    below = 0
-    holes = {"dynamic"} if fn.frame is None else set()
-    for callee, _ in graph.calls.get(title, []):
-      if callee in seen: continue # a cycle, which `recursion` reports
-      depth, more = walk(callee, seen | {title})
-      below = max(below, depth)
-      holes |= more
-    memo[title] = ((fn.frame or 0) + below, holes)
+    if fn is None: return 0
+    # A callee seen on the way is a cycle, which `recursion` reports
+    below = [walk(callee, seen | {title}) for callee, _ in graph.calls.get(title, [])
+      if callee not in seen]
+    memo[title] = (fn.frame or 0) + max(below, default=0)
     return memo[title]
   return walk(root, frozenset())
 
@@ -430,18 +443,16 @@ def check_stacks(
   for thread in threads:
     fn = graph.functions.get(thread.title)
     if not fn: continue
-    depth, holes = deepest(graph, thread.title)
-    size = sizes.get(thread.stack)
-    margin = margins.of(fn.name)
-    stacks.append(Stack(fn.name, depth, frame, size, holes, margin))
-    if size is None: continue
-    used = depth + frame
+    stack = Stack(fn.name, deepest(graph, thread.title), frame, sizes.get(thread.stack),
+      margins.of(fn.name))
+    stacks.append(stack)
+    if not stack.over: continue
+    used, size = stack.used, stack.size
     if used > size:
       message = f"`{fn.name}` needs at least {used}B, its stack `{thread.stack}` has {size}B"
-    elif used * 100 > size * (100 - margin):
+    else:
       message = (f"`{fn.name}` needs at least {used}B of {size}B in `{thread.stack}`, "
-        f"over the {100 - margin}% its margin allows")
-    else: continue
+        f"over the {stack.limit}% its margin allows")
     found.append(Finding("stack-fit", PATH.local(thread.path), thread.line, 1, message, fn.name,
       RULES["stack-fit"].refs))
   return stacks, found

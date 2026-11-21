@@ -1,19 +1,17 @@
 # opencplc/lint/command.py
 
 """
-Runs of the analysis: `make lint` in full, and the lines every chip build prints after its link.
+Run of the analysis, `make lint`: the stack of each thread, then what every check finds.
 
 `run_lint` checks a resolved project and answers with an exit code.
-`build_report` is quick enough for every build:
-the stack of each thread and the rules of Forge, findings as warnings that stop nothing.
-Both read the objects the linker took, named in the map beside the image,
+It reads the objects the linker took, named in the map beside the image,
 so an object left behind by a removed source never counts.
 """
 
 import re, time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
-from xaeian import Print, Color as c, FILE, PATH, fmt_list, fmt_path, grey
+from xaeian import Print, FILE, PATH, fmt_count, fmt_list, fmt_path, grey
 from xaeian.cmd import run
 from ..model import Project
 from ..runner import fraction
@@ -154,19 +152,19 @@ def load_all_waivers(core_dir:str, pro_dir:str) -> tuple[list[Waiver], list[str]
 
 def stack_line(stack:Stack) -> str:
   """
-  `STACK loop 556B / 2048B (28%, max 75%)`: the deepest path with its switch frame, then its array.
+  `loop 556B / 2048B (28%)`: the deepest path with its switch frame, then its array.
 
-  The second percent is what the margin of the thread allows, and the first one rounds up,
-  so a thread over its limit never reads as one at it.
+  The percent rounds up, so a thread over its limit never reads as one at it,
+  and over that limit it turns red beside the limit: `(78% > 75%)`.
   """
-  used = stack.deepest + stack.frame
-  notes = "array not found"
-  if stack.size:
-    percent = (used * 100 + stack.size - 1) // stack.size
-    notes = f"{percent}%, max {100 - stack.margin}%"
-  if stack.holes: notes += ", at least"
-  size = f" / {stack.size}B" if stack.size else ""
-  return f"STACK {stack.thread} {c.GOLD}{used}B{c.END}{size} {grey(f'({notes})')}"
+  name = fmt_list([stack.thread])
+  if not stack.size: return f"{name} {stack.used}B {grey('(array not found)')}"
+  percent = (stack.used * 100 + stack.size - 1) // stack.size
+  shown = grey(f"({percent}%)")
+  if stack.over:
+    over = utils.color_bad(f"{percent}%")
+    shown = f"{grey('(')}{over}{grey(f' > {stack.limit}%)')}"
+  return f"{name} {stack.used}B / {stack.size}B {shown}"
 
 def hidden_text(where:str) -> str:
   """Warning for a thread or an interrupt started inside a macro, which the rules cannot read."""
@@ -180,26 +178,6 @@ def stray_text(pro_dir:str, names:list[str]) -> str:
   """Warning for names `stack-margin` gives that run no thread, a typo most likely."""
   where = fmt_path(f"{pro_dir}/{LINT}")
   return f"No thread runs {fmt_list(names)}, which `stack-margin` of {where} names"
-
-def build_report(elf:str, cpu:str, core:str, project:str):
-  """
-  After a link: the stack of each thread below FLASH and RAM, then the rules of Forge as warnings.
-
-  Make passes `core` and `project` absolute, while Forge runs from the workspace.
-  A rule name `lint.yaml` has no rule for, or a file Forge cannot take, waits for `make lint`.
-  """
-  core_dir, pro_dir = PATH.local(core), PATH.local(project)
-  try:
-    check = forge_check(elf, core_dir, pro_dir, cpu, lint_opt_ins(pro_dir)[0])
-    waivers, _ = load_all_waivers(core_dir, pro_dir)
-  except LintFileError as error:
-    p.wrn(str(error))
-    return
-  for stack in check.stacks: p(stack_line(stack))
-  for where in check.hidden: p.wrn(hidden_text(where))
-  if check.stray: p.wrn(stray_text(pro_dir, check.stray))
-  for finding in sorted(keep(check.found, waivers), key=lambda f: (f.path, f.line)):
-    p.wrn(finding.text())
 
 def units(pro:Project, vendor:list[tuple[str, str]]) -> list[Unit]:
   """
@@ -306,18 +284,18 @@ def run_lint(pro:Project) -> int:
 def lint(pro:Project) -> int:
   """`run_lint` on a project whose `lint.yaml` files Forge takes, `LintFileError` otherwise."""
   if pro.platform != "STM32":
-    p.err(f"Lint checks a chip build, and {c.BLUE}{pro.name}{c.END} builds for this computer")
+    p.err(f"Lint checks a chip build, and {utils.color_file(pro.name)} builds for this computer")
     return 1
   elf = f"{pro.build_dir}/{pro.target}.elf"
   if not FILE.exists(elf):
-    p.err(f"No build of {c.BLUE}{pro.name}{c.END} to check")
+    p.err(f"No build of {utils.color_file(pro.name)} to check")
     p.run(f"Build it with {utils.color_command('make')}")
     return 1
   opt_ins, unknown = lint_opt_ins(pro.pro_dir)
   if unknown:
     p.err(f"{fmt_path(f'{pro.pro_dir}/{LINT}')} turns on no rule named {fmt_list(unknown)}")
-    p.run(f"Name rules under {c.SKY}rules{c.END} from {fmt_list(OPT_INS)}, "
-      f"or MISRA C ones by number, as {c.SKY}misra-15.5{c.END}")
+    p.run(f"Name rules under {utils.color_symbol('rules')} from {fmt_list(OPT_INS)}, "
+      f"or MISRA C ones by number, as {utils.color_symbol('misra-15.5')}")
     return 1
   start = time.perf_counter()
   utils.ensure_packages(utils.LINT_TOOLS, True)
@@ -335,7 +313,7 @@ def lint(pro:Project) -> int:
       return 1
     if missing := [n for n in misra if n.removeprefix("misra-") not in misra_rules(addon)]:
       p.err(f"The MISRA addon of this cppcheck checks no {fmt_list(missing)}")
-      p.run(f"Name rules it checks under {c.SKY}rules{c.END} of "
+      p.run(f"Name rules it checks under {utils.color_symbol('rules')} of "
         f"{fmt_path(f'{pro.pro_dir}/{LINT}')}")
       return 1
   folder = f"{pro.build_dir}/lint"
@@ -344,6 +322,10 @@ def lint(pro:Project) -> int:
   if "irq-yield" not in check.ran:
     p.wrn(f"VRTS and the stack need {fmt_path(f'{pro.core_dir}/{LINT}')} "
       "and a call graph in the build")
+  if check.stacks:
+    title = f"Stack of {fmt_count(len(check.stacks), 'thread')}"
+    (p.err if any(stack.over for stack in check.stacks) else p.inf)(title)
+  for stack in check.stacks: p.gap(stack_line(stack))
   for where in check.hidden: p.wrn(hidden_text(where))
   if check.stray: p.wrn(stray_text(pro.pro_dir, check.stray))
   vendor = roles.vendor if roles else []

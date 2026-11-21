@@ -1,21 +1,19 @@
 # opencplc/utils/common.py
 
-"""Small CLI helpers: prompts, colored URLs, commands, images and main.h, name validation."""
+"""Small CLI helpers: prompts, files of a project as messages point at them, name validation."""
 
 import sys
 from typing import Any
-from xaeian import Print, Color as c, PATH
+from xaeian import Print, grey
 from ..config import DIR_FRAMEWORK, DIR_TESTS
 from .files import core_version, project_dir
+from .palette import color_bad, color_file, color_good
 
 p = Print()
 
-IMAGE_COLORS = {".hex": c.LIME, ".bin": c.SKY, ".elf": c.VIOLET}
-
 def is_yes(msg:str="Proceed automatically") -> bool:
   """Ask `msg` and read a yes/no answer; y, yes, t, tak and true count as yes."""
-  yn = f"[{c.GREEN}YES{c.END}/{c.RED}NO{c.END}]"
-  p.inf(f"{msg}? {yn}:", end=" ")
+  p.inf(f"{msg}? [{color_good('YES')}/{color_bad('NO')}]:", end=" ")
   try:
     ans = input().lower()
   except EOFError: # no console to answer, as under CI, is no consent
@@ -23,27 +21,13 @@ def is_yes(msg:str="Proceed automatically") -> bool:
     return False
   return ans in ("yes", "y", "true", "tak", "t")
 
-def color_url(url:str) -> str:
-  """URL as Forge shows every one: grey scheme, teal body."""
-  return url.replace("https://", f"{c.GREY}https://{c.END}{c.TEAL}") + c.END
-
-def color_command(cmd:str) -> str:
-  """Command the way a console colors it: program yellow, flags grey, arguments plain."""
-  program, *args = cmd.split(" ")
-  shown = [f"{c.GREY}{arg}{c.END}" if arg.startswith("-") else arg for arg in args]
-  return " ".join([f"{c.YELLOW}{program}{c.END}", *shown])
-
 def color_pro_file(name:str, file:str) -> str:
-  """`file` of project `name` as messages point at it: grey folder, blue file."""
-  return f"{c.GREY}{project_dir(name)}/{c.END}{c.BLUE}{file}{c.END}"
+  """`file` of project `name` as messages point at it: grey folder, then the file."""
+  return f"{grey(f'{project_dir(name)}/')}{color_file(file)}"
 
 def color_main_h(name:str) -> str:
   """`main.h` of project `name` as messages point at it."""
   return color_pro_file(name, "main.h")
-
-def color_image(path:str) -> str:
-  """Image file in the color of its kind: hex lime, bin sky, elf violet."""
-  return f"{IMAGE_COLORS[PATH.ext(path).lower()]}{path}{c.END}"
 
 def assign_name(name:Any, flag:Any, msg:str) -> tuple[str, Any]:
   """Take the project name from a flag that carries one; a second, different name exits."""

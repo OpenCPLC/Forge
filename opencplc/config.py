@@ -1,26 +1,7 @@
 # opencplc/config.py
 
 """
-URLs and console conventions of Forge.
-
-Console color conventions (`xaeian.Color`) - one meaning per color, grouped in families:
-
-  yours    BLUE   → project: its name and its own sources (main.c, main.h)
-           SKY    → what is set in them: PRO_FRAMEWORK, PRO_CHIP, LOG_LEVEL, config keys, PATH
-  hardware PINK   → platform and chip (STM32, STM32G0C1)
-           TURQUS → board from Core (Uno) and the PLC layer
-  build    ORANGE → what Forge generates: makefile, flash.ld, opencplc.json, .vscode
-           CREAM  → a folder that is the point: workspace, missing version, one to remove or fix
-           YELLOW → tools: Git, Make, arm-none-eabi-gcc
-           GOLD   → numbers: list index, memory, frequency
-           CYAN   → what you pick or type: optimization level, valid choices, commands
-  version  VIOLET → the active one (max one per message)
-           GREY   → the rest: other versions, locations, flags, hints
-  outside  TEAL   → GitHub, repository URLs, sample names
-  state    MAGNTA → invalid value
-           GREEN  → yes, RED → no (prompts and log icons)
-
-Generated C code (-hl) is syntax-highlighted instead, and every message closes its color spans.
+URLs, the layout of a workspace and the rules of framework versions.
 
 Framework version rules:
   version → a folder in the framework dir: when present it builds as-is, never touched

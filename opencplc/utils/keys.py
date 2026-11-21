@@ -5,31 +5,46 @@ Keys that sign images for the `key` bootloader, and keys that encrypt update ima
 
 The development key has no password: Forge makes it on the first build that needs it
 and never replaces it, so a board flashed from this machine keeps starting what it builds.
-It never leaves the machine, every developer signs with their own.
+It never leaves the machine, every developer signs with their own,
+and `OPENCPLC_KEYS` never moves it.
 
-A product key, `<name>.key`, holds its seed masked with `scrypt` of a password,
+A sign key, `<name>.key`, holds its seed masked with `scrypt` of a password,
 or bare when it has none, and `<name>.pub` beside it lets a second project take the key
 without the password.
 A wrong password unmasks another seed, whose public key gives it away.
 A cipher key, `<name>.cipher`, holds 32 random bytes masked the same way, with its fingerprint:
 it has no public half, so the fingerprint gives a wrong password away.
-`OPENCPLC_KEYS` moves the directory, as `OPENCPLC_TOOLS` moves the packages.
+`OPENCPLC_KEYS` moves their folder, to a stick or a read-only mount,
+as `OPENCPLC_TOOLS` moves the packages.
 """
 
 import os, re, sys, getpass, hashlib, secrets
-from xaeian import Print, Color as c, DIR, FILE, JSON, PATH
+from typing import NamedTuple
+from xaeian import Print, DIR, FILE, JSON, PATH, grey
+from .palette import color_folder, color_key, color_key_file, color_symbol
 from . import ed25519
 
 p = Print()
 
-DEV_KEY = "dev.key"                     # seed of the development key, 64 hex digits
-KEYS_ENV = "OPENCPLC_KEYS"              # directory of the keys, over the default one
-PASSWORD_ENV = "OPENCPLC_KEY_PASSWORD"  # CI hands the password over as a secret
-PASSWORD_MIN = 8                        # characters of a password, when a key has one
-KEY_DIGITS = 64                         # hex digits of one public key in `BOOT_KEYS`
-NAME = re.compile(r"[A-Za-z0-9_-]+")    # name of a key and of its files
+DEV_KEY = "dev.key"                   # seed of the development key, 64 hex digits
+KEYS_ENV = "OPENCPLC_KEYS"            # folder of sign and cipher keys, over the one of the machine
+PASSWORD_MIN = 8                      # characters of a password, when a key has one
+KEY_DIGITS = 64                       # hex digits of one public key in `BOOT_KEYS`
+NAME = re.compile(r"[A-Za-z0-9_-]+")  # name of a key and of its files
 # 64MB per guess makes a stolen key file slow to try passwords on
 SCRYPT = {"n": 2**16, "r": 8, "p": 1}
+# Python 3.14 shows a `*` for each character, so a paste that lands is seen; older ones show none
+ECHO = {"echo_char": "*"} if sys.version_info >= (3, 14) else {}
+
+class Password(NamedTuple):
+  """Password of one kind of key, `sign` or `cipher`, and the variable CI hands it over in."""
+  kind: str
+  env: str
+  @property
+  def prompt(self) -> str: return f"{self.kind.capitalize()} password: "
+
+SIGN_PASSWORD = Password("sign", "OPENCPLC_SIGN_PASSWORD")
+CIPHER_PASSWORD = Password("cipher", "OPENCPLC_CIPHER_PASSWORD")
 
 def keys_split(keys_hex:str) -> list[str]:
   """Public keys of `BOOT_KEYS`, written as one string, apart: 64 hex digits each."""
@@ -42,12 +57,44 @@ def keys_block(pieces:list[str]) -> list[str]:
   lines[-1] = lines[-1].removesuffix(" \\")
   return ["#define BOOT_KEYS \\"] + lines
 
-def keys_dir() -> str:
-  """Windows `%LOCALAPPDATA%/OpenCPLC/keys`, elsewhere `~/.local/share/OpenCPLC/keys`."""
-  if os.environ.get(KEYS_ENV): return PATH.normalize(os.environ[KEYS_ENV])
+def machine_dir() -> str:
+  """
+  Key folder of this machine, the development key's for good:
+  Windows `%LOCALAPPDATA%/OpenCPLC/keys`, elsewhere `~/.local/share/OpenCPLC/keys`.
+  """
   if os.name == "nt": base = os.environ.get("LOCALAPPDATA", "")
   else: base = PATH.expand("~/.local/share")
   return PATH.normalize(f"{base}/OpenCPLC/keys")
+
+def keys_dir() -> str:
+  """Folder of sign and cipher keys: `OPENCPLC_KEYS`, else the one of this machine."""
+  if os.environ.get(KEYS_ENV): return PATH.normalize(os.environ[KEYS_ENV])
+  return machine_dir()
+
+def place(folder:str) -> tuple[str, str]:
+  """
+  `folder` as a person looks for it: the variable it lies under, `%LOCALAPPDATA%/` on Windows
+  or `~/` elsewhere, and the rest; a folder outside both comes whole, under no variable.
+  """
+  bases = (("%LOCALAPPDATA%", os.environ.get("LOCALAPPDATA", "")), ("~", PATH.expand("~")))
+  for var, base in bases:
+    base = PATH.normalize(base) if base else ""
+    if base and folder.lower().startswith(f"{base.lower()}/"):
+      return f"{var}/", folder[len(base) + 1:]
+  return "", folder
+
+def keys_place() -> str:
+  """`keys_dir` as a person looks for it."""
+  return "".join(place(keys_dir()))
+
+def folder_shown(folder:str) -> str:
+  """`folder` as messages show it: the variable it lies under in grey, the folder after it."""
+  var, rest = place(folder)
+  return f"{grey(var)}{color_folder(rest)}" if var else color_folder(rest)
+
+def keys_shown() -> str:
+  """Folder of sign and cipher keys as messages show it."""
+  return folder_shown(keys_dir())
 
 def write_new(path:str, text:str) -> bool:
   """
@@ -65,9 +112,9 @@ def write_new(path:str, text:str) -> bool:
 
 def dev_seed() -> bytes:
   """Seed of the development key, made on first use; a damaged file raises and stays."""
-  path = f"{keys_dir()}/{DEV_KEY}"
+  path = f"{machine_dir()}/{DEV_KEY}"
   if write_new(path, secrets.token_hex(32) + "\n"):
-    p.inf(f"Development key made in {c.CREAM}{path}{c.END}")
+    p.inf(f"Development key {color_key_file(DEV_KEY)} made in {folder_shown(machine_dir())}")
   try:
     seed = bytes.fromhex(FILE.load(path).strip())
   except ValueError:
@@ -81,7 +128,7 @@ def dev_public() -> bytes:
   return ed25519.public_key(dev_seed())
 
 def fingerprint(public:bytes|str) -> str:
-  """First 8 hex digits of a public key, the way messages and `boot info` name it."""
+  """First 8 hex digits of a public key: its name in messages and release records."""
   return (public.hex() if isinstance(public, bytes) else public)[:8]
 
 def mask(seed:bytes, password:str, salt:bytes, params:dict) -> bytes:
@@ -91,15 +138,15 @@ def mask(seed:bytes, password:str, salt:bytes, params:dict) -> bytes:
     maxmem=256 * r * n, dklen=32)
   return bytes(a ^ b for a, b in zip(seed, pad))
 
-def product_public(name:str) -> bytes|None:
-  """Public key of product key `name`, `None` when this machine has no such key."""
+def sign_public(name:str) -> bytes|None:
+  """Public key of sign key `name`, `None` when this machine has no such key."""
   path = f"{keys_dir()}/{name}.pub"
   if not FILE.exists(path): return None
   return bytes.fromhex(FILE.load(path).strip())
 
-def product_make(name:str, password:str) -> bytes:
+def sign_make(name:str, password:str) -> bytes:
   """
-  New product key `name`, under `password` or bare without one; its public key.
+  New sign key `name`, under `password` or bare without one; its public key.
 
   An existing name raises.
   """
@@ -110,7 +157,7 @@ def product_make(name:str, password:str) -> bytes:
     salt = secrets.token_bytes(16)
     record = SCRYPT | {"salt": salt.hex(), "seed": mask(seed, password, salt, SCRYPT).hex()}
   if not write_new(f"{keys_dir()}/{name}.key", JSON.smart(record) + "\n"):
-    raise ValueError(f"key {name} already exists in {keys_dir()}")
+    raise ValueError(f"sign key {name} already exists in {keys_place()}")
   write_new(f"{keys_dir()}/{name}.pub", public.hex() + "\n")
   return public
 
@@ -128,67 +175,99 @@ def key_record(path:str, sizes:dict[str, int]) -> dict:
     whole = whole and ("salt" not in record or all(isinstance(record[k], int) for k in SCRYPT))
   except (ValueError, TypeError, KeyError):
     whole = False
-  if not whole: raise ValueError(f"key file {path} damaged, restore it from a copy")
+  if not whole: raise ValueError(f"key file {path} damaged, restore it from its copy")
   return record
 
-def product_record(name:str) -> dict:
+def sign_record(name:str) -> dict:
   """Contents of `<name>.key`: the bare seed, or the masked one with what masks it."""
   return key_record(f"{keys_dir()}/{name}.key", {"seed": 32})
 
-def product_seed(name:str, password:str) -> bytes:
-  """Seed of product key `name`; a key without a password takes none, a wrong one raises."""
-  record = product_record(name)
+def sign_seed(name:str, password:str) -> bytes:
+  """Seed of sign key `name`; a key without a password takes none, a wrong one raises."""
+  record = sign_record(name)
   seed = bytes.fromhex(record["seed"])
   if "salt" in record: seed = mask(seed, password, bytes.fromhex(record["salt"]), record)
-  if ed25519.public_key(seed) != product_public(name):
-    raise ValueError(f"wrong password for key {name}")
+  if ed25519.public_key(seed) != sign_public(name):
+    raise ValueError(f"wrong password for sign key {name}")
   return seed
 
-def product_name(public:bytes) -> str|None:
-  """Name of the product key with `public` on this machine, `None` without one."""
+def sign_name(public:bytes) -> str|None:
+  """Name of the sign key with `public` on this machine, `None` without one."""
   if not DIR.exists(keys_dir()): return None
   for path in DIR.iter_files(keys_dir(), exts=[".pub"]):
     if FILE.load(path).strip() == public.hex(): return PATH.stem(path)
   return None
 
-def password_for(name:str, kind:str) -> str:
+def console() -> bool:
   """
-  Password of key `name` of `kind`, `product key` or `cipher key`:
-  `OPENCPLC_KEY_PASSWORD` in CI, otherwise asked without echo.
-  """
-  return os.environ.get(PASSWORD_ENV) or getpass.getpass(f"Password of {kind} {name}: ")
+  A person can type at the prompt: stdin is a terminal, which it never is under CI.
 
-def new_password(names:list[str], kind:str) -> str:
+  Windows counts `NUL` as a terminal too, where `getpass` would wait for keys forever,
+  and only a console handle has a console mode.
   """
-  Password of new keys `names` of `kind`: `OPENCPLC_KEY_PASSWORD`, or typed twice.
+  if not sys.stdin or not sys.stdin.isatty(): return False
+  if os.name != "nt": return True
+  import ctypes, msvcrt # only Windows has them
+  handle = msvcrt.get_osfhandle(sys.stdin.fileno())
+  return bool(ctypes.windll.kernel32.GetConsoleMode(handle, ctypes.byref(ctypes.c_ulong())))
 
-  An empty one leaves the keys bare.
+def secret(prompt:str, password:Password) -> str:
   """
-  if os.environ.get(PASSWORD_ENV): return os.environ[PASSWORD_ENV]
-  kinds = f"{kind}s" if len(names) > 1 else kind
-  password = getpass.getpass(f"Password of new {kinds} {', '.join(names)}, empty for none: ")
-  if password and len(password) < PASSWORD_MIN:
+  Password typed or pasted at `prompt`, a `*` for each character where Python shows one.
+
+  Without a console only the variable of `password` gives it, so the run stops and names it.
+  A control character is a keystroke that reached the prompt instead of text, as Ctrl+V in an old
+  console, and a password holding one could never be typed again, so it stops the run.
+  """
+  if not console():
+    p.err(f"No console to ask for {password.kind} password, set {color_symbol(password.env)}")
+    sys.exit(1)
+  text = getpass.getpass(prompt, **ECHO)
+  if any(char < " " or char == "\x7f" for char in text):
+    p.err("Password holds control character: terminal sent keystroke instead of text")
+    p.tip("Type it, or paste with Ctrl+Shift+V")
+    sys.exit(1)
+  return text
+
+def key_password(password:Password) -> str:
+  """
+  Password that unlocks a key of its kind: its variable under CI, otherwise asked.
+
+  The prompt names the kind, and the line above it names the key.
+  """
+  return os.environ.get(password.env) or secret(password.prompt, password)
+
+def new_password(password:Password) -> str:
+  """
+  Password of new keys of its kind: its variable, or typed twice.
+
+  An empty one leaves the keys bare, which the caller warns of.
+  """
+  if os.environ.get(password.env): return os.environ[password.env]
+  typed = secret(password.prompt, password)
+  if typed and len(typed) < PASSWORD_MIN:
     p.err(f"Password shorter than {PASSWORD_MIN} characters")
     sys.exit(1)
-  if getpass.getpass("Repeat password: ") != password:
+  if secret("Repeat: ", password) != typed:
     p.err("Passwords differ")
     sys.exit(1)
-  return password
+  return typed
 
-def signing_seed(public:bytes|None=None) -> bytes:
+def seed_for(public:bytes|None=None) -> bytes:
   """
   Seed that signs for `public`, without it the development one; a key not here raises.
 
-  A product key goes first, so signing with it never reads the development key.
-  Only a key with a password asks for it.
+  A sign key goes first, so signing with it never reads the development key.
+  A line names it with its fingerprint, and only a key with a password asks for it.
   """
-  name = product_name(public) if public else None
+  name = sign_name(public) if public else None
   if name:
-    password = password_for(name, "product key") if "salt" in product_record(name) else ""
-    return product_seed(name, password)
+    p.inf(f"Sign key {color_key(name)} {fingerprint(public)}")
+    password = key_password(SIGN_PASSWORD) if "salt" in sign_record(name) else ""
+    return sign_seed(name, password)
   seed = dev_seed()
   if public is None or ed25519.public_key(seed) == public: return seed
-  raise ValueError(f"no private key for {fingerprint(public)}... in {keys_dir()}")
+  raise ValueError(f"no sign key for {fingerprint(public)}... in {keys_place()}")
 
 def cipher_id(key:bytes) -> str:
   """
@@ -200,7 +279,7 @@ def cipher_id(key:bytes) -> str:
   return hashlib.sha512(key).digest()[:8].hex()
 
 def cipher_path(name:str) -> str:
-  """File of cipher key `name`, beside the product keys."""
+  """File of cipher key `name`, beside the sign keys."""
   return f"{keys_dir()}/{name}.cipher"
 
 def cipher_make(name:str, password:str) -> str:
@@ -212,7 +291,7 @@ def cipher_make(name:str, password:str) -> str:
     record = SCRYPT | {"salt": salt.hex(), "cipher": mask(key, password, salt, SCRYPT).hex()}
   record["id"] = cipher_id(key)
   if not write_new(cipher_path(name), JSON.smart(record) + "\n"):
-    raise ValueError(f"cipher key {name} already exists in {keys_dir()}")
+    raise ValueError(f"cipher key {name} already exists in {keys_place()}")
   return record["id"]
 
 def cipher_record(name:str) -> dict|None:
@@ -227,9 +306,9 @@ def cipher_key(name:str) -> bytes:
   A missing key raises, and so does a wrong password, which the fingerprint gives away.
   """
   record = cipher_record(name)
-  if record is None: raise ValueError(f"no cipher key {name} in {keys_dir()}")
+  if record is None: raise ValueError(f"no cipher key {name} in {keys_place()}")
   key = bytes.fromhex(record["cipher"])
   if "salt" in record:
-    key = mask(key, password_for(name, "cipher key"), bytes.fromhex(record["salt"]), record)
+    key = mask(key, key_password(CIPHER_PASSWORD), bytes.fromhex(record["salt"]), record)
   if cipher_id(key) != record["id"]: raise ValueError(f"wrong password for cipher key {name}")
   return key

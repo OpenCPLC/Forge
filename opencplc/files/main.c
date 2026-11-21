@@ -18,7 +18,7 @@ static void loop(void)
 }
 
 stack(stack_plc, 256); // memory stack for PLC thread
-stack(stack_dbg, 256); // memory stack for debugger thread (logs + bash)
+stack(stack_dbg, 320); // memory stack for debugger thread (logs + bash)
 stack(stack_loop, 1024); // memory stack for `loop` function
 
 int main(void)

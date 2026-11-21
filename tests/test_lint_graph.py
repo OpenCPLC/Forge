@@ -173,7 +173,7 @@ def each_cycle_is_reported_once_at_its_first_function():
   assert sorted((f.path, f.line) for f in found if f.rule == "recursion") == [
     ("pb.c", 20), ("t.c", 3)]
 
-def stack_adds_frames_on_the_deepest_path_and_names_what_it_cannot_see():
+def stack_adds_frames_on_the_deepest_path_and_counts_nothing_it_cannot_see():
   graph = graph_of(
     node("loop", "a.c:5:6", "24 bytes (static)"), node("parse", "a.c:9:6", "100 bytes (static)"),
     node("leaf", "a.c:20:6", "40 bytes (static)"), node("grow", "a.c:30:6", "16 bytes (dynamic)"),
@@ -181,9 +181,8 @@ def stack_adds_frames_on_the_deepest_path_and_names_what_it_cannot_see():
     edge("loop", "grow", "a.c:7:3"), edge("parse", INDIRECT, "a.c:11:3"),
     edge("leaf", "memcpy", "a.c:21:3"),
   )
-  depth, holes = deepest(graph, "loop")
-  assert depth == 24 + 100 + 40
-  assert holes == {"pointer", "dynamic", "library"}
+  # The pointer, the dynamic frame and `memcpy` add nothing the graph shows
+  assert deepest(graph, "loop") == 24 + 100 + 40
   stacks, found = check_stacks(graph, [LOOP], {"stack_loop": 256}, 204, Margins())
   assert stacks[0].size == 256 and [f.rule for f in found] == ["stack-fit"]
   assert "`loop` needs at least 368B" in found[0].message

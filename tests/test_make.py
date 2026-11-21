@@ -107,6 +107,32 @@ def embedded_makefile_parses_in_dry_run(tmp_path):
   assert "myapp/opencplc/hal/arm/core.o" in res.stdout.replace("\\", "/")
   assert "myapp/project/main.o" in res.stdout.replace("\\", "/")
 
+@pytest.mark.skipif(not (HAVE_MAKE and HAVE_ARM_GCC and shutil.which("git")),
+  reason="make, arm-none-eabi-gcc and git required")
+def dist_and_verify_build_in_a_release_tree_dated_by_the_commit(tmp_path):
+  """The tree of `make` stays as it is, so a release depends on nothing it left behind."""
+  build_workspace(tmp_path)
+  write_forge_config(tmp_path)
+  with file_context(root_path=str(tmp_path)):
+    generate(resolve_uno())
+  project = tmp_path / "projects" / "myapp"
+  when = "2026-01-02T03:04:05Z"
+  env = os.environ | {"GIT_AUTHOR_NAME": "test", "GIT_AUTHOR_EMAIL": "test@example.com",
+    "GIT_COMMITTER_NAME": "test", "GIT_COMMITTER_EMAIL": "test@example.com",
+    "GIT_AUTHOR_DATE": when, "GIT_COMMITTER_DATE": when}
+  for args in (["init", "-q"], ["add", "."], ["commit", "-q", "-m", "release"]):
+    subprocess.run(["git", "-C", str(project), *args], check=True, env=env, capture_output=True)
+  shown = {}
+  for goal in ("dist", "verify"):
+    res = make_run(tmp_path, "-n", goal, "TAG=1.2.0", project="myapp")
+    assert res.returncode == 0, res.stderr
+    shown[goal] = res.stdout.replace("\\", "/")
+    assert "SOURCE_DATE_EPOCH=1767323045" in shown[goal]
+    assert "myapp/release/project/main.o" in shown[goal]
+  dist, verify = shown["dist"], shown["verify"]
+  assert dist.index("--pack") < dist.index("--record") < dist.index("Release record")
+  assert "--verify" in verify and "myapp-1.2.0.json" in verify
+
 @pytest.mark.skipif(not (HAVE_MAKE and HAVE_ARM_GCC), reason="make and arm-none-eabi-gcc required")
 def flash_without_image_says_so_and_leaves_the_probe_alone(tmp_path):
   build_workspace(tmp_path)

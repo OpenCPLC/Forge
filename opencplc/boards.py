@@ -7,13 +7,14 @@ A board is one directory `brd/<name>/`: an .ini manifest, header `opencplc_<name
 Manifest gives defaults of a new project: chip, initial memory and clock, drivers it needs.
 Optional `reserve_kB` is flash the board keeps for itself, taken off the top like -m third value.
 Only `plc` is binding: a board that needs the PLC layer does not build without it.
-A board that does not need it still accepts it from -P.
+A board that does not need it still accepts it from --plc.
 Nothing here is hard-coded in Forge, adding a board means adding a directory to Core.
 """
 
 import re, sys
 from dataclasses import dataclass, field
-from xaeian import Print, Color as c, FILE, DIR, INI, PATH
+from xaeian import Print, FILE, DIR, INI, PATH, grey
+from . import utils
 from .platforms import CHIPS
 
 p = Print()
@@ -29,7 +30,7 @@ class Board:
   name: str   # directory name, e.g. "card_g0"
   title: str  # name from the manifest, as it reads in C and in messages, e.g. "CardG0"
   dir: str    # workspace-relative board directory
-  plc: bool   # board needs the PLC layer; a project may add it anyway with -P
+  plc: bool   # board needs the PLC layer; a project may add it anyway with --plc
   chip: str   # canonical chip key from `CHIPS`
   flash_kB: int
   reserve_kB: int
@@ -39,8 +40,8 @@ class Board:
 
 def board_list(boards:dict[str, "Board"]) -> str:
   """Board names of a Core, colored and comma separated, for a message."""
-  listed = ", ".join(f"{c.TURQUS}{b.title}{c.END}" for b in boards.values())
-  return listed or f"{c.GREY}none{c.END}"
+  listed = ", ".join(utils.color_board(b.title) for b in boards.values())
+  return listed or grey("none")
 
 def board_key(name:str) -> str:
   """Comparable form of a board name: neither case nor underscores matter."""
@@ -96,7 +97,7 @@ def load_boards(core_dir:str) -> dict[str, Board]:
     try:
       boards[name] = parse_board(ini_path, name, PATH.local(board_dir))
     except ValueError as e:
-      p.err(f"Invalid {c.ORANGE}{PATH.local(ini_path)}{c.END}: {e}")
+      p.err(f"Invalid {utils.color_config(PATH.local(ini_path))}: {e}")
       sys.exit(1)
   return boards
 
@@ -104,7 +105,7 @@ def board_pick(boards:dict[str, Board], name:str) -> Board:
   """Board by name, case-insensitive; exits listing what the Core offers."""
   key = next((k for k in boards if board_key(k) == board_key(name)), None)
   if key is None:
-    p.err(f"Unknown board: {c.MAGNTA}{name}{c.END}")
+    p.err(f"Unknown board: {utils.color_wrong(name)}")
     p.inf(f"Boards in this Core: {board_list(boards)}")
     sys.exit(1)
   return boards[key]

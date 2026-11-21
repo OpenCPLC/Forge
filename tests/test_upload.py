@@ -62,7 +62,7 @@ def a_file_that_is_no_image_stops_before_any_port(tmp_path, monkeypatch, image):
 def encrypted_image_stops_before_any_port(tmp_path, monkeypatch, capsys):
   """Only the application of a device holds its key, so the console never stages such bytes."""
   monkeypatch.setattr(upload_mod, "serial_scan", lambda: pytest.fail("port looked for"))
-  path = tmp_path / "app-1.2.0-acme.bin"
+  path = tmp_path / "app-1.2.0.acme.bin"
   # A trailer whose CRC belongs to other bytes, as the one of an encrypted image does
   path.write_bytes(bytes(range(256)) + bytes(4) + b"\xff" * (TRAILER_SIZE - 4))
   with pytest.raises(SystemExit):

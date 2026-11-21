@@ -3,8 +3,11 @@
 """Contract: values written into generated files can be read back unchanged."""
 
 from opencplc.utils import get_vars, lines_clear
-from opencplc.headers import boot_included
+from opencplc.headers import boot_included, main_h_with
 from conftest import load_template, render, parse_main_h, parse_dispatcher
+
+GUARDED = ("#ifndef MAIN_H_\r\n#define MAIN_H_\r\n\r\n#include <xdef.h>\r\n\r\n"
+  "#define PRO_CHIP_STM32G081\r\n\r\n#endif\r\n")
 
 UNO_SUBS = {
   "${NAME}": "myapp",
@@ -31,7 +34,7 @@ def embedded_main_h_roundtrip():
   assert info["PRO_FRAMEWORK"] == "1.0.2"
   assert info["PRO_FLASH_kB"] == "492"
   assert info["PRO_RAM_kB"] == "144"
-  assert boot_included(lines_clear(text.splitlines(), "//")) # dropped for a project without -B
+  assert boot_included(lines_clear(text.splitlines(), "//")) # dropped for one without --boot
   assert info["PRO_OPT_LEVEL"] == "Og"
   assert info["LOG_LEVEL"] == "LOG_LEVEL_INF"
   assert info["SYS_CLOCK_FREQ"] == "59904000"
@@ -60,6 +63,52 @@ def host_main_h_roundtrip():
   assert info["LOG_LEVEL"] == "LOG_LEVEL_DBG"
   assert "PRO_BOARD" not in info
   assert "PRO_FLASH_kB" not in info
+
+def settings_take_the_place_of_their_definitions():
+  """A value changes where it stands, comments stay, and a new one follows the last `PRO_`."""
+  main_h = ('#include <xdef.h>\n// #define PRO_OPT_LEVEL "O0"\n'
+    '#define PRO_OPT_LEVEL "Og" // speed\n\n#endif\n')
+  text = main_h_with(main_h, {"PRO_OPT_LEVEL": '"O2"', "PRO_DRIVERS": '"shtc3"'}, boot=False)
+  assert text == ('#include <xdef.h>\n// #define PRO_OPT_LEVEL "O0"\n'
+    '#define PRO_OPT_LEVEL "O2" // speed\n#define PRO_DRIVERS "shtc3"\n\n#endif\n')
+  info = parse_main_h(text)
+  assert (info["PRO_OPT_LEVEL"], info["PRO_DRIVERS"]) == ("O2", "shtc3")
+
+def include_goes_behind_the_last_include_once():
+  """A commented one includes nothing, so the real one goes in beside it; CRLF stays."""
+  text = main_h_with(GUARDED, {}, boot=True)
+  assert '#include <xdef.h>\r\n#include "boot.h"\r\n' in text
+  assert main_h_with(text, {}, boot=True) == text
+  commented = GUARDED.replace("<xdef.h>", '<xdef.h>\r\n// #include "boot.h"')
+  assert main_h_with(commented, {}, boot=True).count('\r\n#include "boot.h"') == 1
+
+def mixed_line_endings_stay_and_a_new_line_takes_the_common_one():
+  """One CRLF line among LF ones: a value changes in place, and no other byte moves."""
+  main_h = ('#ifndef MAIN_H_\r\n#define MAIN_H_\n#include <xdef.h>\n#include "boot.h"\n'
+    '#define PRO_OPT_LEVEL "Og"\n#endif\n')
+  text = main_h_with(main_h, {"PRO_OPT_LEVEL": '"O2"', "PRO_DRIVERS": '"shtc3"'}, boot=True)
+  assert text == main_h.replace('"Og"\n', '"O2"\n#define PRO_DRIVERS "shtc3"\n')
+  last = '#include <xdef.h>\n#define PRO_CHIP_STM32G081\n#endif\r\n'
+  assert main_h_with(last, {"PRO_DRIVERS": '"shtc3"'}, boot=False) == (
+    '#include <xdef.h>\n#define PRO_CHIP_STM32G081\n#define PRO_DRIVERS "shtc3"\n#endif\r\n')
+
+def definitions_count_as_c_sees_them():
+  """An indented one counts, one in a block comment does not, and writing agrees with reading."""
+  main_h = ('#include <xdef.h>\n#if 1\n  #define PRO_OPT_LEVEL "Os" // size\n#endif\n'
+    '/*\n#define PRO_PLC false\n*/\n')
+  text = main_h_with(main_h, {"PRO_OPT_LEVEL": '"O1"', "PRO_PLC": "true"}, boot=False)
+  assert text == ('#include <xdef.h>\n#if 1\n  #define PRO_OPT_LEVEL "O1" // size\n'
+    '#define PRO_PLC true\n#endif\n/*\n#define PRO_PLC false\n*/\n')
+  info = parse_main_h(text)
+  assert (info["PRO_OPT_LEVEL"], info["PRO_PLC"]) == ("O1", "true")
+
+def a_definition_continued_over_lines_stays_whole():
+  """A new value takes all its lines, and a new definition goes behind the last of them."""
+  main_h = '#include <xdef.h>\n#define PRO_DRIVERS \\\n  "shtc3"\n#endif\n'
+  assert main_h_with(main_h, {"PRO_DRIVERS": '"shtc3, max31865"'}, boot=False) == (
+    '#include <xdef.h>\n#define PRO_DRIVERS "shtc3, max31865"\n#endif\n')
+  assert main_h_with(main_h, {"PRO_OPT_LEVEL": '"O2"'}, boot=False) == (
+    '#include <xdef.h>\n#define PRO_DRIVERS \\\n  "shtc3"\n#define PRO_OPT_LEVEL "O2"\n#endif\n')
 
 def project_makefile_roundtrip():
   subs = {

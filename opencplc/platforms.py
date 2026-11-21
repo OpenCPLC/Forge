@@ -4,7 +4,8 @@
 
 import os, sys, struct
 from dataclasses import dataclass
-from xaeian import Print, Color as c
+from xaeian import Print
+from . import utils
 
 p = Print()
 
@@ -32,6 +33,8 @@ class Chip:
   platform: str    # "STM32" | "Host"
   family: str
   flash_kB: int
+  # All flash of the part, the bound of `PRO_FLASH_kB`; `flash_kB` is what a new project gets
+  flash_max_kB: int
   ram_kB: int
   cpu: str
   fpu: bool
@@ -65,7 +68,7 @@ class Chip:
 CHIPS = {chip.name: chip for chip in (
   Chip(
     name="STM32G081", platform="STM32", family="G0",
-    flash_kB=128, ram_kB=36,
+    flash_kB=128, flash_max_kB=128, ram_kB=36,
     cpu="cortex-m0plus", fpu=False,
     uart={"nbr": 1, "tx": "PC4", "rx": "PC5", "dma": 4},
     led={"port": "GPIOA", "pin": 5, "name": "green `LD2` of Nucleo-G071RB"},
@@ -77,7 +80,7 @@ CHIPS = {chip.name: chip for chip in (
   ),
   Chip(
     name="STM32G0C1", platform="STM32", family="G0",
-    flash_kB=512, ram_kB=144,
+    flash_kB=512, flash_max_kB=512, ram_kB=144,
     cpu="cortex-m0plus", fpu=False,
     uart={"nbr": 1, "tx": "PC4", "rx": "PC5", "dma": 4},
     led={"port": "GPIOA", "pin": 5, "name": "green `LD2` of Nucleo-G0B1RE"},
@@ -91,7 +94,7 @@ CHIPS = {chip.name: chip for chip in (
     name="STM32WB55", platform="STM32", family="WB",
     # Of 1024kB CPU1 owns what lies below the wireless stack, installed by `make stack`
     # Stack sits at 0x080D0000: SFSA 0xD0 is 208 pages of 4kB, so CPU1 gets 832kB
-    flash_kB=832, ram_kB=192,
+    flash_kB=832, flash_max_kB=1024, ram_kB=192,
     cpu="cortex-m4", fpu=True,
     uart={"nbr": 1, "tx": "PB6", "rx": "PB7", "dma": 4},
     led={"port": "GPIOB", "pin": 0, "name": "green `LD2` of Nucleo-WB55RG"},
@@ -104,7 +107,7 @@ CHIPS = {chip.name: chip for chip in (
   ),
   Chip(
     name="HOST", platform="Host", family="",
-    flash_kB=0, ram_kB=0,
+    flash_kB=0, flash_max_kB=0, ram_kB=0,
     cpu="native", fpu=True,
     uart={"nbr": 0, "tx": "", "rx": "", "dma": 0},
     led={"port": "", "pin": 0, "name": ""},
@@ -119,7 +122,7 @@ def parse_chip(name:str) -> Chip:
   """Chip of the table by name, case aside; an unknown chip exits."""
   chip = next((chip for key, chip in CHIPS.items() if key.upper() == name.upper()), None)
   if chip is None:
-    p.err(f"Unknown chip: {c.MAGNTA}{name}{c.END}")
-    p.inf(f"Chips Forge knows: {', '.join(f'{c.PINK}{k}{c.END}' for k in CHIPS)}")
+    p.err(f"Unknown chip: {utils.color_wrong(name)}")
+    p.inf(f"Chips Forge knows: {', '.join(utils.color_chip(k) for k in CHIPS)}")
     sys.exit(1)
   return chip

@@ -4,7 +4,8 @@
 
 import os, re
 from datetime import datetime
-from xaeian import Print, Color as c, FILE, DIR, PATH, replace_map
+from xaeian import Print, Color as c, FILE, DIR, PATH, replace_map, grey
+from .palette import CONFIG_COLOR, color_file, color_wrong
 from ..config import DIR_PROJECTS, DIR_FRAMEWORK, DIR_TESTS, DIR_LOCAL
 from .text import line_remove
 from .hash import hash_string
@@ -27,11 +28,11 @@ def files_list(path:str="", ext:str="") -> dict[str, list[str]]:
 def last_modification(path:str="", exts:list[str]|None=None) -> str:
   """Newest file under `path`, only `exts` when given, formatted for display."""
   files = list(DIR.iter_files(path or ".", exts=exts))
-  if not files: return f"{c.GREY}Unknown{c.END}"
+  if not files: return grey("Unknown")
   newest = max(files, key=FILE.mtime)
   shown = PATH.local(newest, path) if path else PATH.basename(newest)
   stamp = datetime.fromtimestamp(FILE.mtime(newest))
-  return f"{c.BLUE}{shown}{c.END} {c.GREY}({stamp:%Y-%m-%d %H:%M:%S}){c.END}"
+  return f"{color_file(shown)} {grey(f'({stamp:%Y-%m-%d %H:%M:%S})')}"
 
 def create_file(
   name:str,
@@ -50,9 +51,9 @@ def create_file(
   exists = FILE.exists(fp)
   if exists and FILE.load(fp) == content: return fp
   FILE.save(fp, content)
-  if not color: color = c.ORANGE
+  if not color: color = CONFIG_COLOR
   where = PATH.local(path)
-  suffix = f" in {c.GREY}{where}{c.END}" if where else ""
+  suffix = f" in {grey(where)}" if where else ""
   action = "Overwritten" if exists else "Created"
   p.ok(f"{action} {color}{name}{c.END}{suffix}")
   return fp
@@ -69,7 +70,7 @@ def get_project_list(path:str) -> dict[str, str]:
     if name.lower() not in (n.lower() for n in result):
       result[name] = pro_path
     else:
-      p.wrn(f"Duplicate project name {c.MAGNTA}{name}{c.END} at {c.GREY}{pro_path}{c.END}")
+      p.wrn(f"Duplicate project name {color_wrong(name)} at {grey(pro_path)}")
   return result
 
 def project_key(projects:dict[str, str], name:str) -> str|None:

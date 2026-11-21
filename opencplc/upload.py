@@ -12,7 +12,7 @@ An encrypted `.bin` is refused, as only the application of a device holds its ke
 """
 
 import sys, time
-from xaeian import Print, Color as c, FILE, PATH
+from xaeian import Print, FILE, PATH, grey
 from xaeian.serial import Shell, serial_scan
 from .args import flag
 from .cipher import encrypted
@@ -32,7 +32,7 @@ def console_port(port:str|None) -> str:
     p.err("No console port on this computer")
     p.run(f"Plug the board in and run {utils.color_command('make update')} again")
   else:
-    listed = ", ".join(f"{c.GOLD}{name}{c.END}" for name in ports)
+    listed = ", ".join(utils.color_value(name) for name in ports)
     p.err(f"Several console ports: {listed}")
     p.run(f"Name one, e.g. {utils.color_command(f'make update PORT={ports[0]}')}")
   sys.exit(1)
@@ -52,8 +52,8 @@ def upload(args:list[str]):
     p.run(f"Build it with {utils.color_command('make')}")
     sys.exit(1)
   if PATH.ext(path).lower() == ".bin" and encrypted(FILE.load(path, binary=True)):
-    p.err(f"Image {name} encrypted or damaged, its bytes miss the CRC of its trailer")
-    p.run("An encrypted image goes over the link of the application, which holds its key")
+    p.err(f"Image {name} encrypted or damaged, its bytes miss CRC of its trailer")
+    p.tip("Send it through your application, which holds its key")
     sys.exit(1)
   port = console_port(args[1] if len(args) > 1 else None)
   # The console of a project runs without echo, so the first line of a reply is the reply
@@ -61,14 +61,15 @@ def upload(args:list[str]):
     if not sh.serial: sys.exit(1) # the port said why it did not open
     sh.serial.read(sh.buffer_size) # what ST-Link kept while the port was closed
     if not sh.ping(retries=INSTALL_PINGS):
-      sh.print_error(f"Board on {c.GOLD}{port}{c.END} silent, no image sent")
+      sh.print_error(f"Board on {utils.color_value(port)} silent, no image sent")
       p.run("Power it off and on: a locked chip starts only after a power cycle")
       sys.exit(1)
     def progress(taken:int, size:int):
-      p.inf(f"Upload {taken}/{size} {c.GREY}[B]{c.END}", end="\n" if taken == size else "\r")
+      p.inf(f"Upload {taken}/{size} {grey('[B]')}", end="\n" if taken == size else "\r")
     if not sh.boot(path, progress):
       sh.print_error(f"Image {name} refused, the old image keeps running")
-      p.inf(f"The console takes images only with {c.SKY}#define CMD_BOOT ON{c.END} in main.h")
+      p.inf("The console takes images only with "
+        f"{utils.color_symbol('#define CMD_BOOT ON')} in main.h")
       sys.exit(1)
     sh.print_info(f"Image {name} staged, the board resets to install it")
     # The first line of the new image ends the install, so no ping lands inside it

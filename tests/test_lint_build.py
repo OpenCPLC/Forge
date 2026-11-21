@@ -4,9 +4,10 @@
 
 import os
 import pytest
-from xaeian import DIR, FILE, PATH, YAML, file_context
+from xaeian import DIR, FILE, PATH, YAML, file_context, grey
 from xaeian.cmd import run, which
 from opencplc.lint.command import forge_check, stack_line
+from opencplc.lint.rules import Stack
 from opencplc.utils import tools
 
 ARM_BIN = tools.bin_dir("arm-gcc")
@@ -88,7 +89,7 @@ def rules_read_what_gcc_writes(built):
     ("thread-hold", "project/main.c", "loop"),
   ]
   assert [(s.thread, s.frame, s.size) for s in check.stacks] == [("loop", 68, 256)]
-  assert "/ 256B" in stack_line(check.stacks[0]) and "max 75%" in stack_line(check.stacks[0])
+  assert "/ 256B" in stack_line(check.stacks[0]) and not check.stacks[0].over
   # `loop` runs in a thread, `main` before them, the handlers in interrupts.
   # A static function is keyed by its file.
   assert {"project/main.c:loop", "main"} <= check.thread
@@ -98,4 +99,10 @@ def rules_read_what_gcc_writes(built):
 def a_thread_shows_the_limit_its_margin_gives_and_a_misspelled_one_stands_out(built):
   FILE.save("project/lint.yaml", "stack-margin: {loop: 40, lop: 10}\n")
   check = forge_check(built, "core", "project", "cortex-m4")
-  assert "max 60%" in stack_line(check.stacks[0]) and check.stray == ["lop"]
+  assert check.stacks[0].limit == 60 and check.stray == ["lop"]
+
+def a_thread_over_its_limit_shows_its_percent_against_that_limit():
+  # 200B of 256B is 78.1%, which rounds up, so a thread over 75% never reads as one at it
+  over, fits = Stack("loop", 180, 20, 256, 25), Stack("loop", 100, 20, 256, 25)
+  assert over.over and "79%" in stack_line(over) and "> 75%" in stack_line(over)
+  assert not fits.over and stack_line(fits).endswith(grey("(47%)"))

@@ -3,7 +3,8 @@
 """Line-level parsing of makefiles and main.h: comments, continuations, variables."""
 
 import re
-from xaeian import Print, Color as c
+from xaeian import Print
+from .palette import color_symbol
 
 p = Print()
 
@@ -62,7 +63,7 @@ def get_vars(
   if required:
     for pf in prefixes:
       if pf not in result:
-        p.wrn(f"Variable {c.SKY}{pf}{c.END} not found")
+        p.wrn(f"Variable {color_symbol(pf)} not found")
         return {}
   return result
 

@@ -3,10 +3,11 @@
 """Downloads, ZIP extraction and fetching a remote project."""
 
 import sys, re, urllib.request, urllib.error, http.client
-from xaeian import Print, Color as c, FILE, DIR, PATH
+from xaeian import Print, FILE, DIR, PATH
+from .palette import color_file, color_link, color_value, color_wrong
 from xaeian.net import download as download_file
 from .version import git_clone
-from .common import color_url, validate_project_name
+from .common import validate_project_name
 from .. import __version__
 
 p = Print()
@@ -19,11 +20,11 @@ urllib.request.install_opener(_opener)
 def _unreachable(url:str, e:Exception):
   """Say why a fetch failed and exit: an HTTP status, a timeout, or a connection that failed."""
   if isinstance(e, urllib.error.HTTPError):
-    p.err(f"HTTP {c.GOLD}{e.code}{c.END} for {color_url(url)}")
+    p.err(f"HTTP {color_value(e.code)} for {color_link(url)}")
   elif isinstance(e, TimeoutError) or isinstance(getattr(e, "reason", None), TimeoutError):
-    p.err(f"Timed out on {color_url(url)}")
+    p.err(f"Timed out on {color_link(url)}")
   else:
-    p.err(f"Connection failed on {color_url(url)} | {e}")
+    p.err(f"Connection failed on {color_link(url)} | {e}")
   sys.exit(1)
 
 def download(url:str, save_path:str="", timeout_s:float=10) -> bytes:
@@ -67,7 +68,7 @@ def project_remote(url:str, path:str, ref:str|None=None, name:str="") -> str:
   except Exception:
     lines = []
   if not lines:
-    p.err(f"Remote project does not contain {c.BLUE}main.h{c.END}")
+    p.err(f"Remote project does not contain {color_file('main.h')}")
     sys.exit(1)
   if not name:
     name_line = next((ln for ln in lines if "@name" in ln), "")
@@ -75,19 +76,19 @@ def project_remote(url:str, path:str, ref:str|None=None, name:str="") -> str:
     name_line = re.sub(r"[<>:\"|?*]", "", name_line).replace("\\", "/").strip()
     parts = name_line.split()
     if not parts:
-      p.err(f"Failed to read project name from {c.BLUE}main.h{c.END}")
+      p.err(f"Failed to read project name from {color_file('main.h')}")
       p.inf("Provide project name as a positional argument")
       sys.exit(1)
     name = parts[-1]
   # Name comes from the remote main.h, so it is validated before it becomes a path
   valid, reason = validate_project_name(name)
   if not valid:
-    p.err(f"Invalid project name {c.MAGNTA}{name}{c.END}: {reason}")
+    p.err(f"Invalid project name {color_wrong(name)}: {reason}")
     sys.exit(1)
   dst = PATH.resolve(f"{path}/{name}", read=False)
   if DIR.exists(dst):
-    p.err(f"Project {c.BLUE}{name}{c.END} already exists")
+    p.err(f"Project {color_file(name)} already exists")
     sys.exit(1)
   DIR.move(tmp, dst)
-  p.ok(f"Project {c.BLUE}{name}{c.END} downloaded from {color_url(url)}")
+  p.ok(f"Project {color_file(name)} downloaded from {color_link(url)}")
   return name

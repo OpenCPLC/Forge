@@ -2,7 +2,7 @@
 
 """Forge package metadata; the CLI lives in `__main__`, nothing is re-exported."""
 
-__version__ = "0.6.0"
+__version__ = "0.6.1"
 __repo__ = "OpenCPLC/Forge"
 __python__ = ">=3.12"
 __description__ = "Project configuration and build tool for OpenCPLC"

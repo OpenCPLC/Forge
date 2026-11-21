@@ -43,6 +43,8 @@ class Args:
   cipher: list[str]|None = None
   upload: list[str]|None = None
   pack: list[str]|None = None
+  record: list[str]|None = None
+  verify: list[str]|None = None
   test: list[str]|None = None
   lint: bool = False
   assets: str|None = None
@@ -72,12 +74,14 @@ def fmt(prog):
   return argparse.RawDescriptionHelpFormatter(prog, max_help_position=34, width=100)
 
 PARSER = Parser(
+  prog="opencplc", # errors name the tool, not the interpreter and its path
   description=f"{Color.TEAL}OpenCPLC Forge{Color.GREY}:{Color.END} "
     "Project configuration and build tool",
   formatter_class=fmt,
   add_help=False,
   usage=argparse.SUPPRESS,
   epilog=EXAMPLE_USED,
+  allow_abbrev=False, # `--lo` would lock a board, and a new flag would change what a prefix means
 )
 flag = SimpleNamespace() # colored names for messages: `flag.n` is `-n --new`, `flag.lock` `--lock`
 
@@ -105,13 +109,13 @@ option("-b", "--board", type=str, metavar="BOARD", default="",
   help="Board from the Core (uno); without it the project has no board")
 option("-c", "--chip", type=str, metavar="CHIP", default="",
   help="Target MCU: STM32G0C1, STM32G081, STM32WB55, HOST")
-option("-P", "--plc", action="store_true", help="Add the PLC layer to a project without a board")
-option("-D", "--drv", type=str, metavar="DRIVERS", default="",
-  help="Core drivers for a new project, comma separated")
-option("-B", "--boot", action="store_true",
-  help="Put the new project behind the bootloader of Core: boot.h and its #include in main.h")
-option("-m", "--memory", type=int, nargs="*", metavar=("FLASH", "RAM"), default=[],
-  help="Override memory size in kB: FLASH RAM [RESERVED]")
+option("--plc", action="store_true", help="Add the PLC layer to a project without a board")
+option("--drv", type=str, metavar="DRIVERS", default="",
+  help="Add Core drivers to the project, comma separated")
+option("--boot", action="store_true",
+  help="Put the project behind the bootloader of Core: boot.h and its #include in main.h")
+option("-m", "--memory", type=int, nargs="+", metavar=("FLASH", "RAM"), default=[],
+  help="Memory of the project in kB: FLASH RAM [RESERVED]")
 # Build configuration
 option("-f", "--framework", type=str, metavar="VER", default="",
   help="Core version (tag/branch) for a new project, over main.h until a load without it, "
@@ -124,14 +128,17 @@ option("-s", "--stlink", type=str, nargs="?", const="", metavar="SERIAL",
 option("-l", "--list", dest="project_list", action="store_true",
   help="List all projects in current workspace")
 option("-i", "--info", action="store_true", help="Show detailed project configuration")
-option("-F", "--framework-versions", action="store_true", help="List Core versions")
+option("-fv", "--framework-versions", action="store_true", help="List Core versions")
 option("-v", "--version", action="store_true", help="Show OpenCPLC Forge version and exit")
 # Utilities
 option("-z", "--size", nargs="+", metavar="ARG",
-  help="Report FLASH and RAM of an .elf: ELF FLASH_kB RAM_kB, "
-    "then CPU CORE PROJECT for the stack of each thread and the quick rules of make lint")
+  help="Report FLASH and RAM of an .elf: ELF FLASH_kB RAM_kB, a makefile step")
 option("-p", "--pack", nargs="+", metavar="FILE",
   help="Pack the flash image: APP.hex OUT.hex [BOOT [KEYS NUMBER [dist]]], a makefile step")
+option("--record", nargs="+", metavar="FILE",
+  help="Record a release: APP.bin OUT CORE [KEYS NUMBER [CIPHER]], a makefile step")
+option("--verify", nargs=2, metavar=("APP", "RECORD"),
+  help="Compare the image of a build with a release record, a makefile step")
 option("--test", nargs="+", metavar="PATH",
   help="Run test programs: BUILD NAME [NAME ...], a makefile step")
 option("--lint", action="store_true",
@@ -141,7 +148,7 @@ option("--program", type=str, nargs="?", const=True, metavar="FILE",
 option("--lock", type=int, nargs="?", const=1, choices=(0, 1, 2), metavar="LEVEL",
   help="Lock board for production: 1 RDP1, 2 for good, 0 unlocks, erasing flash")
 option("--sign", nargs="+", metavar=("NAME", "COUNT"),
-  help="Make or take product signing key NAME and COUNT-1 spare ones, add them to BOOT_KEYS")
+  help="Make or take sign key NAME and COUNT-1 spare ones, add them to BOOT_KEYS")
 option("--cipher", nargs="+", metavar=("NAME", "FILE"),
   help="Make or show cipher key NAME; with FILE, encrypt that update image, a makefile step")
 option("--upload", nargs="+", metavar=("FILE", "PORT"),

@@ -18,7 +18,7 @@ Mailbox page stays out of WRP, the application writes its record there.
 """
 
 import re, sys
-from xaeian import Print, Color as c
+from xaeian import Print, grey
 from xaeian.cmd import run
 from .args import flag
 from .model import Project
@@ -100,8 +100,8 @@ def cube_unlock(pro:Project) -> str:
   """
   cli = utils.cube_cli()
   if not cli:
-    p.err(f"Unlock of {c.PINK}{pro.chip}{c.END} needs STM32CubeProgrammer")
-    p.run(f"Install it from {utils.color_url(utils.CUBE_URL)}")
+    p.err(f"Unlock of {utils.color_chip(pro.chip)} needs STM32CubeProgrammer")
+    p.run(f"Install it from {utils.color_link(utils.CUBE_URL)}")
     sys.exit(1)
   connect = ["-c", "port=SWD", "mode=UR"] + ([f"sn={pro.stlink}"] if pro.stlink else [])
   # Its progress bar comes in the console code page, `latin-1` takes any byte
@@ -123,11 +123,11 @@ def check_chip(pro:Project, chip:int|None):
   """Option bytes of one family set boot of another wrong, so another chip exits."""
   want = int(define(pro, "BOOT_CHIP"), 16)
   if chip == want: return
-  seen = f"chip {c.GOLD}0x{chip:03X}{c.END}" if chip is not None else "no chip"
+  seen = f"chip {utils.color_value(f'0x{chip:03X}')}" if chip is not None else "no chip"
   p.err(f"ST-Link sees {seen}, "
-    f"project {c.PINK}{pro.chip}{c.END} needs {c.GOLD}0x{want:03X}{c.END}")
+    f"project {utils.color_chip(pro.chip)} needs {utils.color_value(f'0x{want:03X}')}")
   p.run("Check the board on the ST-Link; with several, bind the right one by "
-    f"{utils.color_command('opencplc <name> -s <serial>')}")
+    f"{utils.color_command('opencplc -s <serial>')}")
   sys.exit(1)
 
 def options_read(pro:Project) -> tuple[int, int]|None:
@@ -152,7 +152,7 @@ def swd_shut(pro:Project) -> bool:
 
 def confirm(pro:Project, level:int, yes:bool):
   """Say what `level` does and ask; level 2 asks once more even under `-y`."""
-  chip = f"{c.PINK}{pro.chip}{c.END}"
+  chip = utils.color_chip(pro.chip)
   if level == 0:
     p.wrn("Unlock erases whole flash")
     question = f"Unlock {chip}"
@@ -182,17 +182,17 @@ def lock_board(pro:Project, level:int, yes:bool):
     _, out = openocd(pro, *option_session(pro, option_writes(pro, level)))
   read = options_read(pro)
   if level == 2 and read is None and swd_shut(pro): # RDP2 shuts SWD at once
-    p.ok(f"{c.PINK}{pro.chip}{c.END} at RDP2: powered, silent on SWD for good")
+    p.ok(f"{utils.color_chip(pro.chip)} at RDP2: powered, silent on SWD for good")
     # The silence of SWD alone could have another cause, the chip itself names its level
     p.run("Unplug and plug board power, "
-      f"then {utils.color_command('boot info')} shows {c.GOLD}rdp:2{c.END}")
+      f"then {utils.color_command('boot info')} shows {utils.color_value('rdp:2')}")
     return
   if read is None or (read[0] & 0xFF) != RDP[level]:
     got = f"OPTR 0x{read[0]:08X}, WRP1AR 0x{read[1]:08X}" if read else "nothing readable"
     p.err(f"Option bytes did not take RDP{level}, chip holds {got}")
-    for line in session_errors(out): p.gap(f"{c.GREY}{line}{c.END}")
+    for line in session_errors(out): p.gap(grey(line))
     sys.exit(1)
-  p.ok(f"{c.PINK}{pro.chip}{c.END} at RDP{level}, OPTR 0x{read[0]:08X}, WRP1AR 0x{read[1]:08X}")
+  p.ok(f"{utils.color_chip(pro.chip)} at RDP{level}, OPTR 0x{read[0]:08X}, WRP1AR 0x{read[1]:08X}")
   if level == 0:
     # Option reload saw flash empty, and G0 boots its ROM until next power-on
     p.run(f"Program board with {utils.color_command('make flash')}, "

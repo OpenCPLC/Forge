@@ -11,8 +11,9 @@ A local project, outside the workspace, keeps its own paths absolute.
 
 import sys
 from dataclasses import replace
-from xaeian import Print, Color as c, DIR, FILE, PATH
+from xaeian import Print, DIR, FILE, PATH, grey
 from .config import DIR_TESTS, DIR_BOOT, DIR_BUILD, BOOT_LINE
+from .args import flag
 from .platforms import get_hal_dirs, FLASH_BASE
 from .model import Config, Project
 from . import utils, __version__
@@ -99,8 +100,8 @@ def validate_drivers(cfg:Config, core_dir:str):
   available = available_drivers(core_dir)
   unknown = [n for n in cfg.drivers if n not in available]
   if not unknown: return
-  p.err(f"Unknown driver: {c.MAGNTA}{unknown[0]}{c.END}")
-  listed = ", ".join(f"{c.TURQUS}{n}{c.END}" for n in available) or f"{c.GREY}none{c.END}"
+  p.err(f"Unknown driver: {utils.color_wrong(unknown[0])}")
+  listed = ", ".join(utils.color_board(n) for n in available) or grey("none")
   p.inf(f"Drivers in this Core: {listed}")
   sys.exit(1)
 
@@ -117,9 +118,14 @@ def boot_region_kB(cfg:Config) -> int:
   """Bootloader region [kB]: `boot_key_kB` with `BOOT_KEYS`, `boot_kB` for a `plain` one."""
   if not cfg.boot_keys: return cfg.chip.boot_kB
   if not cfg.chip.boot_key_kB:
-    p.err(f"Chip {c.PINK}{cfg.chip.name}{c.END} has no {c.SKY}key{c.END} bootloader")
+    p.err(f"Chip {utils.color_chip(cfg.chip.name)} has no {utils.color_symbol('key')} bootloader")
     sys.exit(1)
   return cfg.chip.boot_key_kB
+
+def boot_drop(cfg:Config) -> str:
+  """Way off the bootloader: a load without --boot when this one adds it, else no include."""
+  if cfg.boot_new: return f"load without {flag.boot}"
+  return f"remove {utils.color_include(BOOT_LINE)}"
 
 def flash_layout(cfg:Config) -> tuple[int, int, list[str]]:
   """
@@ -137,15 +143,15 @@ def flash_layout(cfg:Config) -> tuple[int, int, list[str]]:
   if cfg.chip.dev_id: defines.append(f"BOOT_CHIP=0x{cfg.chip.dev_id:03X}")
   if not cfg.boot: return FLASH_BASE, flash_kB, defines
   if not boot_kB:
-    p.err(f"Chip {c.PINK}{cfg.chip.name}{c.END} has no bootloader")
-    p.run(f"Open {utils.color_main_h(cfg.name)} and remove {c.SKY}{BOOT_LINE}{c.END}")
+    p.err(f"Chip {utils.color_chip(cfg.chip.name)} has no bootloader")
+    p.run(f"Open {utils.color_main_h(cfg.name)} and remove {utils.color_include(BOOT_LINE)}")
     sys.exit(1)
   slot_kB = (flash_kB - boot_kB) // 2 // page_kB * page_kB
   if slot_kB < page_kB:
-    p.err(f"{c.SKY}PRO_FLASH_kB{c.END} {c.GOLD}{flash_kB}{c.END}kB leaves no room "
-      f"for two slots behind the {c.GOLD}{boot_kB}{c.END}kB bootloader")
-    p.run(f"Open {utils.color_main_h(cfg.name)} and raise {c.SKY}PRO_FLASH_kB{c.END} "
-      f"or remove {c.SKY}{BOOT_LINE}{c.END}")
+    p.err(f"{utils.color_symbol('PRO_FLASH_kB')} {utils.color_value(flash_kB)}kB leaves no room "
+      f"for two slots behind the {utils.color_value(boot_kB)}kB bootloader")
+    p.run(f"Open {utils.color_main_h(cfg.name)} and raise {utils.color_symbol('PRO_FLASH_kB')}, "
+      f"or {boot_drop(cfg)}")
     sys.exit(1)
   return FLASH_BASE + boot_kB * 1024, slot_kB, defines + [f"BOOT_SLOT_PAGES={slot_kB // page_kB}"]
 
@@ -160,9 +166,10 @@ def boot_build(cfg:Config, core_dir:str, pro_dir:str) -> dict:
   A Core without the program exits.
   """
   if not FILE.exists(f"{core_dir}/{BOOT_MAIN}"):
-    p.err(f"Core {c.VIOLET}{cfg.fw_ver}{c.END} has no bootloader {c.BLUE}{BOOT_MAIN}{c.END}")
-    p.run(f"Open {utils.color_main_h(cfg.name)} and set {c.SKY}PRO_FRAMEWORK{c.END} "
-      f"to a newer Core, or remove {c.SKY}{BOOT_LINE}{c.END}")
+    p.err(f"Core {utils.color_version(cfg.fw_ver)} has no bootloader "
+      f"{utils.color_file(BOOT_MAIN)}")
+    p.run(f"Open {utils.color_main_h(cfg.name)} and set {utils.color_symbol('PRO_FRAMEWORK')} "
+      f"to a newer Core, or {boot_drop(cfg)}")
     sys.exit(1)
   bare = replace(cfg, plc=False, board=None, project_drivers=[])
   boot_kB, page_kB = boot_region_kB(cfg), cfg.chip.page_kB

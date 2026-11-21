@@ -1,6 +1,6 @@
 # opencplc/utils/__init__.py
 
-"""Helpers shared by the CLI modules: files, text, versions, network, tools and probes."""
+"""Helpers shared by the CLI modules: palette, files, text, versions, network, tools and probes."""
 
 from .files import (
   load_lines, files_list, last_modification,
@@ -21,10 +21,14 @@ from .network import download, fetch, unzip, project_remote
 from .tools import template_paths, ensure_git, ensure_toolchain, ensure_packages, LINT_TOOLS
 from .probe import openocd_command, cube_bin, cube_cli, cube_found, CUBE_URL
 from .hash import hash_string, c_code_enum
-from .common import (
-  is_yes, color_url, color_command, color_image, color_pro_file, color_main_h,
-  assign_name, validate_project_name,
+from .palette import (
+  color_file, color_symbol, color_include, color_key, color_key_file,
+  color_chip, color_board, color_boot,
+  color_config, color_program, color_value, color_choice, color_command, color_image,
+  color_folder, color_link,
+  color_version, color_wrong, color_passed, color_good, color_bad,
 )
+from .common import is_yes, color_pro_file, color_main_h, assign_name, validate_project_name
 
 __all__ = [
   "load_lines", "files_list", "last_modification",
@@ -41,6 +45,10 @@ __all__ = [
   "template_paths", "ensure_git", "ensure_toolchain", "ensure_packages", "LINT_TOOLS",
   "openocd_command", "cube_bin", "cube_cli", "cube_found", "CUBE_URL",
   "hash_string", "c_code_enum",
-  "is_yes", "color_url", "color_command", "color_image", "color_pro_file", "color_main_h",
-  "assign_name", "validate_project_name",
+  "color_file", "color_symbol", "color_include", "color_key", "color_key_file",
+  "color_chip", "color_board", "color_boot",
+  "color_config", "color_program", "color_value", "color_choice", "color_command", "color_image",
+  "color_folder", "color_link",
+  "color_version", "color_wrong", "color_passed", "color_good", "color_bad",
+  "is_yes", "color_pro_file", "color_main_h", "assign_name", "validate_project_name",
 ]

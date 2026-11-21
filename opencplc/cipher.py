@@ -3,7 +3,7 @@
 """
 `--cipher NAME [FILE]`: cipher key of a product, and update images encrypted with it.
 
-Key `NAME.cipher` lies beside product keys, under an optional password,
+Key `NAME.cipher` lies beside sign keys, under an optional password,
 and each device of the product gets it from its application.
 Its fingerprint, 16 hex digits, proves which key a file or device holds without showing it.
 Encrypted images keep their trailer plain, so clients read size, CRC and signature as before,
@@ -13,7 +13,7 @@ and their bootloader checks the plain image as always.
 """
 
 import sys
-from xaeian import Print, Color as c, FILE, PATH
+from xaeian import Print, FILE, PATH
 from .args import flag
 from .pack import SIGNATURE_OFFSET, TRAILER_SIZE, encrypted, encrypted_path
 from .utils import keys, xchacha
@@ -24,7 +24,7 @@ p = Print()
 NONCE_SIZE = 24 # leading bytes of the signature the nonce takes
 # Signature of an image without one: the rest of the trailer, left erased
 ERASED = b"\xFF" * (TRAILER_SIZE - SIGNATURE_OFFSET)
-NOT_PLAIN = "image encrypted already or damaged, its bytes miss the CRC of its trailer"
+NOT_PLAIN = "image encrypted already or damaged, its bytes miss CRC of its trailer"
 
 def nonce(data:bytes) -> bytes:
   """
@@ -37,8 +37,7 @@ def nonce(data:bytes) -> bytes:
   start = len(data) - TRAILER_SIZE + SIGNATURE_OFFSET
   signature = data[start:start + len(ERASED)]
   if signature == ERASED:
-    raise ValueError("image without a signature, which gives the nonce: "
-      "encryption takes the key bootloader")
+    raise ValueError("image without signature gives no nonce, encryption needs key bootloader")
   return signature[:NONCE_SIZE]
 
 def encrypt(data:bytes, key:bytes) -> bytes:
@@ -48,28 +47,31 @@ def encrypt(data:bytes, key:bytes) -> bytes:
 
 def key_make(name:str):
   """New cipher key `name`, under a password typed twice, or under none."""
-  password = keys.new_password([name], "cipher key")
+  password = keys.new_password(keys.CIPHER_PASSWORD)
   key_id = keys.cipher_make(name, password)
-  p.ok(f"Cipher key {c.GOLD}{name}{c.END} {key_id} made in {c.CREAM}{keys.keys_dir()}{c.END}")
+  p.ok(f"Cipher key {utils.color_key(name)} {key_id} made in {keys.keys_shown()}")
+  file = utils.color_key_file(".cipher")
   if password:
-    p.wrn("Keep two offline copies of the .cipher file and its password: "
-      "a lost key leaves its devices without updates")
+    p.tip(f"Keep two offline copies of {file} file and password: "
+      "lost key leaves its devices without updates")
   else:
-    p.wrn("Cipher key without a password: the .cipher file alone reads every image, "
+    p.wrn(f"Cipher key without password: {file} file alone decrypts every image, "
       "keep it and its copy offline on encrypted drives")
-  p.run(f"Show the key for devices with {utils.color_command(f'opencplc --cipher {name}')}")
+  p.tip(f"Show key for devices: {utils.color_command(f'opencplc --cipher {name}')}")
+
+def fingerprint_show(name:str):
+  """Line naming cipher key `name` with its fingerprint, above any question or password."""
+  p.inf(f"Cipher key {utils.color_key(name)} {keys.cipher_record(name)['id']}")
 
 def key_show(name:str, yes:bool):
   """
   Fingerprint of cipher key `name`, then the key itself for the application to put into devices,
   once confirmed: with no console to answer, as under CI, it never lands in a log.
   """
-  p.inf(f"Cipher key {c.GOLD}{name}{c.END} {keys.cipher_record(name)['id']}")
-  if not yes and not utils.is_yes("Show the key itself, which opens every image it encrypts"):
-    return
-  key = keys.cipher_key(name)
-  p.gap(f"Key {key.hex()}")
-  p.wrn("Anyone with this key reads every image it encrypts, so it goes only into devices")
+  fingerprint_show(name)
+  if not yes and not utils.is_yes("Show key itself, which decrypts every image"): return
+  p.inf(f"Key {keys.cipher_key(name).hex()}")
+  p.wrn("This key goes into devices only")
 
 def failed(e:Exception):
   """A refusal of `--cipher`: its reason, then exit with `1`."""
@@ -78,28 +80,30 @@ def failed(e:Exception):
 
 def image_encrypt(name:str, path:str):
   """
-  Update image `path` encrypted with key `name` beside it, as `<stem>-<name>.bin`.
+  Update image `path` encrypted with key `name` beside it, as `<stem>.<name>.bin`.
 
   The plain image goes even when encryption fails, at a wrong password say,
   so a release never ships it by mistake; an image encrypted already stays as it is.
   """
-  shown = utils.color_image(PATH.basename(path))
   if PATH.ext(path).lower() != ".bin":
-    p.err(f"Encryption takes an update image .bin, not {shown}")
+    p.err(f"Encryption takes update image {utils.color_image('.bin')}, "
+      f"not {utils.color_wrong(PATH.basename(path))}")
     sys.exit(1)
+  shown = utils.color_image(PATH.basename(path))
   if not FILE.exists(path):
     p.err(f"No update image {shown}")
-    p.run(f"{utils.color_command('make dist')} leaves one beside the .hex under the bootloader")
+    p.tip(f"Build it in project with bootloader: {utils.color_command('make dist')}")
     sys.exit(1)
   data = FILE.load(path, binary=True)
   if encrypted(data): raise ValueError(NOT_PLAIN)
   done = False
   try:
     if keys.cipher_record(name) is None:
-      p.err(f"No cipher key {c.GOLD}{name}{c.END} in {c.CREAM}{keys.keys_dir()}{c.END}")
-      p.run(f"Make it with {utils.color_command(f'opencplc --cipher {name}')}")
+      p.err(f"No cipher key {utils.color_key(name)} in {keys.keys_shown()}")
+      p.tip(f"Make it: {utils.color_command(f'opencplc --cipher {name}')}")
       sys.exit(1)
     nonce(data) # an image unfit to encrypt stops here, before a password is asked
+    fingerprint_show(name)
     key = keys.cipher_key(name)
     out = encrypted_path(path, name)
     FILE.save(out, encrypt(data, key))
@@ -109,17 +113,16 @@ def image_encrypt(name:str, path:str):
   finally:
     FILE.remove(path)
     if not done: p.wrn(f"Plain image {shown} removed, so no release ships it")
-  p.inf(f"Image {utils.color_image(PATH.basename(out))} encrypted with "
-    f"{c.GOLD}{name}{c.END} {keys.cipher_id(key)}")
+  p.ok(f"Image {utils.color_image(PATH.basename(out))} encrypted")
 
 def cipher_command(args:list[str], yes:bool):
   """`--cipher NAME [FILE]`, `yes` showing the key unasked; exits with `1` on a refusal."""
   if len(args) > 2:
-    p.err(f"Flag {flag.cipher} takes NAME and an optional FILE")
+    p.err(f"Flag {flag.cipher} takes NAME and optional FILE")
     sys.exit(1)
   name = args[0]
   if not keys.NAME.fullmatch(name):
-    p.err(f"Cipher key name {c.MAGNTA}{name}{c.END} takes letters, digits, `-` and `_`")
+    p.err(f"Cipher key name {utils.color_wrong(name)} takes letters, digits, `-` and `_`")
     sys.exit(1)
   try:
     if len(args) == 2: image_encrypt(name, args[1])

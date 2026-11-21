@@ -46,16 +46,17 @@ opencplc <project_name>
 opencplc -r
 ```
 
-Flagi takie jak `-m` i `-o` konfigurują projekt tylko przy jego tworzeniu.
-Później konfiguracja mieszka w `main.h`: edytujesz i przeładowujesz.
+`-o`, `-m`, `--plc`, `--drv` i `--boot` wpisują swoje ustawienia do `main.h` zarówno przy tworzeniu projektu, jak i później.
+Flagę zapomnianą przy tworzeniu podajesz przy dowolnym kolejnym ładowaniu, a `main.h` zawsze możesz też poprawić ręcznie.
 
-`-b` i `-c` budują też istniejący projekt na innym sprzęcie, z pamięcią i zegarem tego sprzętu, a `main.h` zostaje bez zmian:
+`-b` i `-c` działają inaczej: budują istniejący projekt na innym sprzęcie, z pamięcią i zegarem tego sprzętu, a `main.h` zostaje bez zmian:
 
 ```sh
 opencplc test/flash -c STM32WB55
 ```
 
 `make` trzyma ten wybór, aż załadujesz projekt bez nich.
+Flagi zapisującej `main.h` nie da się połączyć z nimi ani z `-f` innego Core, więc do `main.h` trafia tylko to, co sprawdzono na jego sprzęcie i Core.
 Test albo demo na dowolną płytkę nie wpisuje do `main.h` `PRO_BOARD`, `PRO_CHIP` ani pamięci, więc sprzęt podaje każde ładowanie.
 
 ### 📂 Projekt lokalny
@@ -96,7 +97,7 @@ static void loop(void)
 }
 
 stack(stack_plc, 256);
-stack(stack_dbg, 256);
+stack(stack_dbg, 320);
 stack(stack_loop, 1024);
 
 int main(void)
@@ -137,9 +138,11 @@ Pełna lista celów:
 - **`make flash`**: Wgrywa plik wsadowy programu do pamięci sterownika PLC _(mikrokontrolera)_
 - **`make run`**: Wykonuje `make build`, a następnie `make flash`
 - `make test`: Buduje każdy `.tests/*.c` do programu na komputer i uruchamia go, patrz [Testy](#-testy); `make test T=name` uruchamia jeden
+- `make lint`: Sprawdza build regułami Forge, cppcheck i analizatorem gcc, patrz [Lint](#-lint)
 - **`make clean`** lub `make clr`: Usuwa zbudowane pliki projektu
 - `make clean_all` lub `make clr_all`: Usuwa zbudowane pliki wszystkich projektów
-- `make dist`: Pakuje wydanie do folderu projektu: `.hex` do programatora, a pod bootloaderem także `.bin` do aktualizacji; `make dist TAG=1.2.0` nazywa je `<name>-1.2.0.hex` i `.bin`, a `CIPHER=` szyfruje `.bin` kluczem szyfrowania
+- `make dist`: Pakuje wydanie do folderu projektu: `.hex` do programatora, a pod bootloaderem także `.bin` do aktualizacji; `make dist TAG=1.2.0` nazywa je `<name>-1.2.0.hex` i `.bin`, a `CIPHER=` szyfruje `.bin` kluczem szyfrowania; buduje od zera we własnym drzewie, z datą commita, i zostawia obok zapis `.json`
+- `make verify`: Buduje jak `make dist` i porównuje obraz z zapisem wydania `TAG=` albo z plikiem `RECORD=`
 - `make update`: Wysyła przez konsolę obraz z tego buildu, tak jak urządzenie dostaje aktualizację _(pod bootloaderem, z `CMD_BOOT ON`)_; `FILE=` wysyła inny obraz, a `PORT=` wskazuje konsolę
 - **`make erase`**: Całkowicie czyści pamięć mikrokontrolera _(**erase** full chip; na STM32WB stos radiowy zostaje)_
 - `make stack`: Wgrywa stos radiowy drugiego rdzenia _(STM32WB)_; `make stack FUS=1` robi też jednorazowy, nieodwracalny provisioning fabrycznej płytki
@@ -147,7 +150,7 @@ Pełna lista celów:
 Zbudowane pliki trafiają do `build/projects/<project_name>/`: `.elf`, `.hex`, `.bin` i `.map` obok katalogu `opencplc/` z obiektami framework'a i `project/` z Twoimi.
 `-dist.hex` wgrywa programator, a pod bootloaderem obok leży `-dist.bin`, obraz do aktualizacji.
 Każdy projekt kompiluje framework na własny użytek, więc przełączanie projektów nigdy nie linkuje obiektów zbudowanych z inną konfiguracją.
-Po linkowaniu Forge raportuje zajętość pamięci:
+Po linkowaniu Forge raportuje zajętość pamięci, a stos każdego wątku podaje `make lint`:
 
 ```text
 FLASH 70.7kB / 72kB (98%)
@@ -156,8 +159,8 @@ RAM 34.3kB / 36kB (95%)
 
 ## 🥾 Bootloader
 
-Projekt, którego `main.h` dołącza `boot.h`, działa za bootloaderem z Core, który Forge buduje razem z nim, i przyjmuje aktualizacje bez programatora; `-B` ustawia to nowemu projektowi.
-`opencplc --sign acme 3` dopisuje klucze produktu do `BOOT_KEYS` w `boot.h`, a od tej chwili bootloader uruchamia tylko obrazy nimi podpisane.
+Projekt, którego `main.h` dołącza `boot.h`, działa za bootloaderem z Core, który Forge buduje razem z nim, i przyjmuje aktualizacje bez programatora; `--boot` ustawia to przy tworzeniu projektu albo później.
+`opencplc --sign acme 3` dopisuje klucze podpisu do `BOOT_KEYS` w `boot.h`, a od tej chwili bootloader uruchamia tylko obrazy nimi podpisane.
 `opencplc --cipher acme-enc` robi klucz szyfrowania, a `make dist CIPHER=acme-enc` szyfruje nim plik aktualizacji, więc w drodze do urządzeń nikt go nie odczyta.
 `--lock` zamyka płytkę przed programatorem w produkcji, z bootloaderem albo bez niego.
 Oba mechanizmy i ich bezpieczeństwo: [🥾 Bootloader i 🔒 blokada](https://github.com/OpenCPLC/Forge/wiki/bootlock.pl).
@@ -168,7 +171,7 @@ Przy pierwszym projekcie ⚒️Forge tworzy plik konfiguracyjny **`opencplc.json
 Zawiera on:
 
 - **`version`**: Domyślna wersja framework'a OpenCPLC dla nowych projektów. Wartość `latest` oznacza najnowszą stabilną wersję.
-- `stlink`: Programator przypisany do projektu, dzięki czemu `make flash` trafia we właściwą płytkę, gdy podłączonych jest kilka ST-Linków. Ustawiasz przez `opencplc myapp -s <serial>`, czyścisz przez `opencplc myapp -s`. Numer seryjny odczytasz z logu OpenOCD przy `make flash`, mając podłączony jeden programator.
+- `stlink`: Programator przypisany do projektu, dzięki czemu `make flash` trafia we właściwą płytkę, gdy podłączonych jest kilka ST-Linków. Na aktywnym projekcie ustawiasz go przez `opencplc -s <serial>`, a czyścisz przez `opencplc -s`. Numer seryjny odczytasz z logu OpenOCD przy `make flash`, mając podłączony jeden programator.
 - `ignore`: Projekty pomijane na liście `-l` i w jej numeracji, zapisane wzorcami jak w `.gitignore`, np. `["demo/"]` ukrywa wszystkie dema. Projekt podany z nazwy nadal się ładuje. Klucz dopisujesz ręcznie, gdy jest potrzebny.
 - `available-versions`: Lista wszystkich dostępnych wersji framework'a. Ustawiana automatycznie, używana offline.
 
@@ -245,11 +248,11 @@ To wartości domyślne, nie reguły: `-c` podmienia chip _(pamięć idzie wtedy 
 Wiążące jest tylko `plc = true`, bo taka płytka bez swojej warstwy się nie zbuduje.
 
 Bez płytki w `main.h` stoi `PRO_BOARD_None`, a o resztę dba `PRO_PLC`:
-samo `-c <chip>` to goły mikrokontroler _(tylko HAL i biblioteki)_, a `-c <chip> -P` dokłada warstwę PLC na własnym sprzęcie, gdzie mapowanie peryferiów i `PLC_Main` piszesz sam.
+samo `-c <chip>` to goły mikrokontroler _(tylko HAL i biblioteki)_, a `-c <chip> --plc` dokłada warstwę PLC na własnym sprzęcie, gdzie mapowanie peryferiów i `PLC_Main` piszesz sam.
 
 Drivery urządzeń mieszkają w `drv/`, poza warstwą PLC, więc może z nich korzystać każdy projekt.
 Foldery w `drv/` grupują je rodzajami, `temp/` dla termometrów, `acc/` dla akcelerometrów, `disp/` dla wyświetlaczy; driver nazywa się jak jego plik, gdziekolwiek leży.
-Płytka bierze te, które wymienia jej manifest, a projekt dokłada kolejne flagą `--drv` przy tworzeniu albo w `main.h`: `#define PRO_DRIVERS "shtc3, hd44780"`.
+Płytka bierze te, które wymienia jej manifest, a projekt dokłada kolejne flagą `--drv` albo w `main.h`: `#define PRO_DRIVERS "shtc3, hd44780"`.
 Do builda trafiają wyłącznie wymienione drivery.
 
 Główną funkcją **Forge**'a jest przygotowanie plików niezbędnych do pracy z wybranym projektem:
@@ -325,9 +328,12 @@ Reguły, normy i wyjątki: [🔍 Lint](https://github.com/OpenCPLC/Forge/wiki/li
 
 ## 🚩 Flags
 
+Poza flagami opisanymi wyżej warto znać jeszcze kilka.
+Pełna lista:
+
 ### Podstawowe
 
-- **`name`**: Nazwa projektu, domyślny pierwszy argument. Wyznacza ścieżkę `projects/name` i jest powiązana z plikami wsadowymi _(`.bin`, `.hex`, `.elf`)_. Można też podać numer z listy `-l`. Ścieżka, `./app` albo `D:/repos/app`, ładuje [projekt lokalny](#-projekt-lokalny).
+- **`name`**: Nazwa projektu, domyślny pierwszy argument. Wyznacza ścieżkę `projects/name` i jest powiązana z plikami wsadowymi _(`.bin`, `.hex`, `.elf`)_. Można też podać numer z listy `-l`. Ścieżka, `./app` albo `D:/repos/app`, ładuje [projekt lokalny](#-projekt-lokalny). Bez `name` flagi działające na projekcie biorą ten, w którego katalogu stoisz, albo projekt aktywny.
 - `-n --new`: Tworzy nowy projekt o wskazanej nazwie.
 - `-e --demo`: Pobiera repozytorium [Demo](https://github.com/OpenCPLC/Demo) do `projects/demo`. Ładujesz je jak każdy projekt: `opencplc demo/blinky`.
 - `-r --reload`: Regeneruje pliki projektu. Bez `name` bierze projekt aktywny albo ten, w którego katalogu stoisz.
@@ -338,9 +344,9 @@ Reguły, normy i wyjątki: [🔍 Lint](https://github.com/OpenCPLC/Forge/wiki/li
 
 - `-b --board`: Płytka z framework'a _(`uno`)_. Ustawia chip, pamięć, zegar i warstwę PLC nowego projektu; `-c` i `--plc` to nadpisują. Przy istniejącym projekcie wybiera inną płytkę, aż do ładowania bez niej.
 - `-c --chip`: Mikrokontroler lub platforma: `STM32G081`, `STM32G0C1`, `STM32WB55`, `HOST`. Bez `-b` projekt działa bez warstwy PLC, tylko HAL i biblioteki standardowe. Przydatne dla Nucleo lub własnego hardware. Przy istniejącym projekcie wybiera inny układ, aż do ładowania bez niego.
-- `-P --plc`: Dokłada warstwę PLC do projektu bez płytki, na własnym sprzęcie.
-- `-D --drv`: Drivery framework'a nowego projektu, po przecinku _(`shtc3, hd44780`)_. Kolejne dopisujesz w `PRO_DRIVERS` w `main.h`.
-- `-B --boot`: Nowy projekt działa za bootloaderem z Core: `boot.h` obok `main.h` i jego `#include`, patrz [Bootloader](#-bootloader).
+- `--plc`: Dokłada warstwę PLC do projektu bez płytki, na własnym sprzęcie.
+- `--drv`: Dopisuje drivery framework'a do `PRO_DRIVERS` w `main.h`, po przecinku _(`shtc3, hd44780`)_.
+- `--boot`: Projekt działa za bootloaderem z Core: `boot.h` obok `main.h` i jego `#include`, patrz [Bootloader](#-bootloader).
 - `-m --memory`: Pamięć w kB: `FLASH RAM [RESERVED]`. `RESERVED` zostaje odjęte od FLASH w pliku linkera `flash.ld`. _(tylko STM32)_
 
 ### Konfiguracja kompilacji
@@ -353,7 +359,7 @@ Reguły, normy i wyjątki: [🔍 Lint](https://github.com/OpenCPLC/Forge/wiki/li
 
 - `-l --list`: Wyświetla listę projektów.
 - `-i --info`: Zwraca informacje o wskazanym lub aktywnym projekcie, w tym wersje projektu i frameworka.
-- `-F --framework-versions`: Wyświetla dostępne wersje frameworka OpenCPLC.
+- `-fv --framework-versions`: Wyświetla dostępne wersje frameworka OpenCPLC.
 - `-v --version`: Wyświetla wersję ⚒️Forge i link do repozytorium.
 
 ### Narzędzia
@@ -361,13 +367,16 @@ Reguły, normy i wyjątki: [🔍 Lint](https://github.com/OpenCPLC/Forge/wiki/li
 - `-a --assets`: Pobiera materiały pomocnicze _(dokumentacja i erraty układów, pinouty płytek, przewodniki stylu Core)_. Opcjonalnie przyjmuje nazwę folderu docelowego.
 - `-u --update`: Podmienia plik wykonywalny Forge na wskazaną wersję _(domyślnie `latest`)_; instalację z `pip` aktualizuje się przez `pip`.
 - `--program`: Wysyła `.hex` na płytkę przez programator. Bez pliku bierze ten, który `make dist` zostawił w aktywnym projekcie; z kilku najnowszy, po potwierdzeniu.
-- `--sign`: Tworzy albo bierze z magazynu klucz produktu **`NAZWA`** z zapasowymi, razem **`LICZBA`** kluczy _(domyślnie 1)_, i dopisuje ich klucze publiczne do `BOOT_KEYS` w `boot.h` aktywnego projektu; hasło jest opcjonalne, patrz [Bootloader](https://github.com/OpenCPLC/Forge/wiki/bootlock.pl).
+- `--sign`: Tworzy albo bierze z magazynu klucz podpisu **`NAZWA`** z zapasowymi, razem **`LICZBA`** kluczy _(domyślnie 1)_, i dopisuje ich klucze publiczne do `BOOT_KEYS` w `boot.h` aktywnego projektu; hasło jest opcjonalne, patrz [Bootloader](https://github.com/OpenCPLC/Forge/wiki/bootlock.pl).
 - `--cipher`: Tworzy klucz szyfrowania produktu **`NAZWA`** albo pokazuje jego odcisk, a po potwierdzeniu sam klucz; z **`PLIK`** szyfruje ten obraz aktualizacji, `make dist CIPHER=` używa tego, patrz [Bootloader](https://github.com/OpenCPLC/Forge/wiki/bootlock.pl).
 - `--upload`: Wysyła przez konsolę obraz aktualizacji, **`PLIK`** i opcjonalnie **`PORT`**; `make update` używa tego.
 - `--lock`: Blokuje płytkę na produkcję: domyślnie RDP1, `2` na zawsze, `0` zdejmuje blokadę, kasując flash, patrz [Blokada](https://github.com/OpenCPLC/Forge/wiki/bootlock.pl).
 - `-p --pack`: Pakuje obraz do flasha: pod bootloaderem z nim na początku, CRC i podpisem na końcu oraz binarką do aktualizacji obok; `make` używa tego po linkowaniu.
 - `-z --size`: Raportuje zajętość FLASH i RAM pliku `.elf`; `make` używa tego po linkowaniu.
+- `--record`: Zapisuje, z czego powstało wydanie; `make dist` używa tego na końcu.
+- `--verify`: Porównuje obraz buildu z zapisem wydania; `make verify` używa tego.
 - `--test`: Uruchamia programy testowe, każdy we własnym czystym katalogu i z minutą na zakończenie; `make test` używa tego.
+- `--lint`: Sprawdza build projektu regułami Forge, cppcheck i analizatorem gcc; `make lint` używa tego.
 - `-y --yes`: Automatycznie potwierdza wszystkie pytania _(tryb nieinteraktywny)_.
 
 ### Hash utilities
@@ -407,12 +416,13 @@ opencplc -n myapp -c STM32G081 --drv shtc3  # bare-metal z driverem shtc3
 opencplc -n myapp -c host                   # projekt desktopowy (Windows/Linux)
 
 # Zarządzanie projektami
-opencplc myapp              # załaduj projekt 'myapp'
-opencplc 3                  # załaduj projekt #3 z listy
-opencplc -r                 # przeładuj aktywny projekt
-opencplc -l                 # lista wszystkich projektów
-opencplc -i                 # informacje o aktywnym projekcie
-opencplc myapp -s 066AFF49  # przypisz ST-Link do 'myapp'
+opencplc myapp        # załaduj projekt 'myapp'
+opencplc 3            # załaduj projekt #3 z listy
+opencplc -r           # przeładuj aktywny projekt
+opencplc -l           # lista wszystkich projektów
+opencplc -i           # informacje o aktywnym projekcie
+opencplc -s 066AFF49  # przypisz ST-Link do aktywnego projektu
+opencplc --boot       # włącz bootloader w aktywnym projekcie
 
 # Przykłady demonstracyjne
 opencplc -e           # pobierz Demo do projects/demo
@@ -423,6 +433,6 @@ opencplc -g https://github.com/user/repo
 opencplc -g https://github.com/user/repo v1.0.0
 
 # Aktualizacje
-opencplc -u  # aktualizuj Forge do najnowszej wersji
-opencplc -F  # pokaż dostępne wersje Core
+opencplc -u   # aktualizuj Forge do najnowszej wersji
+opencplc -fv  # pokaż dostępne wersje Core
 ```
