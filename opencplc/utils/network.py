@@ -4,8 +4,9 @@
 
 import sys, re, urllib.request, urllib.error, http.client
 from xaeian import Print, FILE, DIR, PATH
-from .palette import color_file, color_link, color_value, color_wrong
 from xaeian.net import download as download_file
+from .palette import color_file, color_link, color_value, color_wrong
+from .files import load_lines
 from .version import git_clone
 from .common import validate_project_name
 from .. import __version__
@@ -48,7 +49,7 @@ def unzip(data:bytes, path:str, drop_on_err:bool=True):
   """Unpack ZIP bytes into `path`; a bad archive exits and drops the partial directory."""
   try:
     DIR.unzip_bytes(data, path)
-  except Exception:
+  except Exception: # `zipfile` and `zlib` raise errors of their own on broken bytes
     if drop_on_err:
       DIR.remove(path, force=True)
     p.err("Downloaded file is not a valid ZIP archive")
@@ -56,17 +57,14 @@ def unzip(data:bytes, path:str, drop_on_err:bool=True):
 
 def project_remote(url:str, path:str, ref:str|None=None, name:str="") -> str:
   """Fetch a project from a ZIP url or git repository; name falls back to `@name` in its main.h."""
-  tmp = ".remote"
-  DIR.ensure(tmp)
+  remote = ".remote"
+  DIR.ensure(remote)
   if url.endswith(".zip"):
     data = download(url)
-    unzip(data, tmp, drop_on_err=True)
+    unzip(data, remote, drop_on_err=True)
   else:
-    git_clone(url, tmp, ref, drop_on_err=True)
-  try:
-    lines = [ln.rstrip() for ln in FILE.load_lines(f"{tmp}/main.h")]
-  except Exception:
-    lines = []
+    git_clone(url, remote, ref, drop_on_err=True)
+  lines = [ln.rstrip() for ln in load_lines(f"{remote}/main.h")]
   if not lines:
     p.err(f"Remote project does not contain {color_file('main.h')}")
     sys.exit(1)
@@ -89,6 +87,6 @@ def project_remote(url:str, path:str, ref:str|None=None, name:str="") -> str:
   if DIR.exists(dst):
     p.err(f"Project {color_file(name)} already exists")
     sys.exit(1)
-  DIR.move(tmp, dst)
+  DIR.move(remote, dst)
   p.ok(f"Project {color_file(name)} downloaded from {color_link(url)}")
   return name

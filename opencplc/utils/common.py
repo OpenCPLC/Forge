@@ -6,7 +6,7 @@ import sys
 from typing import Any
 from xaeian import Print, grey
 from ..config import DIR_FRAMEWORK, DIR_TESTS
-from .files import core_version, project_dir
+from .files import core_version, project_dir, hidden
 from .palette import color_bad, color_file, color_good
 
 p = Print()
@@ -60,6 +60,7 @@ def validate_project_name(name:str) -> tuple[bool, str]:
   for seg in name.split("/"):
     if not seg: return False, "Name cannot contain an empty folder"
     if seg in (".", ".."): return False, f"Name cannot contain folder '{seg}'"
+    if hidden(seg): return False, f"Folder '{seg}' starts with a dot, which Forge leaves alone"
     for ch in invalid_chars:
       if ch in seg: return False, f"Name cannot contain '{ch}'"
     if not seg.isprintable(): return False, "Name contains a non-printable character"

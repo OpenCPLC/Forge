@@ -17,7 +17,7 @@ def root_found_at_root(tmp_path):
 
 def missing_marker_walks_past_tmp_tree(tmp_path):
   # The machine may hold a stray `opencplc.json` above `tmp`,
-  # so assert only that nothing inside the marker-free tree was picked
+  # so assert only that nothing inside the marker-free tree was picked.
   deep = tmp_path / "a" / "b"
   deep.mkdir(parents=True)
   found = find_workspace(str(deep))
@@ -45,6 +45,15 @@ def tests_folder_belongs_to_its_project(tmp_path):
   root = str(tmp_path / "projects")
   assert project_from_path(str(tests), root) == "app"
   assert project_from_path(str(tests / "fake"), root) == "app"
+
+def file_in_a_dot_folder_belongs_to_the_project_above_or_none(tmp_path):
+  root = tmp_path / "projects"
+  for folder in ("app/.sim/src", "ectra/.sim/hal"):
+    (root / folder).mkdir(parents=True)
+  for folder in ("app", "app/.sim", "ectra/.sim/hal"):
+    (root / folder / "main.h").write_text("")
+  assert project_from_path(str(root / "app" / ".sim" / "src"), str(root)) == "app"
+  assert project_from_path(str(root / "ectra" / ".sim" / "hal"), str(root)) is None
 
 def path_outside_root_gives_none(tmp_path):
   other = tmp_path / "elsewhere"

@@ -113,7 +113,7 @@ def read(root:str, core:bool) -> dict|None:
   if not FILE.exists(path): return None
   try:
     data = YAML.load(path, {})
-  except Exception as error:
+  except Exception as error: # `YAML` passes on the error of its parser, which only pyyaml names
     raise LintFileError(f"{path}: {error}") from error
   if not isinstance(data, dict): raise LintFileError(f"{path}: keys at the top, as `roles:`")
   for key in data:

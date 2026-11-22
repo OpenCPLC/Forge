@@ -26,7 +26,7 @@ OPT_DEFAULT = "Og"
 LOG_LEVEL_DEFAULT = "LOG_LEVEL_INF"
 
 # Warnings of a chip build, the rules of MISRA C a compiler checks: 20.9, 18.8, 5.3, 16.3,
-# 7.4, 8.2, 11.1 and 11.8 in turn, and through `-Wall` 9.1, 13.2, 17.3 and 17.4
+# 7.4, 8.2, 11.1 and 11.8 in turn, and through `-Wall` 9.1, 13.2, 17.3 and 17.4.
 WARNINGS = (
   "-Wall", "-Wundef", "-Wvla", "-Wshadow", "-Wimplicit-fallthrough",
   "-Wwrite-strings", "-Wstrict-prototypes", "-Wcast-function-type", "-Wcast-qual",
@@ -36,9 +36,9 @@ WARNINGS = (
 URL_GIT = "https://github.com/OpenCPLC"
 URL_DL = "https://dl.opencplc.com"
 URL_CORE = f"{URL_GIT}/Core"
-EXE_NAME = "opencplc.exe"
 URL_FORGE = f"{URL_GIT}/Forge"
 URL_DEMO = f"{URL_GIT}/Demo"
+EXE_NAME = "opencplc.exe" # frozen Forge for Windows, an asset of each release at `URL_FORGE`
 
 # Files `-a` puts in `assets/` of a workspace: chip documents, board pinouts, style guides
 ASSETS = (

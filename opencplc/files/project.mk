@@ -10,8 +10,8 @@ RAM_kB := ${RAM}
 BOOT := ${BOOT}
 
 # Paths anchored to this file, so `make -C` works from any directory, on the drive in upper case:
-# VS Code starts make on `c:`, a console on `C:`, and `.d` files keep the spelling they got
-# A local project, outside the workspace, names it in full
+# VS Code starts make on `c:`, a console on `C:`, and `.d` files keep the spelling they got.
+# A local project, outside the workspace, names it in full.
 THIS_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 MAKEFILE_PATH := $(patsubst ${DRIVE_LOWER}%,${DRIVE}%,$(abspath $(THIS_MAKEFILE)))
 PROJECT := $(patsubst %/,%,$(dir $(MAKEFILE_PATH)))
@@ -82,21 +82,21 @@ LIBS = -lc -lm -lnosys
 LDFLAGS = $(MCU) -specs=nano.specs -T$(LD_SCRIPT) $(LIBS)
 LDFLAGS += -Wl,--no-warn-rwx-segment,-Map=$(BUILD)/$(TARGET).map,--cref -Wl,--gc-sections
 
-# Core (`opencplc/`) and project objects in separate trees, named after full source paths
-# Outputs sit next to them
+# Core (`opencplc/`) and project objects in separate trees, named after full source paths.
+# Outputs sit next to them.
 OBJECTS := $(patsubst %.c,$(BUILD)/opencplc/%.o,$(CORE_C))
 OBJECTS += $(patsubst %.s,$(BUILD)/opencplc/%.o,$(CORE_S))
 OBJECTS += $(patsubst %.c,$(BUILD)/project/%.o,$(PRO_C))
 OBJECTS += $(patsubst %.s,$(BUILD)/project/%.o,$(PRO_S))
 
-# Every object depends on the makefile, because a flag change touches all of them
-# main.h is not listed: `-MMD -MP` records in the .d files which objects really include it
-# Editing it rebuilds exactly those
+# Every object depends on the makefile, because a flag change touches all of them.
+# main.h is not listed: `-MMD -MP` records in the .d files which objects really include it.
+# Editing it rebuilds exactly those.
 CONFIG_DEPS = $(MAKEFILE_PATH)
 
-# Configuration changed: Forge rewrites this file and Make restarts once with fresh sources
+# Configuration changed: Forge rewrites this file and Make restarts once with fresh sources.
 # Stamp carries the time of the last load, by `opencplc` or by this rule,
-# so a rewrite with identical content rebuilds nothing
+# so a rewrite with identical content rebuilds nothing.
 FORGE = opencplc
 CONFIG_INPUTS = $(wildcard ${CONFIG_INPUTS})
 FORGE_STAMP := $(BUILD)/.forge
@@ -127,7 +127,7 @@ $(BUILD)/project/%.o: $(PROJECT)/%.s $(CONFIG_DEPS)
 	$(AS) -c $(ASFLAGS) $< -o $@
 
 $(BUILD)/$(TARGET).elf: $(OBJECTS) $(LD_SCRIPT)
-		$(CC) $(OBJECTS) $(LDFLAGS) -o $@
+	$(CC) $(OBJECTS) $(LDFLAGS) -o $@
 	$(SZ) $@
 	@$(call CD,$(WORKSPACE)) && $(FORGE) -z $@ $(FLASH_kB) $(RAM_kB)
 
@@ -137,10 +137,10 @@ $(BUILD)/%.hex: $(BUILD)/%.elf
 $(BUILD)/%.bin: $(BUILD)/%.elf
 	$(BIN) $< $@
 
-# Whole flash in one file for the programmer
-# Under the bootloader: bootloader in front, CRC in the trailer, update binary beside
-# Under the `key` one the development key signs the image, the one the bootloader of builds holds
-# New bootloader packs again, without a clean
+# Whole flash in one file for the programmer.
+# Under the bootloader: bootloader in front, CRC in the trailer, update binary beside.
+# Under the `key` one the development key signs the image, the one the bootloader of builds holds.
+# New bootloader packs again, without a clean.
 $(BUILD)/$(TARGET)-dist.hex: $(BUILD)/$(TARGET).hex $(BOOT_IMAGE)
 	@$(call CD,$(WORKSPACE)) && $(FORGE) --pack $< $@ $(BOOT_IMAGE) $(if $(BOOT_KEYS),$(BOOT_KEYS) $(SIGNING_KEY))
 
@@ -149,9 +149,10 @@ ${BOOT_RULES}
 ARTIFACTS := $(BUILD)/$(TARGET).elf $(BUILD)/$(TARGET).hex $(BUILD)/$(TARGET).bin \
   $(BUILD)/$(TARGET)-dist.hex
 
-# Only top make with `build` as its goal says it
-# Run in the project that is this one, under the dispatcher that one, behind `dist` nobody
-# The inner make takes `build` too: artifacts named as goals would each say they are up to date
+# Only the top make, asked for `build` alone, says that there is nothing to do:
+# this makefile when make runs in the project, the dispatcher when it runs in the workspace,
+# and nobody under `dist`.
+# The inner make takes `build` too: artifacts named as goals would each say they are up to date.
 ifeq ($(MAKELEVEL),0)
 ifeq ($(filter-out build,$(MAKECMDGOALS)),)
 BUILD_SAYS := yes
@@ -168,8 +169,8 @@ endif
 # ST-Link, the pinned probe, the chip held in reset: the same openocd `--program` runs
 OPENOCD = ${OPENOCD} -c
 
-# One file with or without a bootloader, `--pack` already put it in front
-# Looked for when `flash` runs, so `make run` finds the image its build just made
+# One file with or without a bootloader, `--pack` already put it in front.
+# Looked for when `flash` runs, so `make run` finds the image its build just made.
 flash:
 	@$(if $(wildcard $(BUILD)/$(TARGET)-dist.hex),$(OPENOCD) "program $(BUILD)/$(TARGET)-dist.hex verify reset exit" && echo Flashed ${HEX_COLOR}$(TARGET)-dist.hex${END}|| (echo Flashing ${BAD_COLOR}failed${END}&& exit 1),echo No image ${HEX_COLOR}$(TARGET)-dist.hex${END} to flash, build it with make)
 
@@ -183,18 +184,20 @@ stack: export PATH := ${CUBE_PATH};$(PATH)
 stack:
 	@${STACK_CMD}
 
-# `make dist TAG=1.2.0` gives <target>-1.2.0.hex, the flash image for a programmer
-# Under the bootloader the hex is the full image, <target>-1.2.0.bin the image alone for an update
+# `make dist TAG=1.2.0` gives <target>-1.2.0.hex, the flash image for a programmer.
+# Under the bootloader the hex is the full image, <target>-1.2.0.bin the image alone for an update.
 # Packed again with the bootloader of `dist`: under `key` the sign key signs the image,
-# and the bootloader holds the sign keys and keeps its floors in OTP
-# `CIPHER=acme` encrypts the update image with cipher key `acme`, as <target>-1.2.0.acme.bin
-# <target>-1.2.0.json records what the release was made of, `make verify` checks a build against it
-# Packing warns of images that other keys keep from an earlier build
-# Stamp touched, so a new file in the project does not force a reload on the next make
+# and the bootloader holds the sign keys and keeps its floors in OTP.
+# `CIPHER=acme` encrypts the update image with cipher key `acme`, as <target>-1.2.0.acme.bin.
+# Keys go first, so a missing one stops the release before its build and any password.
+# <target>-1.2.0.json records what the release was made of,
+# and `make verify` checks a build against it.
+# Packing warns of images that other keys keep from an earlier build.
+# Stamp touched, so a new file in the project does not force a reload on the next make.
 DIST := $(TARGET)$(if $(TAG),-$(TAG))
 
 # A release builds in a tree of its own, from nothing and dated by its commit:
-# one commit gives the same image on every computer, and the tree of `make` stays as it is
+# one commit gives the same image on every computer, and the tree of `make` stays as it is.
 RELEASE = $(BUILD)/release
 # Time of the commit; a format with `%` would lose it to cmd.exe, `--timestamp` needs none
 EPOCH = $(firstword $(shell git -C "$(PROJECT)" rev-list -1 --timestamp HEAD 2>$(NULL)))
@@ -205,6 +208,9 @@ RELEASE_FLAGS = --no-print-directory BUILD=$(RELEASE) FORGE_STAMP=$(FORGE_STAMP)
 RELEASE_BOOT = $(subst $(BUILD)/,$(RELEASE)/,$(BOOT_DIST_IMAGE))
 
 dist:
+ifneq ($(BOOT_KEYS)$(CIPHER),)
+	@$(call CD,$(WORKSPACE)) && $(FORGE) --keys $(if $(BOOT_KEYS),$(BOOT_KEYS) $(SIGNING_KEY)) $(CIPHER)
+endif
 	@$(call RMDIR,$(RELEASE))
 	@"$(MAKE)" $(RELEASE_FLAGS) $(RELEASE)/$(TARGET).hex $(RELEASE)/$(TARGET).bin $(RELEASE_BOOT)
 	@$(call CD,$(WORKSPACE)) && $(FORGE) --pack $(RELEASE)/$(TARGET).hex $(PROJECT)/$(DIST).hex $(RELEASE_BOOT) $(if $(BOOT_KEYS),$(BOOT_KEYS) $(SIGNING_KEY) dist $(CIPHER))
@@ -221,8 +227,8 @@ endif
 	@echo Release record ${CONFIG_COLOR}$(DIST).json${END} to ${PROJECT_COLORED}
 	@$(call TOUCH,$(FORGE_STAMP))
 
-# `make verify TAG=1.2.0` builds as `dist` does and compares the image with that release,
-# `RECORD=` names a record lying elsewhere
+# `make verify TAG=1.2.0` builds as `dist` does and compares the image with that release.
+# `RECORD=` names a record lying elsewhere.
 verify:
 	@$(call RMDIR,$(RELEASE))
 	@"$(MAKE)" $(RELEASE_FLAGS) $(RELEASE)/$(TARGET).bin

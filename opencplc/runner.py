@@ -32,8 +32,8 @@ def run_one(build:str, name:str) -> tuple[int|None, int, str, list[str]]:
   if DIR.exists(folder): DIR.remove(folder, force=True)
   DIR.ensure(folder, is_file=False)
   exe = PATH.resolve(f"{build}/{name}{EXE_EXT}")
-  # One stream keeps a `panic` on stderr in its place,
-  # bytes decode leniently: a test may print any byte, and `xaeian.cmd.run` would refuse it
+  # One stream keeps a `panic` on stderr in its place.
+  # Bytes decode leniently: a test may print any byte, and `xaeian.cmd.run` would refuse it.
   try:
     res = subprocess.run([exe], cwd=folder, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
       timeout=TEST_TIMEOUT_s)

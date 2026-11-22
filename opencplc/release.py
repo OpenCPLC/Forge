@@ -1,7 +1,7 @@
 # opencplc/release.py
 
 """
-`--record` and `--verify`: what a release was made of, and a build checked against it.
+Release steps: `--keys` before its build, `--record` after it, `--verify` of a build against it.
 
 `make dist` builds a release in a tree of its own, from nothing and dated by its commit,
 so one commit gives the same image on every computer, and the record lands beside its files.
@@ -20,6 +20,29 @@ from .utils.tools import COMMANDS
 from . import utils, __version__
 
 p = Print()
+
+def keys_check(args:list[str]):
+  """
+  `--keys [KEYS NUMBER] [CIPHER]`, the first step of `dist`: its keys lie on this computer.
+
+  A key missing, or encryption without the key bootloader, stops the release
+  before its build and before any password.
+  """
+  if len(args) > 3:
+    p.err(f"Flag {flag.keys} takes [KEYS NUMBER] [CIPHER]")
+    sys.exit(1)
+  keys_hex, number = args[:2] if len(args) > 1 else ("", "0")
+  cipher = args[-1] if len(args) in (1, 3) else ""
+  if cipher and not keys_hex:
+    p.err(f"Encryption needs key bootloader, {utils.color_boot('BOOT_KEYS')} in boot.h")
+    p.tip(f"Add sign keys: {utils.color_command('opencplc --sign <name>')}")
+    sys.exit(1)
+  try:
+    if keys_hex: keys.sign_needed(bytes.fromhex(keys.keys_split(keys_hex)[int(number)]))
+    if cipher: keys.cipher_needed(cipher)
+  except (OSError, ValueError, IndexError) as e:
+    p.err(f"Keys check failed: {e}")
+    sys.exit(1)
 
 def commit_of(folder:str) -> dict:
   """

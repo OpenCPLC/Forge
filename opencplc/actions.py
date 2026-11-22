@@ -4,20 +4,20 @@
 One-shot CLI actions.
 
 `info_actions()` runs the flags that need no project:
--v, -fv, -f, -hl, -u, -a, -z, -p, --test, --cipher, --upload, --record and --verify.
+-v, -fv, -f, -hl, -u, -a, -z, -p, --test, --cipher, --upload, --keys, --record and --verify.
 `info_show()` and `program_image()` act on the resolved model, for -i and --program.
 """
 
 import sys
 from datetime import datetime
-from xaeian import Print, Color as c, Ico, FILE, DIR, PATH, replace_end, grey
+from xaeian import Print, Color as c, FILE, DIR, PATH, replace_end, grey
 from xaeian.cmd import run
 from .config import URL_DL, URL_FORGE, URL_CORE, EXE_NAME, ASSETS
 from .args import flag, given
 from .model import Project
 from .pack import pack_command
 from .cipher import cipher_command
-from .release import record, verify
+from .release import keys_check, record, verify
 from .upload import upload
 from .runner import run_tests
 from .utils.palette import MEMORY_COLORS
@@ -56,7 +56,7 @@ def update_forge(args):
   """
   if not FROZEN:
     p.err("Forge runs here as a Python package, so it updates through pip")
-    p.run(f"Update it with {utils.color_command('pip install -U opencplc')}")
+    p.tip(f"Update it: {utils.color_command('pip install -U opencplc')}")
     sys.exit(1)
   latest = args.update in ("last", "latest")
   utils.ensure_git(args.yes)
@@ -78,7 +78,7 @@ def update_forge(args):
     data = utils.download(f"{URL_FORGE}/releases/download/{target}/{EXE_NAME}")
     DIR.move(exe, old)
     FILE.save(exe, data)
-  except Exception as e:
+  except OSError as e:
     if not FILE.exists(exe) and FILE.exists(old): DIR.move(old, exe)
     p.err(f"Update failed: {e}")
     sys.exit(1)
@@ -98,8 +98,7 @@ def framework_fetch(args, forge_cfg:dict) -> bool:
   if DIR.exists(path):
     p.ok(f"Framework {utils.color_version(ver)} already in {grey(PATH.local(path))}")
     return True
-  utils.version_check(ver, ensure_refs(forge_cfg, args.yes),
-    f"{Ico.RUN} Check version list: {flag.fv}")
+  utils.version_check(ver, ensure_refs(forge_cfg, args.yes), f"Check version list: {flag.fv}")
   utils.ensure_git(args.yes)
   utils.git_clone_missing(URL_CORE, path, ver, args.yes)
   return True
@@ -112,7 +111,7 @@ def info_actions(args, forge_cfg:dict) -> bool:
   if args.size:
     if len(args.size) != 3:
       p.err(f"Flag {flag.z} takes ELF FLASH_kB RAM_kB")
-      p.run(f"Reload the project with {utils.color_command('opencplc -r')}")
+      p.tip(f"Reload the project: {utils.color_command('opencplc -r')}")
       sys.exit(1)
     elf, flash_kB, ram_kB = args.size
     size_report(elf, int(flash_kB), int(ram_kB))
@@ -122,6 +121,9 @@ def info_actions(args, forge_cfg:dict) -> bool:
     ran = True
   if args.cipher:
     cipher_command(args.cipher, args.yes)
+    ran = True
+  if args.keys:
+    keys_check(args.keys)
     ran = True
   if args.record:
     record(args.record)
@@ -148,7 +150,7 @@ def info_actions(args, forge_cfg:dict) -> bool:
       suffix = " " + grey(f"({', '.join(tags)})") if tags else ""
       shown = utils.color_version(ver) if ver == active else grey(ver)
       parts.append(f"{shown}{suffix}")
-    p("Framework Versions: " + ", ".join(parts))
+    p(f"Framework versions: {', '.join(parts)}")
     ran = True
   if framework_fetch(args, forge_cfg):
     ran = True
@@ -178,7 +180,7 @@ def dist_image(pro:Project, yes:bool) -> str:
   where = PATH.local(pro.pro_dir)
   if not images:
     p.err(f"No .hex image in {grey(where)}")
-    p.run(f"Make one with {utils.color_command('make dist')}")
+    p.tip(f"Make one: {utils.color_command('make dist')}")
     sys.exit(1)
   images.sort(key=FILE.mtime, reverse=True)
   if len(images) > 1:
@@ -208,7 +210,7 @@ def program_image(pro:Project, path:str|bool, yes:bool):
   name = utils.color_image(PATH.basename(path))
   if run(cmd, capture=False).returncode:
     p.err(f"Programming {name} failed")
-    p.run("Check ST-Link cable and board power; a locked board needs "
+    p.tip("Check ST-Link cable and board power; a locked board needs "
       f"{utils.color_command('opencplc --lock 0')} first")
     sys.exit(1)
   p.ok(f"Programmed {name} into {utils.color_chip(pro.chip)}")

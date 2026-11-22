@@ -6,8 +6,8 @@ LOAD_FLAGS := ${LOAD_FLAGS}
 TARGET := ${TARGET}
 
 # Paths anchored to this file, so `make -C` works from any directory, on the drive in upper case:
-# VS Code starts make on `c:`, a console on `C:`, and `.d` files keep the spelling they got
-# A local project, outside the workspace, names it in full
+# VS Code starts make on `c:`, a console on `C:`, and `.d` files keep the spelling they got.
+# A local project, outside the workspace, names it in full.
 THIS_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 MAKEFILE_PATH := $(patsubst ${DRIVE_LOWER}%,${DRIVE}%,$(abspath $(THIS_MAKEFILE)))
 PROJECT := $(patsubst %/,%,$(dir $(MAKEFILE_PATH)))
@@ -61,19 +61,19 @@ OPT = -${OPT_LEVEL}
 CFLAGS = -std=c11 $(OPT) -Wall -Wextra $(C_DEFS) $(C_INCLUDES)
 CFLAGS += -g -MMD -MP -MF"$(@:%.o=%.d)"
 
-# Core (`opencplc/`) and project objects in separate trees, named after full source paths
-# Outputs sit next to them
+# Core (`opencplc/`) and project objects in separate trees, named after full source paths.
+# Outputs sit next to them.
 OBJECTS := $(patsubst %.c,$(BUILD)/opencplc/%.o,$(CORE_C))
 OBJECTS += $(patsubst %.c,$(BUILD)/project/%.o,$(PRO_C))
 
-# Every object depends on the makefile, because a flag change touches all of them
-# main.h is not listed: `-MMD -MP` records in the .d files which objects really include it
-# Editing it rebuilds exactly those
+# Every object depends on the makefile, because a flag change touches all of them.
+# main.h is not listed: `-MMD -MP` records in the .d files which objects really include it.
+# Editing it rebuilds exactly those.
 CONFIG_DEPS = $(MAKEFILE_PATH)
 
-# Configuration changed: Forge rewrites this file and Make restarts once with fresh sources
+# Configuration changed: Forge rewrites this file and Make restarts once with fresh sources.
 # Stamp carries the time of the last load, by `opencplc` or by this rule,
-# so a rewrite with identical content rebuilds nothing
+# so a rewrite with identical content rebuilds nothing.
 FORGE = opencplc
 CONFIG_INPUTS = $(wildcard ${CONFIG_INPUTS})
 FORGE_STAMP := $(BUILD)/.forge
@@ -96,10 +96,11 @@ $(BUILD)/project/%.o: $(PROJECT)/%.c $(CONFIG_DEPS)
 	$(CC) -c $(CFLAGS) $< -o $@
 
 $(EXE): $(OBJECTS)
-		$(CC) $(OBJECTS) $(LIBS) -o $@
+	$(CC) $(OBJECTS) $(LIBS) -o $@
 
-# Only top make with `build` as its goal says it
-# Run in the project that is this one, under the dispatcher that one, behind `dist` nobody
+# Only the top make, asked for `build` alone, says that there is nothing to do:
+# this makefile when make runs in the project, the dispatcher when it runs in the workspace,
+# and nobody under `dist`.
 ifeq ($(MAKELEVEL),0)
 ifeq ($(filter-out build,$(MAKECMDGOALS)),)
 BUILD_SAYS := yes
@@ -117,8 +118,8 @@ run: build
 	@echo Running ${EXE_COLOR}$(notdir $(EXE))${END}
 	@$(EXE)
 
-# `make dist TAG=1.2.0` names the copy <target>-1.2.0
-# Stamp touched, so a new file in the project does not force a reload on the next make
+# `make dist TAG=1.2.0` names the copy <target>-1.2.0.
+# Stamp touched, so a new file in the project does not force a reload on the next make.
 DIST := $(TARGET)$(if $(TAG),-$(TAG))$(suffix $(EXE))
 
 dist: build

@@ -6,8 +6,8 @@ import sys, re
 from typing import Literal
 import packaging.version
 from xaeian import Print, DIR, PATH, grey
-from .palette import color_folder, color_link, color_version, color_wrong
 from xaeian.cmd import run, output
+from .palette import color_folder, color_link, color_version, color_wrong
 from .common import is_yes
 
 p = Print()
@@ -37,11 +37,11 @@ def version_older_than(a:str, b:str) -> bool:
   """`True` when `a < b` as semantic versions."""
   return packaging.version.Version(a) < packaging.version.Version(b)
 
-def version_check(ver:str, available:list[str], err_msg:str):
-  """Exit with `err_msg` when `ver` is not among the available refs."""
+def version_check(ver:str, available:list[str], tip:str):
+  """Exit with `tip` as the next step when `ver` is not among the available refs."""
   if ver not in available:
     p.err(f"Framework version {color_wrong(ver)} does not exist")
-    p(err_msg)
+    p.tip(tip)
     sys.exit(1)
 
 def git_clone(url:str, path:str, ref:str|None=None, drop_on_err:bool=False):

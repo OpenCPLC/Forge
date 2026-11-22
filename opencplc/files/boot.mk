@@ -1,9 +1,10 @@
 #-------------------------------------------------------------------------------------- Bootloader
 
-# Bootloader of Core, `.boot/main.c`, compiled with `boot.h` of this project
-# A build packs the one of `boot/`: under `key` the development key of this computer stands
-# for every sign key and the floors stay in the slot, so nothing on the board stays for good
-# `dist` packs the one of `boot-dist/`: the sign keys, floors in OTP
+# Bootloader of Core, `.boot/main.c`, compiled with `boot.h` of this project.
+# A build packs the one of `boot/`:
+# under `key` the development key of this computer stands for every sign key,
+# and the floors stay in the slot, so nothing on the board stays for good.
+# `dist` packs the one of `boot-dist/`: the sign keys, floors in OTP.
 BOOT_kB := ${BOOT_kB}
 # Development key of this computer, empty for a `plain` bootloader
 BOOT_DEV_KEY := ${BOOT_DEV_KEY}
@@ -48,8 +49,8 @@ $(BUILD)/boot-dist/boot.elf: $(addprefix $(BUILD)/boot-dist/,$(BOOT_OBJECTS)) $(
 	$(CC) $(filter %.o,$^) $(BOOT_LDFLAGS) -o $@
 	@$(call CD,$(WORKSPACE)) && $(FORGE) -z $@ $(BOOT_kB) $(RAM_kB)
 
-# `make update` sends the update image of this build over the console, as a device takes one
-# `FILE=` sends another image, `PORT=` names the console when the computer has several
+# `make update` sends the update image of this build over the console, as a device takes one.
+# `FILE=` sends another image, `PORT=` names the console when the computer has several.
 update: build
 	@$(call CD,$(WORKSPACE)) && $(FORGE) --upload $(if $(FILE),$(FILE),$(BUILD)/$(TARGET)-dist.bin) $(PORT)
 

@@ -17,6 +17,7 @@ def invalid_names_fail():
     "foo/CON", "CON", "COM1.c", "/abs", "C:/abs", "a\\b", "a\x08b", "a<b", "a|b",
     "foo/name /b", " lead", "x" * 101,
     "opencplc/", "opencplc//.tests/g081", # no version
+    ".sim", "ectra/.sim/x", # a dot folder is other code's
   )
   for name in bad:
     valid, reason = validate_project_name(name)

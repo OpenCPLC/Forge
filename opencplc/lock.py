@@ -101,7 +101,7 @@ def cube_unlock(pro:Project) -> str:
   cli = utils.cube_cli()
   if not cli:
     p.err(f"Unlock of {utils.color_chip(pro.chip)} needs STM32CubeProgrammer")
-    p.run(f"Install it from {utils.color_link(utils.CUBE_URL)}")
+    p.tip(f"Install it from {utils.color_link(utils.CUBE_URL)}")
     sys.exit(1)
   connect = ["-c", "port=SWD", "mode=UR"] + ([f"sn={pro.stlink}"] if pro.stlink else [])
   # Its progress bar comes in the console code page, `latin-1` takes any byte
@@ -126,7 +126,7 @@ def check_chip(pro:Project, chip:int|None):
   seen = f"chip {utils.color_value(f'0x{chip:03X}')}" if chip is not None else "no chip"
   p.err(f"ST-Link sees {seen}, "
     f"project {utils.color_chip(pro.chip)} needs {utils.color_value(f'0x{want:03X}')}")
-  p.run("Check the board on the ST-Link; with several, bind the right one by "
+  p.tip("Check the board on the ST-Link; with several, bind the right one: "
     f"{utils.color_command('opencplc -s <serial>')}")
   sys.exit(1)
 
@@ -135,7 +135,7 @@ def options_read(pro:Project) -> tuple[int, int]|None:
   code, out = openocd(pro, "init", "reset halt",
     f"stm32l4x option_read 0 0x{OPTR:02X}", f"stm32l4x option_read 0 0x{WRP1AR:02X}", "shutdown")
   # `openocd` 0.12.0 of Linux distributions prints `Option Register: <address> = value`,
-  # builds since 2025 the value alone
+  # builds since 2025 the value alone.
   values = re.findall(r"^(?:Option Register: <0x\w+> = )?(0x[0-9a-fA-F]+)\s*$", out, re.M)
   if code or len(values) < 2: return None
   return int(values[-2], 16), int(values[-1], 16)
@@ -184,7 +184,7 @@ def lock_board(pro:Project, level:int, yes:bool):
   if level == 2 and read is None and swd_shut(pro): # RDP2 shuts SWD at once
     p.ok(f"{utils.color_chip(pro.chip)} at RDP2: powered, silent on SWD for good")
     # The silence of SWD alone could have another cause, the chip itself names its level
-    p.run("Unplug and plug board power, "
+    p.tip("Unplug and plug board power, "
       f"then {utils.color_command('boot info')} shows {utils.color_value('rdp:2')}")
     return
   if read is None or (read[0] & 0xFF) != RDP[level]:
@@ -195,8 +195,8 @@ def lock_board(pro:Project, level:int, yes:bool):
   p.ok(f"{utils.color_chip(pro.chip)} at RDP{level}, OPTR 0x{read[0]:08X}, WRP1AR 0x{read[1]:08X}")
   if level == 0:
     # Option reload saw flash empty, and G0 boots its ROM until next power-on
-    p.run(f"Program board with {utils.color_command('make flash')}, "
+    p.tip(f"Program board with {utils.color_command('make flash')}, "
       "then unplug and plug its power")
     return
   # A debugger seen since power-on keeps flash shut until next power-on
-  p.run("Unplug and plug board power, a chip locked under the debugger starts nothing until then")
+  p.tip("Unplug and plug board power, a chip locked under the debugger starts nothing until then")

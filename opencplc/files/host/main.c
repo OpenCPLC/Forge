@@ -38,7 +38,7 @@ stack(stack_loop, 256); // memory stack for `loop` function
 int main(void)
 {
   sys_init(); // configure heap and disable CTRL+C
-  RTC_Init(); // enable real-time clock (RTC)
+  (void)RTC_Init(); // enable real-time clock (RTC)
   DBG_Init(&dbg_uart); // initialize debugger (logs + bash)
   DBG_Enter();
   LOG_Info("OpenCPLC framework version: " ANSI_VIOLET "%s" ANSI_END, PRO_FRAMEWORK);

@@ -70,7 +70,7 @@ class Entry:
   function: str
   # `assignment`, `arithmetic`, `cast`, `argument`, `return`,
   # `initial` for a zero of static storage, `memory` for raw bytes over an object,
-  # `union` for another member of a union
+  # `union` for another member of a union.
   kind: str
   source: str                         # type it came from
   values: Values
@@ -194,8 +194,9 @@ class Tokens:
     """
     Proven values of an expression, its type bounding them when the flow says nothing.
 
-    `assume` is the enum the value enters, and an expression of that enum holds one of its
-    enumerators: the hypothesis a closed enum is proven by, entry by entry.
+    `assume` is the enum the value enters,
+    and an expression of that enum holds one of its enumerators:
+    the hypothesis a closed enum is proven by, entry by entry.
     A step by a constant and a remainder by one are followed from there.
     """
     known, low, high, excluded = set(), None, None, set()

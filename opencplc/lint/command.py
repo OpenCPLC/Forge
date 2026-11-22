@@ -289,12 +289,12 @@ def lint(pro:Project) -> int:
   elf = f"{pro.build_dir}/{pro.target}.elf"
   if not FILE.exists(elf):
     p.err(f"No build of {utils.color_file(pro.name)} to check")
-    p.run(f"Build it with {utils.color_command('make')}")
+    p.tip(f"Build it: {utils.color_command('make')}")
     return 1
   opt_ins, unknown = lint_opt_ins(pro.pro_dir)
   if unknown:
     p.err(f"{fmt_path(f'{pro.pro_dir}/{LINT}')} turns on no rule named {fmt_list(unknown)}")
-    p.run(f"Name rules under {utils.color_symbol('rules')} from {fmt_list(OPT_INS)}, "
+    p.tip(f"Name rules under {utils.color_symbol('rules')} from {fmt_list(OPT_INS)}, "
       f"or MISRA C ones by number, as {utils.color_symbol('misra-15.5')}")
     return 1
   start = time.perf_counter()
@@ -302,18 +302,18 @@ def lint(pro:Project) -> int:
   for tool, least in (("cppcheck", CPPCHECK_MIN), ("arm-none-eabi-gcc", GCC_MIN)):
     if old := too_old(tool, least):
       p.err(f"Lint needs {tool} {'.'.join(map(str, least))} or newer, and finds {old}")
-      p.run(f"Install a newer {tool} and run again")
+      p.tip(f"Install a newer {tool} and run again")
       return 1
   forms = DEFAULT_FORMS | {n for n in opt_ins if n in FORM_RULES or MISRA_NAME.match(n)}
   if misra := sorted(n for n in forms if MISRA_NAME.match(n)):
     addon = misra_addon()
     if addon is None:
       p.err("This cppcheck comes without its MISRA addon, `misra.py`")
-      p.run("Install cppcheck with its addons and run again")
+      p.tip("Install cppcheck with its addons and run again")
       return 1
     if missing := [n for n in misra if n.removeprefix("misra-") not in misra_rules(addon)]:
       p.err(f"The MISRA addon of this cppcheck checks no {fmt_list(missing)}")
-      p.run(f"Name rules it checks under {utils.color_symbol('rules')} of "
+      p.tip(f"Name rules it checks under {utils.color_symbol('rules')} of "
         f"{fmt_path(f'{pro.pro_dir}/{LINT}')}")
       return 1
   folder = f"{pro.build_dir}/lint"

@@ -33,8 +33,9 @@ ANALYZER = ["-fanalyzer", "-Wno-analyzer-infinite-loop", "-Wno-analyzer-va-arg-t
 # Checks of cppcheck left out, each one wrong for this code
 CPPCHECK_OFF = (
   "shiftNegativeLHS", # gcc, the only compiler of a build, defines it: the sign extends
-  # It takes `x = (int16_t)x` of a `uint16_t x` for the value `x` had, though from `0x8000`
-  # the cast changes it: every finding of it in projects was of that kind, and a fix breaks code
+  # It takes `x = (int16_t)x` of a `uint16_t x` for the value `x` had,
+  # though from `0x8000` the cast changes it:
+  # every finding of it in projects was of that kind, and a fix breaks code.
   "redundantAssignment",
 )
 # Flags of the rules gcc checks, compiled into the sources of the project only
@@ -208,8 +209,9 @@ def run_cppcheck(
     owned = [f"{copy}.dump" for copy in copies
       if unit.owns(copies[copy]) and origins[copy] not in unread]
     found += form_findings(owned, copies, unit.owns, forms)
-  # What cppcheck wrote beside each copy goes, `.ctu-info` of an addon too. The copies stay
-  # for the next run: Windows keeps a fresh `.c` open a moment for whoever indexes or scans it.
+  # What cppcheck wrote beside each copy goes, `.ctu-info` of an addon too.
+  # The copies stay for the next run:
+  # Windows keeps a fresh `.c` open a moment for whoever indexes or scans it.
   FILE.remove([f"{copy}{suffix}" for copy in copies for suffix in (".dump", ".ctu-info")])
   return found, styled, proved, unread
 

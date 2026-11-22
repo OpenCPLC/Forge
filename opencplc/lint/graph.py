@@ -13,7 +13,6 @@ import re
 from dataclasses import dataclass, field
 from xaeian import FILE
 
-INDIRECT = "__indirect_call" # callee of every call through a pointer
 TITLE = re.compile(r'graph: \{ title: "([^"]+)"')
 NODE = re.compile(r'node: \{ title: "([^"]+)" label: "([^"]*)"')
 EDGE = re.compile(r'edge: \{ sourcename: "([^"]+)" targetname: "([^"]+)" label: "([^"]*)"')

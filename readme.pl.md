@@ -178,13 +178,13 @@ Zawiera on:
 Układ workspace jest stały: `projects/` z Twoimi projektami, `opencplc/` z wersjami framework'a i `build/` z plikami zbudowanymi.
 Projekt skopiowany ręcznie do `projects/` zostaje wykryty przy następnym uruchomieniu.
 
-## 🤔 How works?
+## 🤔 Jak to działa
 
 Kto co robi: Forge przygotowuje środowisko, Make buduje i wgrywa, Ty piszesz kod.
 
 ```mermaid
 flowchart LR
-  CORE[repo Core] -->|clone| FW["opencplc/0.4.3"]
+  CORE[repo Core] -->|clone| FW["opencplc/0.6.6"]
   FORGE[Forge] --> GEN["projects/myapp/makefile, flash.ld"]
   FW --> GEN
   YOU[Twój kod] --> PRO["projects/myapp/main.c"]
@@ -201,7 +201,7 @@ Następnie, w razie konieczności, sklonuje framework OpenCPLC z [repozytorium](
 Nowy projekt dostaje wersję z pliku `opencplc.json` albo wskazaną za pomocą `-f --framework`:
 
 ```sh
-opencplc <project_name> --new -f 0.4.3
+opencplc <project_name> --new -f 0.6.6
 opencplc <project_name> --new -f develop
 ```
 
@@ -276,7 +276,7 @@ workspace/
 ├─ makefile        # aktywny projekt (generowany przez Forge)
 ├─ .vscode/        # konfiguracja VSCode (generowana przez Forge)
 ├─ opencplc/       # framework (pobierany automatycznie)
-│  ├─ 0.4.3/
+│  ├─ 0.6.6/
 │  └─ develop/
 ├─ projects/       # projekty użytkownika
 │  ├─ myapp/
@@ -291,6 +291,8 @@ workspace/
    ├─ projects/myapp/
    └─ local/       # projekty lokalne, każdy we własnym folderze
 ```
+
+Folder zaczynający się od kropki, poza `.tests`, nie jest projektem ani jego częścią, więc może w nim leżeć inny kod, na przykład symulator.
 
 Jeśli IntelliSense przestanie działać poprawnie, użyj `F1` → _C/C++: Reset IntelliSense Database_.
 
@@ -310,7 +312,7 @@ Przydatne do:
 - Testów jednostkowych komponentów framework'a
 - Szybkiego prototypowania przed wdrożeniem na PLC
 
-Platforma HOST dostarcza stub'y dla modułów zależnych od sprzętu _(GPIO, timery, itp.)_, więc struktura kodu pozostaje kompatybilna z targetami STM32.
+Platforma HOST modeluje moduły zależne od sprzętu _(GPIO, timery itp.)_, więc kod pozostaje zgodny z targetami STM32.
 
 ## 🧪 Testy
 
@@ -351,7 +353,7 @@ Pełna lista:
 
 ### Konfiguracja kompilacji
 
-- `-f --framework`: Wersja frameworka: `latest`, `develop`, `0.4.3`. Dla nowego projektu staje się `PRO_FRAMEWORK`, dla istniejącego buduje z nią aż do ładowania bez niej, sama klonuje wersję do `opencplc/`.
+- `-f --framework`: Wersja frameworka: `latest`, `develop`, `0.6.6`. Dla nowego projektu staje się `PRO_FRAMEWORK`, dla istniejącego buduje z nią aż do ładowania bez niej, sama klonuje wersję do `opencplc/`.
 - `-o --opt-level`: Poziom optymalizacji: `O0`, `Og` _(domyślny)_, `O1`, `O2`, `O3`, `Os`. Poziomy `O2`/`O3` wyświetlają ostrzeżenie dla STM32 _(timing, debugowanie)_.
 - `-s --stlink`: Przypisuje numer seryjny ST-Linka do projektu; samo `-s` czyści przypisanie.
 
@@ -373,6 +375,7 @@ Pełna lista:
 - `--lock`: Blokuje płytkę na produkcję: domyślnie RDP1, `2` na zawsze, `0` zdejmuje blokadę, kasując flash, patrz [Blokada](https://github.com/OpenCPLC/Forge/wiki/bootlock.pl).
 - `-p --pack`: Pakuje obraz do flasha: pod bootloaderem z nim na początku, CRC i podpisem na końcu oraz binarką do aktualizacji obok; `make` używa tego po linkowaniu.
 - `-z --size`: Raportuje zajętość FLASH i RAM pliku `.elf`; `make` używa tego po linkowaniu.
+- `--keys`: Sprawdza, czy klucze wydania są na tym komputerze; `make dist` używa tego na początku, przed buildem.
 - `--record`: Zapisuje, z czego powstało wydanie; `make dist` używa tego na końcu.
 - `--verify`: Porównuje obraz buildu z zapisem wydania; `make verify` używa tego.
 - `--test`: Uruchamia programy testowe, każdy we własnym czystym katalogu i z minutą na zakończenie; `make test` używa tego.

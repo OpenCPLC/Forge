@@ -1,7 +1,8 @@
 #------------------------------------------------------------------------------------------- Tests
 # `make test` builds every `.tests/*.c` into a program for this computer,
-# against Core compiled in test mode, and Forge runs them; `make test T=name` runs one
-# Programs come from `$(wildcard)`, so a new test needs no reload
+# against Core compiled in test mode, and Forge runs them.
+# `make test T=name` runs one.
+# Programs come from `$(wildcard)`, so a new test needs no reload.
 
 TEST_DIR := ${TEST_DIR}
 # A dot keeps it apart from a program or a project named `test`

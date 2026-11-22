@@ -277,7 +277,7 @@ def project_delete(args, projects:dict, make_info:dict|None, forge_cfg:dict):
     sys.exit(1)
   if utils.is_local(key):
     p.err(f"{utils.color_file(key)} lies outside the workspace, where Forge deletes nothing")
-    p.run("Remove its folder by hand")
+    p.tip("Remove its folder by hand")
     sys.exit(1)
   try:
     active = PATH.local(projects[key])
@@ -286,11 +286,11 @@ def project_delete(args, projects:dict, make_info:dict|None, forge_cfg:dict):
     DIR.remove(projects[key], force=True)
     if make_info and make_info.get("ACTIVE") == active:
       write_dispatcher("")
-      p.inf("Active project removed - "
-        f"select another with {utils.color_command('opencplc <name>')}")
+      p.inf("Active project removed")
+      p.tip(f"Select another: {utils.color_command('opencplc <name>')}")
     p.ok(f"Project {utils.color_file(args.name)} deleted")
     sys.exit(0)
-  except Exception as e:
+  except OSError as e:
     p.err(f"Failed to delete: {e}")
     sys.exit(1)
 

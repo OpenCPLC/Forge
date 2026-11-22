@@ -43,6 +43,7 @@ class Args:
   cipher: list[str]|None = None
   upload: list[str]|None = None
   pack: list[str]|None = None
+  keys: list[str]|None = None
   record: list[str]|None = None
   verify: list[str]|None = None
   test: list[str]|None = None
@@ -135,6 +136,8 @@ option("-z", "--size", nargs="+", metavar="ARG",
   help="Report FLASH and RAM of an .elf: ELF FLASH_kB RAM_kB, a makefile step")
 option("-p", "--pack", nargs="+", metavar="FILE",
   help="Pack the flash image: APP.hex OUT.hex [BOOT [KEYS NUMBER [dist]]], a makefile step")
+option("--keys", nargs="+", metavar="KEY",
+  help="Check keys of a release before its build: [KEYS NUMBER] [CIPHER], a makefile step")
 option("--record", nargs="+", metavar="FILE",
   help="Record a release: APP.bin OUT CORE [KEYS NUMBER [CIPHER]], a makefile step")
 option("--verify", nargs=2, metavar=("APP", "RECORD"),

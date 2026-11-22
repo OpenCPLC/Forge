@@ -4,7 +4,9 @@
 
 from xaeian import file_context
 import pytest
-from opencplc.lint.graph import Graph, read, settle_weak, drop_unlinked, INDIRECT
+from opencplc.lint.graph import Graph, read, settle_weak, drop_unlinked
+
+INDIRECT = "__indirect_call" # callee gcc gives every call through a pointer
 from opencplc.lint.lintfile import Margins
 from opencplc.lint.rules import (
   Roles, Thread, find_threads, hidden_calls, check_graph, check_stacks, deepest, contexts,

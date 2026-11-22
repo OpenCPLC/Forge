@@ -9,9 +9,9 @@ Loads and persists configuration, fetches framework refs once per run,
 keeps the Core checkout present and answers what projects exist here.
 """
 
-import os, re, sys, json
-from xaeian import Print, Ico, FILE, DIR, JSON, PATH, replace_end, set_context, grey
-from .config import URL_CORE, DIR_PROJECTS, DIR_FRAMEWORK, DIR_TESTS, DIR_BOOT, FORGE_HEADER
+import os, re, sys, json, functools
+from xaeian import Print, FILE, DIR, JSON, PATH, replace_end, set_context, grey
+from .config import URL_CORE, DIR_PROJECTS, DIR_FRAMEWORK, DIR_TESTS, FORGE_HEADER
 from .args import flag
 from . import utils
 
@@ -31,7 +31,7 @@ def find_workspace(start:str=".") -> str|None:
 def project_from_path(path:str, pro_root:str) -> str|None:
   """
   Folder of the project holding `path`: the closest dir with main.h under `pro_root`,
-  or `.tests/` of a Core, the folder of the Core itself.
+  outside any dot folder, or `.tests/` of a Core, the folder of the Core itself.
   """
   if not PATH.is_under(path, pro_root): return None
   name = PATH.rel(path, pro_root)
@@ -39,7 +39,8 @@ def project_from_path(path:str, pro_root:str) -> str|None:
     tests = PATH.basename(name) == DIR_TESTS
     # `.tests/` of a project only sets its tests up, whatever `main.h` it holds
     if tests and utils.is_core(PATH.dirname(name)): return name
-    if not tests and FILE.exists(f"{pro_root}/{name}/main.h"): return name
+    if not tests and not utils.hidden(name) and FILE.exists(f"{pro_root}/{name}/main.h"):
+      return name
     name = PATH.dirname(name)
   return None
 
@@ -61,7 +62,7 @@ def linked_workspace(start:str=".") -> str|None:
         if FILE.exists(f"{root}/opencplc.json"): return root
         p.err(f"Workspace {utils.color_folder(root)} of this project "
           f"has no {utils.color_config('opencplc.json')}")
-        p.run(f"Load the project from a workspace with {utils.color_command('opencplc <path>')}")
+        p.tip(f"Load the project from a workspace: {utils.color_command('opencplc <path>')}")
         sys.exit(1)
     parent = PATH.dirname(path)
     if parent == path: return None
@@ -95,7 +96,7 @@ def forge_config(templates:dict) -> dict:
   missing = utils.find_missing_keys(template, cfg)
   if missing:
     p.err(f"Missing key {utils.color_symbol(missing[0])} in {utils.color_config('opencplc.json')}")
-    p.run(f"Add it back, or remove {utils.color_config('opencplc.json')} to start from defaults")
+    p.tip(f"Add it back, or remove {utils.color_config('opencplc.json')} to start from defaults")
     sys.exit(1)
   # A save keeps only documented fields, `ignore` when set and Forge's own version cache
   cfg = {k: cfg[k] for k in (*template, "ignore", "available-versions") if k in cfg}
@@ -105,7 +106,7 @@ def forge_config(templates:dict) -> dict:
     p.err(f"Key {utils.color_symbol('ignore')} in {utils.color_config('opencplc.json')} "
       "takes a list of patterns")
     example = '"ignore": ["demo/"]'
-    p.run(f"Write it as {utils.color_symbol(example)}")
+    p.tip(f"Write it as {utils.color_symbol(example)}")
     sys.exit(1)
   return cfg
 
@@ -127,17 +128,17 @@ def persist_config(forge_cfg:dict, create:bool=False):
   if exists and JSON.load("opencplc.json", None) == forge_cfg: return
   FILE.save("opencplc.json", config_text(forge_cfg))
 
-_refs_fresh = False
+@functools.cache
+def core_refs() -> tuple[str, ...]:
+  """Versions of Core on GitHub, asked once per run; none without the network."""
+  return tuple(utils.git_get_refs(URL_CORE, "--ref"))
 
 def ensure_refs(forge_cfg:dict, yes:bool) -> list[str]:
   """Framework refs from GitHub, fetched once per run and cached in opencplc.json."""
-  global _refs_fresh
-  if _refs_fresh: return forge_cfg["available-versions"]
   utils.ensure_git(yes)
-  versions = utils.git_get_refs(URL_CORE, "--ref")
+  versions = list(core_refs())
   if versions:
     forge_cfg["available-versions"] = versions
-    _refs_fresh = True
     persist_config(forge_cfg)
   else:
     p.wrn(f"No internet access or {utils.color_link('GitHub')} is not responding")
@@ -157,7 +158,7 @@ def framework_version(args, forge_cfg:dict) -> str:
   if core and args.framework and fw_ver != core:
     p.err(f"Project {utils.color_file(args.name)} lies in Core {utils.color_version(core)} "
       "and builds with it")
-    p.run(f"Drop flag {flag.f}")
+    p.tip(f"Drop flag {flag.f}")
     sys.exit(1)
   return core or fw_ver
 
@@ -166,12 +167,11 @@ def ensure_framework(fw_ver:str, forge_cfg:dict, yes:bool):
   fw_dir = PATH.resolve(utils.core_dir(fw_ver), read=False)
   # Already cloned versions work offline, even when gone from remote
   if not DIR.exists(fw_dir):
-    utils.version_check(fw_ver, ensure_refs(forge_cfg, yes),
-      f"{Ico.RUN} Check version list: {flag.fv}")
+    utils.version_check(fw_ver, ensure_refs(forge_cfg, yes), f"Check version list: {flag.fv}")
     utils.git_clone_missing(URL_CORE, fw_dir, fw_ver, yes)
   if not DIR.exists(f"{fw_dir}/hal") or not DIR.exists(f"{fw_dir}/lib"):
     p.err(f"Framework {utils.color_version(fw_ver)} is incomplete or corrupted")
-    p.inf(f"Try removing {utils.color_folder(fw_dir)} and run again")
+    p.tip(f"Remove {utils.color_folder(fw_dir)} and run again")
     sys.exit(1)
 
 #----------------------------------------------------------------------------------- Active project
@@ -182,7 +182,7 @@ def makefile_info() -> dict|None:
   lines = utils.lines_clear(utils.load_lines("makefile"), "#")
   return utils.get_vars(lines, ["ACTIVE"], ":=", required=False) or None
 
-def reload_from_cwd(args, cwd:str) -> bool:
+def target_from_cwd(args, cwd:str) -> bool:
   """
   A run on a project without its name, inside a project directory: that project is the target.
 
@@ -194,12 +194,12 @@ def reload_from_cwd(args, cwd:str) -> bool:
   args.name = name
   return True
 
-def reload_from_makefile(args, make_info:dict|None):
+def target_from_dispatcher(args, make_info:dict|None):
   """A run on a project without its name, outside any project: the active one of the dispatcher."""
   args.name = utils.project_name((make_info or {}).get("ACTIVE", ""))
   if not args.name:
     p.err("No active project in this workspace")
-    p.run(f"Load one with {utils.color_command('opencplc <name>')}")
+    p.tip(f"Load one: {utils.color_command('opencplc <name>')}")
     sys.exit(1)
 
 def stlink_bind(forge_cfg:dict, pro_id:str, serial:str|None) -> str:
@@ -220,7 +220,7 @@ def stlink_bind(forge_cfg:dict, pro_id:str, serial:str|None) -> str:
 #------------------------------------------------------------------------------------ Local project
 
 # The makefile of a local project holds its path and that of the workspace in full:
-# make cuts a word at a space or `#`, `cmd.exe` a command at `&`, and make reads ANSI alone
+# make cuts a word at a space or `#`, `cmd.exe` a command at `&`, and make reads ANSI alone.
 SAFE_PATH = re.compile(r"(?:[A-Za-z]:)?[A-Za-z0-9_.~/-]+")
 
 def is_path(name:str) -> bool:
@@ -237,19 +237,20 @@ def path_name(path:str, cwd:str) -> str:
 
   A local project goes by its absolute path, as `utils.full_path` spells it.
   A folder of the workspace beside its projects, or one holding the workspace, exits,
-  and so does a local one on a path its makefile could not hold.
+  and so does a local one starting with a dot, `.tests` of another,
+  or one on a path its makefile could not hold.
   """
   full = utils.full_path(os.path.join(cwd, path))
   if not FILE.exists("opencplc.json"):
     p.err("A local project builds with a workspace, and none is found here")
-    p.run(f"Load it once from a workspace with {utils.color_command(f'opencplc {full}')}")
+    p.tip(f"Load it once from a workspace: {utils.color_command(f'opencplc {full}')}")
     sys.exit(1)
   # Where a folder lies goes by the disk, through links and `subst` drives
   if PATH.is_under(full, ".", real=True):
     name = utils.project_name(PATH.rel(PATH.real(full), PATH.real(".")))
     if name: return name
     p.err(f"{utils.color_folder(full)} is no project folder of the workspace")
-    p.run(f"Point at one in {grey(f'{DIR_PROJECTS}/')}, in a Core or outside the workspace")
+    p.tip(f"Point at one in {grey(f'{DIR_PROJECTS}/')}, in a Core or outside the workspace")
     sys.exit(1)
   if PATH.is_under(".", full, real=True):
     p.err(f"{utils.color_folder(full)} holds the workspace, a project cannot")
@@ -258,21 +259,33 @@ def path_name(path:str, cwd:str) -> str:
     p.err(f"{utils.color_folder(full)} is the root of a drive, "
       "a project needs a folder of its own")
     sys.exit(1)
+  if PATH.basename(full) == DIR_TESTS:
+    p.err(f"Folder {utils.color_folder(full)} sets up the tests of the project above it")
+    p.tip("Load that project instead")
+    sys.exit(1)
+  if utils.hidden(PATH.basename(full)):
+    p.err(f"Folder {utils.color_folder(full)} starts with a dot, which Forge leaves alone")
+    sys.exit(1)
   for where in (full, utils.full_path(".")):
     if SAFE_PATH.fullmatch(where): continue
     p.err(f"Path {utils.color_folder(where)} holds a character "
       "make or the console reads as syntax")
-    p.run("Keep the project and the workspace on paths "
+    p.tip("Keep the project and the workspace on paths "
       f"of ASCII letters, digits and {utils.color_symbol('_.~-')}")
     sys.exit(1)
   return full
 
 def local_project_at(path:str) -> str:
-  """Local project holding `path`: the nearest folder at or above it with `main.h`, "" without."""
+  """
+  Local project holding `path`: the nearest folder at or above it with `main.h`, "" without.
+
+  A folder starting with a dot is never one, though a folder above it may be.
+  """
   path = utils.full_path(path)
   while True:
     # `.tests/main.h` sets up the tests of the project above
-    if PATH.basename(path) != DIR_TESTS and FILE.exists(f"{path}/main.h"): return path
+    name = PATH.basename(path)
+    if name != DIR_TESTS and not utils.hidden(name) and FILE.exists(f"{path}/main.h"): return path
     parent = PATH.dirname(path)
     if parent == path: return ""
     path = parent
@@ -292,9 +305,7 @@ def project_inventory(name:str|None) -> dict[str, str]:
   core = utils.core_version(name or "")
   if not core: return projects
   home = f"{DIR_FRAMEWORK}/{core}"
-  # `.boot/` has a `main.h` for the bootloader build alone, never loaded as a project
-  found = utils.get_project_list(home)
-  projects |= {f"{home}/{key}": path for key, path in found.items() if key != DIR_BOOT}
+  projects |= {f"{home}/{key}": path for key, path in utils.get_project_list(home).items()}
   tests = PATH.resolve(utils.project_dir(home), read=False)
   if DIR.exists(tests): projects[home] = tests # the Core itself is a project of its tests
   return projects
@@ -305,12 +316,12 @@ def project_select(args, projects:dict, ignore:list[str]):
   listed = {name: path for name, path in projects.items() if not utils.ignored(name, ignore)}
   if not listed:
     p.wrn("No projects found")
-    p.run(f"Create one with {utils.color_command('opencplc -n <name>')}")
+    p.tip(f"Create one: {utils.color_command('opencplc -n <name>')}")
     sys.exit(1)
   for i, (name, path) in enumerate(listed.items(), 1):
     if args.project_list:
       path = replace_end(PATH.local(path), name, "")
-      nbr = utils.color_value(str(i).ljust(3))
+      nbr = utils.color_value(i)
       p(f"{nbr} {grey(path)}{utils.color_file(name)}")
     elif int(args.name) == i:
       args.name = name

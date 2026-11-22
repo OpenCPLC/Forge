@@ -134,7 +134,7 @@ class Stack:
     """The thread takes more of its array than its margin leaves, the whole array included."""
     return self.size is not None and self.used * 100 > self.size * self.limit
 
-def load_roles(core_dir:str, pro_dir:str = "") -> Roles|None:
+def load_roles(core_dir:str, pro_dir:str="") -> Roles|None:
   """
   Roles of the Core in `core_dir`, with what the project in `pro_dir` adds to their lists.
 

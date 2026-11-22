@@ -48,12 +48,10 @@ def other_board(cfg:Config, core_dir:str, folder:str) -> bool:
   """
   Board directories other than the selected one are excluded.
 
-  Boards sit in brd/ at Core root, and under plc/ in versions that kept them there.
-  A project on any Core compiles its own board and no other.
+  Boards sit in `brd/` at Core root, and a project compiles its own board and no other.
   """
   # Below `brd` only, `brd` itself holds the header all boards share
-  roots = (f"{core_dir}/brd/", f"{core_dir}/plc/brd/")
-  if not any(folder.startswith(root) for root in roots): return False
+  if not folder.startswith(f"{core_dir}/brd/"): return False
   # Exact directory, so `uno` never drags in `uno_mini`
   return not (cfg.board and PATH.is_under(folder, cfg.board.dir))
 
@@ -144,13 +142,13 @@ def flash_layout(cfg:Config) -> tuple[int, int, list[str]]:
   if not cfg.boot: return FLASH_BASE, flash_kB, defines
   if not boot_kB:
     p.err(f"Chip {utils.color_chip(cfg.chip.name)} has no bootloader")
-    p.run(f"Open {utils.color_main_h(cfg.name)} and remove {utils.color_include(BOOT_LINE)}")
+    p.tip(f"Open {utils.color_main_h(cfg.name)} and remove {utils.color_include(BOOT_LINE)}")
     sys.exit(1)
   slot_kB = (flash_kB - boot_kB) // 2 // page_kB * page_kB
   if slot_kB < page_kB:
     p.err(f"{utils.color_symbol('PRO_FLASH_kB')} {utils.color_value(flash_kB)}kB leaves no room "
       f"for two slots behind the {utils.color_value(boot_kB)}kB bootloader")
-    p.run(f"Open {utils.color_main_h(cfg.name)} and raise {utils.color_symbol('PRO_FLASH_kB')}, "
+    p.tip(f"Open {utils.color_main_h(cfg.name)} and raise {utils.color_symbol('PRO_FLASH_kB')}, "
       f"or {boot_drop(cfg)}")
     sys.exit(1)
   return FLASH_BASE + boot_kB * 1024, slot_kB, defines + [f"BOOT_SLOT_PAGES={slot_kB // page_kB}"]
@@ -168,7 +166,7 @@ def boot_build(cfg:Config, core_dir:str, pro_dir:str) -> dict:
   if not FILE.exists(f"{core_dir}/{BOOT_MAIN}"):
     p.err(f"Core {utils.color_version(cfg.fw_ver)} has no bootloader "
       f"{utils.color_file(BOOT_MAIN)}")
-    p.run(f"Open {utils.color_main_h(cfg.name)} and set {utils.color_symbol('PRO_FRAMEWORK')} "
+    p.tip(f"Open {utils.color_main_h(cfg.name)} and set {utils.color_symbol('PRO_FRAMEWORK')} "
       f"to a newer Core, or {boot_drop(cfg)}")
     sys.exit(1)
   bare = replace(cfg, plc=False, board=None, project_drivers=[])
@@ -187,13 +185,13 @@ NO_BOOT = {"boot_kB": 0, "boot_c_sources": [], "boot_asm_sources": [],
 
 def firmware_tree(pro_dir:str, ext:str) -> dict[str, list[str]]:
   """
-  Project tree without `.tests/` at its top.
+  Project tree without `.tests/` at its top and without dot folders, which hold other code.
 
-  Only that one: a test project of Core lies in `.tests/` of the Core itself.
+  Paths count from the project, as a test project of Core lies in `.tests/` of the Core itself.
   """
   tests = f"{pro_dir}/{DIR_TESTS}"
   return {folder: fs for folder, fs in rel_tree(pro_dir, ext).items()
-    if not PATH.is_under(folder, tests)}
+    if not PATH.is_under(folder, tests) and not utils.hidden(PATH.rel(folder, pro_dir))}
 
 def project_sources(pro_dir:str, ext:str) -> list[str]:
   """Project files with `ext`, sorted, workspace-relative or absolute outside it."""
@@ -221,7 +219,7 @@ def has_tests(test_dir:str) -> bool:
   return bool(DIR.file_list(test_dir, exts=[".c"], deep=False))
 
 def project_dirs(pro_dir:str, sources:list[str], includes:list[str]) -> list[str]:
-  """Directories whose content decides the source list - the inputs of a makefile reload."""
+  """Directories whose content decides the source list: the inputs of a makefile reload."""
   dirs = {pro_dir, *includes, *(PATH.dirname(f) for f in sources)}
   return sorted(dirs)
 
@@ -255,9 +253,9 @@ def resolve_project(cfg:Config) -> Project:
   pro_inc = [] if core_itself else project_includes(pro_dir)
   build_dir = f"{DIR_BUILD}/{utils.tree_path(pro_dir)}"
   test_dir = tests_of(name, pro_dir)
-  # `main.h` of the Core itself is Forge's, in its build folder; a module comes by name
-  # from any folder of the project, a header of a selected driver too, as the board takes it,
-  # and one beyond the test trees by its path from Core root
+  # `main.h` of the Core itself is Forge's, in its build folder.
+  # A module comes by name from any folder of the project, a header of a selected driver too,
+  # as the board takes it, and one beyond the test trees by its path from Core root.
   pro_dirs = sorted({*pro_inc, *(PATH.dirname(f) for f in pro_c)})
   test_inc = [test_dir] + ([build_dir] if core_itself else pro_dirs)
   test_inc += sorted(test_tree(core_dir, ".h")) + driver_includes(cfg, core_dir) + [core_dir]

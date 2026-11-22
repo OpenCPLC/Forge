@@ -12,7 +12,7 @@ An encrypted `.bin` is refused, as only the application of a device holds its ke
 """
 
 import sys, time
-from xaeian import Print, FILE, PATH, grey
+from xaeian import Print, FILE, PATH
 from xaeian.serial import Shell, serial_scan
 from .args import flag
 from .cipher import encrypted
@@ -30,17 +30,17 @@ def console_port(port:str|None) -> str:
   if len(ports) == 1: return ports[0]
   if not ports:
     p.err("No console port on this computer")
-    p.run(f"Plug the board in and run {utils.color_command('make update')} again")
+    p.tip(f"Plug the board in and run again: {utils.color_command('make update')}")
   else:
     listed = ", ".join(utils.color_value(name) for name in ports)
     p.err(f"Several console ports: {listed}")
-    p.run(f"Name one, e.g. {utils.color_command(f'make update PORT={ports[0]}')}")
+    p.tip(f"Name one: {utils.color_command(f'make update PORT={ports[0]}')}")
   sys.exit(1)
 
 def upload(args:list[str]):
   """`--upload FILE [PORT]`; exits with `1` on a refusal or a silent board."""
   if len(args) > 2:
-    p.err(f"Flag {flag.upload} takes FILE and an optional PORT")
+    p.err(f"Flag {flag.upload} takes FILE and optional PORT")
     sys.exit(1)
   path = args[0]
   if PATH.ext(path).lower() not in (".bin", ".hex"):
@@ -49,7 +49,7 @@ def upload(args:list[str]):
   name = utils.color_image(PATH.basename(path))
   if not FILE.exists(path):
     p.err(f"Image {name} not found")
-    p.run(f"Build it with {utils.color_command('make')}")
+    p.tip(f"Build it: {utils.color_command('make')}")
     sys.exit(1)
   if PATH.ext(path).lower() == ".bin" and encrypted(FILE.load(path, binary=True)):
     p.err(f"Image {name} encrypted or damaged, its bytes miss CRC of its trailer")
@@ -62,10 +62,10 @@ def upload(args:list[str]):
     sh.serial.read(sh.buffer_size) # what ST-Link kept while the port was closed
     if not sh.ping(retries=INSTALL_PINGS):
       sh.print_error(f"Board on {utils.color_value(port)} silent, no image sent")
-      p.run("Power it off and on: a locked chip starts only after a power cycle")
+      p.tip("Power it off and on: a locked chip starts only after a power cycle")
       sys.exit(1)
     def progress(taken:int, size:int):
-      p.inf(f"Upload {taken}/{size} {grey('[B]')}", end="\n" if taken == size else "\r")
+      p.inf(f"Upload {taken}B / {size}B", end="\n" if taken == size else "\r")
     if not sh.boot(path, progress):
       sh.print_error(f"Image {name} refused, the old image keeps running")
       p.inf("The console takes images only with "

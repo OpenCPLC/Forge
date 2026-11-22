@@ -65,7 +65,7 @@ def read_boot_h(name:str, pro_dir:str, made:bool=False) -> list[str]:
     if made: return header_lines(boot_h_text(name).split("\n"))
     p.err(f"File {utils.color_main_h(name)} includes {utils.color_file(BOOT_H)}, "
       "which the project lacks")
-    p.run(f"Restore it, start a {utils.color_symbol('plain')} one with {flag.boot}, "
+    p.tip(f"Restore it, start a {utils.color_symbol('plain')} one with {flag.boot}, "
       f"or remove the {utils.color_include('#include')}")
     sys.exit(1)
   return header_lines(text_load(path).split("\n"))
@@ -81,7 +81,7 @@ def layer_reject(lines:list[str], prefix:str, shown:str, home:str, paint):
     if not match or not match.group(1).startswith(prefix): continue
     p.err(f"Definition {paint(match.group(1))} in {shown} "
       f"belongs in {utils.color_file(home)}")
-    p.run(f"Move it to {utils.color_file(home)} of the project")
+    p.tip(f"Move it to {utils.color_file(home)} of the project")
     sys.exit(1)
 
 def layers_check(name:str, main_lines:list[str], boot_lines:list[str]):
@@ -115,7 +115,7 @@ def text_load(path:str) -> str:
     return FILE.load(path, binary=True).decode("utf-8")
   except UnicodeDecodeError:
     p.err(f"File {fmt_path(path)} is not UTF-8 text")
-    p.run("Save it as UTF-8")
+    p.tip("Save it as UTF-8")
     sys.exit(1)
 
 def text_save(path:str, text:str):

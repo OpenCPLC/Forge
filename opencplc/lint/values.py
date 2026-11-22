@@ -51,6 +51,7 @@ def local_key(key:str) -> str:
   return f"{PATH.local(path)}:{name}" if path else name
 
 def where(path:str, line:int) -> str:
+  """Place of a finding as a compiler prints it, `path:line`."""
   return f"{PATH.local(path)}:{line}"
 
 #-------------------------------------------------------------------------------------------- Enums

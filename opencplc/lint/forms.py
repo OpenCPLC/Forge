@@ -104,7 +104,7 @@ class Written:
     if token is None or not self.owns(self.place(token.get("file", ""))): return False
     return not self.theirs(token)
 
-  def finding(self, rule:str, token:ET.Element, message:str, function:str = "") -> Finding:
+  def finding(self, rule:str, token:ET.Element, message:str, function:str="") -> Finding:
     """Finding of `rule` at `token`."""
     return Finding(rule, *self.at(token), message, function, RULES[rule].refs)
 

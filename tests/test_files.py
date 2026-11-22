@@ -25,6 +25,13 @@ def tests_folder_is_no_project_but_holds_some(tmp_path):
     (tmp_path / folder / "main.h").write_text("")
   assert set(get_project_list(str(tmp_path))) == {"app", "app/.tests/g081"}
 
+def dot_folder_holds_no_project_but_tests_does(tmp_path):
+  """A folder starting with a dot is other code's: a simulator, a cache, the bootloader of Core."""
+  for folder in ("app", "app/.sim", "ectra/.sim/hal", ".boot", ".tests/g081"):
+    (tmp_path / folder).mkdir(parents=True, exist_ok=True)
+    (tmp_path / folder / "main.h").write_text("")
+  assert set(get_project_list(str(tmp_path))) == {"app", ".tests/g081"}
+
 def missing_root_returns_empty(tmp_path):
   assert get_project_list(str(tmp_path / "nope")) == {}
 

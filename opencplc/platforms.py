@@ -22,7 +22,7 @@ HAL_DIRS = {
   "host": ["host"],
 }
 
-def get_hal_dirs(hal:str) -> list:
+def get_hal_dirs(hal:str) -> list[str]:
   """HAL subdirectories compiled for a chip family, shared layers first."""
   return HAL_DIRS.get(hal, [hal])
 
@@ -59,12 +59,12 @@ class Chip:
     if self.platform == "Host": return ["HOST", self.define]
     return [self.platform, f"{self.platform}{self.family}", self.define]
 
-# Bootloader owns `boot_kB` at the start of flash: its code and one page as the mailbox
-# The `key` bootloader owns `boot_key_kB`, its keys and the signature check in its code
-# Both sizes place the slots, so a change takes a new bootloader on every board
-# 12kB on G0: the `plain` code with its mailbox on PDB takes more than the 6kB of an 8kB region
-# `dev_id` is `DEV_ID` of the chip, the bootloader matches it against the image header
-# A project behind the bootloader halves the rest of `PRO_FLASH_kB` into two slots
+# Bootloader owns `boot_kB` at the start of flash: its code and one page as the mailbox.
+# The `key` bootloader owns `boot_key_kB`, its keys and the signature check in its code.
+# Both sizes place the slots, so a change takes a new bootloader on every board.
+# 12kB on G0: the `plain` code with its mailbox on PDB takes more than the 6kB of an 8kB region.
+# `dev_id` is `DEV_ID` of the chip, the bootloader matches it against the image header.
+# A project behind the bootloader halves the rest of `PRO_FLASH_kB` into two slots.
 CHIPS = {chip.name: chip for chip in (
   Chip(
     name="STM32G081", platform="STM32", family="G0",
@@ -92,8 +92,8 @@ CHIPS = {chip.name: chip for chip in (
   ),
   Chip(
     name="STM32WB55", platform="STM32", family="WB",
-    # Of 1024kB CPU1 owns what lies below the wireless stack, installed by `make stack`
-    # Stack sits at 0x080D0000: SFSA 0xD0 is 208 pages of 4kB, so CPU1 gets 832kB
+    # Of 1024kB CPU1 owns what lies below the wireless stack, installed by `make stack`.
+    # Stack sits at 0x080D0000: SFSA 0xD0 is 208 pages of 4kB, so CPU1 gets 832kB.
     flash_kB=832, flash_max_kB=1024, ram_kB=192,
     cpu="cortex-m4", fpu=True,
     uart={"nbr": 1, "tx": "PB6", "rx": "PB7", "dma": 4},

@@ -27,6 +27,16 @@ def core_and_project_sources_are_separate(ws):
   assert pro.project_c_sources == ["projects/myapp/main.c", "projects/myapp/util/extra.c"]
   assert not any(f.startswith("projects/") for f in pro.core_c_sources)
 
+def dot_folder_of_a_project_stays_out_of_its_build(ws):
+  """A simulator beside the firmware builds with its own tools, never into the image."""
+  sim = ws / "projects" / "myapp" / ".sim"
+  sim.mkdir()
+  (sim / "sim.c").write_text("// sim\n")
+  (sim / "sim.h").write_text("// sim\n")
+  pro = resolve_uno()
+  assert pro.project_c_sources == ["projects/myapp/main.c", "projects/myapp/util/extra.c"]
+  assert not any(".sim" in folder for folder in pro.include_dirs)
+
 def projects_in_core_stay_out_of_every_build(ws):
   """`.tests/` of a Core holds whole projects, each with its own `main()`."""
   test = ws / "opencplc" / "1.0.0" / ".tests" / "g081"

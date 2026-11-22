@@ -20,7 +20,6 @@ def ws(tmp_path, monkeypatch):
   build_workspace(tmp_path)
   write_forge_config(tmp_path)
   monkeypatch.chdir(tmp_path)
-  monkeypatch.setattr(ws_mod, "_refs_fresh", False)
   monkeypatch.setattr(ws_mod.utils, "ensure_git", lambda yes: None)
   monkeypatch.setattr(ws_mod.utils, "git_get_refs", lambda url, opt="--ref": ["1.0.0"])
   monkeypatch.setattr(forge.utils, "ensure_toolchain", lambda is_embedded, yes, tests: None)

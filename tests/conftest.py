@@ -34,6 +34,11 @@ def keys_dir(tmp_path, monkeypatch, machine_dir):
   return tmp_path / "keys"
 
 @pytest.fixture(autouse=True)
+def refs_unasked():
+  """Versions of Core asked anew by each test, as by each run of Forge."""
+  core_refs.cache_clear()
+
+@pytest.fixture(autouse=True)
 def console(monkeypatch):
   """A person sits at the console, so a password a test asks for goes to its `getpass`."""
   monkeypatch.setattr(keys, "console", lambda: True)
@@ -58,6 +63,7 @@ def render(template:str, subs:dict) -> str:
 
 from opencplc import utils
 from opencplc.utils import keys
+from opencplc.workspace import core_refs
 from opencplc.headers import main_h_defines, header_lines
 
 def parse_main_h(text:str) -> dict:

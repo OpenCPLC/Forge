@@ -73,12 +73,14 @@ def one_flash_rule_and_the_debugger_load_the_packed_image(ws):
     assert launch["executable"].endswith("myapp.elf") # symbols stay with the elf
 
 def dist_builds_a_release_tree_of_its_own_from_nothing(ws):
-  """The tree of `make` stays as it is, a release starts from nothing, dated by its commit."""
+  """Keys first, then a release from nothing, in a tree of its own and dated by its commit."""
   generate(resolve_uno())
   make = read_makefile(ws)
   dist = make[make.index("\ndist:"):make.index("\nverify:")]
+  keys = "ifneq ($(BOOT_KEYS)$(CIPHER),)\n\t@$(call CD,$(WORKSPACE)) && $(FORGE) --keys "
+  assert dist.startswith(f"\ndist:\n{keys}")
   built = '"$(MAKE)" $(RELEASE_FLAGS) $(RELEASE)/$(TARGET).hex $(RELEASE)/$(TARGET).bin'
-  assert dist.startswith(f"\ndist:\n\t@$(call RMDIR,$(RELEASE))\n\t@{built} $(RELEASE_BOOT)\n")
+  assert f"\nendif\n\t@$(call RMDIR,$(RELEASE))\n\t@{built} $(RELEASE_BOOT)\n" in dist
   tree = "--no-print-directory BUILD=$(RELEASE) FORGE_STAMP=$(FORGE_STAMP)"
   assert f"RELEASE_FLAGS = {tree}" in make
   assert "$(if $(EPOCH),SOURCE_DATE_EPOCH=$(EPOCH))" in make

@@ -98,10 +98,7 @@ def image_encrypt(name:str, path:str):
   if encrypted(data): raise ValueError(NOT_PLAIN)
   done = False
   try:
-    if keys.cipher_record(name) is None:
-      p.err(f"No cipher key {utils.color_key(name)} in {keys.keys_shown()}")
-      p.tip(f"Make it: {utils.color_command(f'opencplc --cipher {name}')}")
-      sys.exit(1)
+    keys.cipher_needed(name)
     nonce(data) # an image unfit to encrypt stops here, before a password is asked
     fingerprint_show(name)
     key = keys.cipher_key(name)

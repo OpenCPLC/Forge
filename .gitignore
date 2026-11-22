@@ -6,6 +6,7 @@
 .venv/
 .build/
 *.egg-info/
+build/
 .dist/
 .map.md
 .r2/

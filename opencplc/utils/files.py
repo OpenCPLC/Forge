@@ -15,7 +15,7 @@ p = Print()
 def load_lines(path:str) -> list[str]:
   """File as lines without endings; an unreadable file reads as empty."""
   try: return [ln.rstrip("\n\r") for ln in FILE.load_lines(path)]
-  except Exception: return []
+  except (OSError, UnicodeDecodeError): return []
 
 def files_list(path:str="", ext:str="") -> dict[str, list[str]]:
   """folder → files under `path`, absolute and normalized; only `ext` when given."""
@@ -58,15 +58,24 @@ def create_file(
   p.ok(f"{action} {color}{name}{c.END}{suffix}")
   return fp
 
+def hidden(rel:str) -> bool:
+  """
+  `True` when relative path `rel` passes a folder starting with a dot, which Forge leaves alone.
+
+  Such a folder holds other code, a simulator or a cache, and only `.tests` is Forge's own.
+  """
+  return any(seg.startswith(".") and seg not in (".", "..", DIR_TESTS) for seg in rel.split("/"))
+
 def get_project_list(path:str) -> dict[str, str]:
   """Folders containing main.h, keyed by name relative to `path`."""
   path = PATH.resolve(path or ".")
   result = {}
-  for main_h in DIR.iter_files(path, match="main.h"):
+  # `.git` holds most files of a workspace and never a project
+  for main_h in DIR.iter_files(path, match="main.h", blacklist=[".git"]):
     pro_path = PATH.dirname(main_h)
-    # `.tests/main.h` sets up the test build of the project above, never a project of its own
-    if PATH.basename(pro_path) == DIR_TESTS: continue
     name = PATH.local(pro_path, path)
+    # `.tests/main.h` sets up the test build of the project above, never a project of its own
+    if hidden(name) or PATH.basename(pro_path) == DIR_TESTS: continue
     if name.lower() not in (n.lower() for n in result):
       result[name] = pro_path
     else:
@@ -103,9 +112,9 @@ def ignored(name:str, patterns:list[str]) -> bool:
     if glob_match(name, pattern.removeprefix("!")): hidden = not pattern.startswith("!")
   return hidden
 
-# A project lives in `projects/`, named from there, or in a Core, named `opencplc/<version>/...`
-# `opencplc/<version>` alone is the Core itself, loaded for its own tests in `.tests/`
-# A local project lies outside the workspace, named by its absolute path
+# A project lives in `projects/`, named from there, or in a Core, named `opencplc/<version>/...`.
+# `opencplc/<version>` alone is the Core itself, loaded for its own tests in `.tests/`.
+# A local project lies outside the workspace, named by its absolute path.
 
 def is_local(name:str) -> bool:
   """`True` for a local project: a name in the workspace is never absolute."""

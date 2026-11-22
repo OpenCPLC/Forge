@@ -11,8 +11,8 @@ Git is the exception on both: winget on Windows, the distribution on Linux.
 
 import os, sys, stat, subprocess, platform
 from xaeian import Print, DIR, FILE, JSON, PATH, grey
-from .palette import color_folder, color_program, color_symbol, color_link
 from xaeian.cmd import which, run
+from .palette import color_folder, color_program, color_symbol, color_link
 from .common import is_yes
 from .network import fetch
 from ..config import URL_DL
@@ -133,18 +133,18 @@ def sweep(root:str):
 def install(name:str):
   """Fetch the package of a tool and unpack it in place, whatever was there retired first."""
   root, package = tools_dir(), PACKAGES[name]
-  dst, tmp = tool_path(name), f"{root}/{package}"
+  dst, archive = tool_path(name), f"{root}/{package}"
   DIR.ensure(root)
-  fetch(f"{URL_DL}/tools/{package}", tmp)
+  fetch(f"{URL_DL}/tools/{package}", archive)
   if DIR.exists(dst): retire(dst)
   try:
-    DIR.unzip(tmp, dst)
-  except Exception:
+    DIR.unzip(archive, dst)
+  except Exception: # `zipfile` and `zlib` raise errors of their own on a broken archive
     retire(dst)
-    FILE.remove(tmp)
+    FILE.remove(archive)
     p.err(f"Package {color_program(package)} arrived broken, run again to download it anew")
     sys.exit(1)
-  FILE.remove(tmp)
+  FILE.remove(archive)
   installed = JSON.load(f"{root}/{INSTALLED}", {})
   installed[name] = package
   JSON.save_smart(f"{root}/{INSTALLED}", installed)
@@ -235,9 +235,9 @@ def ensure_toolchain(is_embedded:bool, yes:bool, tests:bool):
   compiler = "arm-none-eabi-gcc" if is_embedded else "gcc"
   p.err(f"Compiler {color_program(compiler)} not working")
   if WINDOWS:
-    p.run(f"Remove {color_folder(tools_dir())} and run again, Forge reinstalls them")
+    p.tip(f"Remove {color_folder(tools_dir())} and run again, Forge reinstalls them")
   else:
-    p.run(f"Check that {color_program(compiler)} is installed and on {color_symbol('PATH')}")
+    p.tip(f"Check that {color_program(compiler)} is installed and on {color_symbol('PATH')}")
   sys.exit(1)
 
 #---------------------------------------------------------------------------------------- User PATH

@@ -19,7 +19,6 @@ def ws(tmp_path, monkeypatch):
   build_workspace(root)
   write_forge_config(root)
   monkeypatch.chdir(root)
-  monkeypatch.setattr(ws_mod, "_refs_fresh", False)
   monkeypatch.setattr(ws_mod.utils, "ensure_git", lambda yes: None)
   monkeypatch.setattr(ws_mod.utils, "git_get_refs", lambda url, opt="--ref": ["1.0.0"])
   monkeypatch.setattr(forge.utils, "ensure_toolchain", lambda is_embedded, yes, tests: None)
@@ -164,6 +163,32 @@ def tree_path_files_an_outside_path_short_under_local(ws):
   assert outside != utils.tree_path(str(ws.parent / "app")) # same name, another folder
   if os.name == "nt": # one folder whatever case the path is typed in
     assert utils.tree_path(str(deep).upper()).lower() == outside.lower()
+
+def dot_folder_never_loads_as_a_local_project(ws, monkeypatch):
+  """A simulator beside the projects keeps its own makefile, and no project starts there."""
+  sim = local_copy(ws, ".sim")
+  makefile = sim / "makefile"
+  makefile.write_text("all:\n\tgcc sim.c\n")
+  assert run_cli(monkeypatch, str(sim)) == 1
+  assert makefile.read_text() == "all:\n\tgcc sim.c\n"
+  made = ws.parent / "ext" / ".made"
+  assert run_cli(monkeypatch, "-n", str(made), "-c", "HOST", "-y") == 1
+  assert not made.exists()
+
+def tests_folder_of_a_local_project_never_loads_as_one(ws, monkeypatch):
+  """`.tests/main.h` sets up the tests of the project above, so Forge writes nothing into it."""
+  tests = local_copy(ws) / ".tests"
+  tests.mkdir()
+  (tests / "main.h").write_text((ws / "projects" / "myapp" / "main.h").read_text())
+  assert run_cli(monkeypatch, str(tests)) == 1
+  assert [path.name for path in tests.iterdir()] == ["main.h"]
+
+def dot_folder_of_a_local_project_is_no_project(tmp_path):
+  app = tmp_path / "app"
+  (app / ".sim" / "src").mkdir(parents=True)
+  for folder in (app, app / ".sim"):
+    (folder / "main.h").write_text("")
+  assert ws_mod.local_project_at(str(app / ".sim" / "src")) == utils.full_path(str(app))
 
 def local_name_goes_by_its_folder(tmp_path):
   name = PATH.resolve(str(tmp_path / "app"))

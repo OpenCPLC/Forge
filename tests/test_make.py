@@ -132,6 +132,11 @@ def dist_and_verify_build_in_a_release_tree_dated_by_the_commit(tmp_path):
   dist, verify = shown["dist"], shown["verify"]
   assert dist.index("--pack") < dist.index("--record") < dist.index("Release record")
   assert "--verify" in verify and "myapp-1.2.0.json" in verify
+  # Keys go first, so a missing one stops the release before its build
+  res = make_run(tmp_path, "-n", "dist", "CIPHER=acme", project="myapp")
+  cipher = res.stdout.replace("\\", "/")
+  built = cipher.index("myapp/release/project/main.o")
+  assert cipher.index("--keys") < cipher.index("acme") < built
 
 @pytest.mark.skipif(not (HAVE_MAKE and HAVE_ARM_GCC), reason="make and arm-none-eabi-gcc required")
 def flash_without_image_says_so_and_leaves_the_probe_alone(tmp_path):

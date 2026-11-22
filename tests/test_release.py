@@ -7,7 +7,7 @@ import pytest
 from xaeian import FILE, JSON
 from opencplc import __version__
 from opencplc.project import ANSI
-from opencplc.release import record, verify, commit_of
+from opencplc.release import record, verify, commit_of, keys_check
 from opencplc.utils import keys
 
 HAVE_GIT = shutil.which("git") is not None
@@ -88,3 +88,24 @@ def verify_without_a_record_says_how_to_name_one(release, capsys):
     verify([str(app), f"{out}.json"])
   shown = ANSI.sub("", capsys.readouterr().out)
   assert "No release record app-1.2.0.json" in shown and "RECORD=" in shown
+
+def keys_of_a_release_stop_it_before_any_password(monkeypatch, capsys, keys_dir):
+  """A key missing here, or encryption without the key bootloader, exits before its build."""
+  monkeypatch.setattr(keys.getpass, "getpass", lambda prompt, **_: pytest.fail("password asked"))
+  sign = keys.sign_make("acme", "").hex()
+  for args in (["acme-enc"], [sign, "0", "acme-enc"], [bytes(32).hex(), "0"]):
+    with pytest.raises(SystemExit):
+      keys_check(args)
+  shown = ANSI.sub("", capsys.readouterr().out)
+  assert "No cipher key acme-enc" in shown and "No sign key 00000000" in shown
+  keys.cipher_make("acme-enc", "")
+  keys_check([sign, "0", "acme-enc"])
+
+def a_release_signs_as_packing_does(capsys, keys_dir):
+  """`.pub` alone, as a team holds it, signs nothing; the development key signs as in a build."""
+  sign = keys.sign_make("acme", "").hex()
+  (keys_dir / "acme.key").unlink()
+  with pytest.raises(SystemExit):
+    keys_check([sign, "0"])
+  assert "acme has no .key" in ANSI.sub("", capsys.readouterr().out)
+  keys_check([keys.dev_public().hex(), "0"])

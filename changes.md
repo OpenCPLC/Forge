@@ -5,6 +5,8 @@
 - `make dist` builds same image from same commit on any computer, `make verify` checks it
 - Prepared for Docker: read-only keys folder, no hang without console
 - `-o`, `-m`, `--plc`, `--drv` and `--boot` set up existing project too
+- Folders starting with dot stay out of projects and builds, `.tests` aside
+- Thread stacks moved from every build to `make lint`
 - Fix: password prompt hiding failed paste
 
 ## `0.6.0` Encryption

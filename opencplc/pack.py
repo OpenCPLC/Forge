@@ -72,8 +72,12 @@ def older_images(update:str, skip:str="") -> list[tuple[str, str]]:
     if encrypted(data) and data[-TRAILER_SIZE:] != trailer: older.append((name, path))
   return older
 
-def pack(app_path:str, out_path:str, boot_path:str|None=None, keys_hex:str="", number:int=0,
-  release:bool=False):
+def pack(
+  app_path:str, out_path:str,
+  boot_path:str|None = None,
+  keys_hex:str = "", number:int = 0,
+  release:bool = False,
+):
   """
   Flash image of the application; under the bootloader also the update binary.
 
@@ -119,7 +123,7 @@ def pack_command(files:list[str]):
 
   `CIPHER` names the key `make dist` encrypts with right after.
   """
-  usage = f"{flag.p} takes APP.hex OUT.hex [BOOT [KEYS NUMBER [dist [CIPHER]]]]"
+  usage = f"Flag {flag.p} takes APP.hex OUT.hex [BOOT [KEYS NUMBER [dist [CIPHER]]]]"
   cipher = ""
   if files[-2:-1] == ["dist"]: files, cipher = files[:-1], files[-1]
   release = files[-1:] == ["dist"]

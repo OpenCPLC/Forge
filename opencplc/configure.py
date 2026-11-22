@@ -14,7 +14,7 @@ Both paths return the same `Config` that `resolve_project()` consumes.
 """
 
 import sys
-from xaeian import Print, Ico, FILE, DIR, PATH, grey
+from xaeian import Print, FILE, DIR, PATH, grey
 from .config import URL_CORE, DIR_TESTS, BOOT_LINE, OPT_DEFAULT, LOG_LEVEL_DEFAULT
 from .args import flag
 from .platforms import Chip, parse_chip
@@ -57,12 +57,12 @@ def reject_existing(args, projects:dict):
   """A new project needs a free name, a free path and a writable parent."""
   if utils.is_core(args.name):
     p.err(f"{utils.color_file(args.name)} is a Core, it loads as it is")
-    p.run("Create a project inside it, e.g. "
+    p.tip("Create a project inside it: "
       f"{utils.color_command(f'opencplc -n {args.name}/{DIR_TESTS}/<name>')}")
     sys.exit(1)
   if args.name.lower() in (n.lower() for n in projects):
     p.err(f"Project {utils.color_wrong(args.name)} already exists")
-    p.run(f"Use a different name or load it without flag {flag.n}")
+    p.tip(f"Use a different name or load it without flag {flag.n}")
     sys.exit(1)
   # No nesting: a project cannot live inside another one; a Core holds its own in `.tests/`
   for existing in projects:
@@ -134,7 +134,7 @@ def memory_check(hardware:Hardware):
     if 0 < value <= most: continue
     p.err(f"{utils.color_symbol(name)} takes 1 to {utils.color_value(most)}kB "
       f"on {utils.color_chip(chip.name)}, not {utils.color_wrong(value)}")
-    p.run(f"Set memory with {flag.m} FLASH RAM")
+    p.tip(f"Set memory: {flag.m} FLASH RAM")
     sys.exit(1)
 
 def written_reject(args, used:str, defines:str):
@@ -145,7 +145,7 @@ def written_reject(args, used:str, defines:str):
   written = [getattr(flag, name) for name, field in WRITING.items() if getattr(args, field)]
   if not written: return
   p.err(f"With {used} this load overrides main.h, so {', '.join(written)} cannot write it")
-  p.run(f"Load it without {used}, or set {defines} in main.h first")
+  p.tip(f"Load it without {used}, or set {defines} in main.h first")
   sys.exit(1)
 
 def config_new(args, projects:dict, fw_ver:str) -> Config:
@@ -183,14 +183,14 @@ def read_main_h(args, projects:dict) -> tuple[dict, list[str]]:
   key = utils.project_key(projects, args.name)
   if key is None:
     p.err(f"Project {utils.color_wrong(args.name)} does not exist")
-    p.run(f"Use flag {flag.n} to create a new project")
+    p.tip(f"Create it: {utils.color_command(f'opencplc -n {args.name}')}")
     sys.exit(1)
   args.name = key
   main_h_path = PATH.resolve(f"{projects[key]}/main.h", read=False)
   shown = utils.color_main_h(key)
   if not FILE.exists(main_h_path):
     p.err(f"File {shown} not found")
-    p.run(f"Restore it from version control, or create the project anew with {flag.n}")
+    p.tip(f"Restore it from version control, or create the project anew with {flag.n}")
     sys.exit(1)
   text = text_load(main_h_path)
   if not text.strip():
@@ -203,12 +203,12 @@ def read_main_h(args, projects:dict) -> tuple[dict, list[str]]:
   if in_core and info.get("PRO_FRAMEWORK"):
     p.err(f"File {shown} pins {utils.color_symbol('PRO_FRAMEWORK')}, "
       "a project in Core builds with the Core it lies in")
-    p.run(f"Open it and remove {utils.color_symbol('PRO_FRAMEWORK')}")
+    p.tip(f"Open it and remove {utils.color_symbol('PRO_FRAMEWORK')}")
     sys.exit(1)
   if not in_core and not info.get("PRO_FRAMEWORK"):
     p.err(f"File {shown} has no {utils.color_symbol('PRO_FRAMEWORK')} definition")
     define = '#define PRO_FRAMEWORK "<version>"'
-    p.run(f"Open it and add the Core version, {utils.color_symbol(define)}, "
+    p.tip(f"Open it and add the Core version, {utils.color_symbol(define)}, "
       f"versions listed by {flag.fv}")
     sys.exit(1)
   return info, lines
@@ -227,7 +227,7 @@ def boot_rules(cfg:Config):
   if not cfg.boot: return
   if cfg.chip.platform != "STM32":
     p.err(f"Chip {utils.color_chip(cfg.chip.name)} runs no bootloader")
-    p.run(f"Open {utils.color_main_h(cfg.name)} and remove {utils.color_include(BOOT_LINE)}")
+    p.tip(f"Open {utils.color_main_h(cfg.name)} and remove {utils.color_include(BOOT_LINE)}")
     sys.exit(1)
   count = len(keys.keys_split(cfg.boot_keys))
   if cfg.signing_key and cfg.signing_key >= count:
@@ -247,13 +247,14 @@ def resolve_version(args, pro_ver:str, fw_ver:str, forge_cfg:dict) -> str:
   """
   if not DIR.exists(utils.core_dir(pro_ver)):
     utils.version_check(pro_ver, ensure_refs(forge_cfg, args.yes),
-      f"{Ico.ERR} Invalid {utils.color_symbol('PRO_FRAMEWORK')} in {utils.color_file('main.h')}")
+      f"Set {utils.color_symbol('PRO_FRAMEWORK')} in {utils.color_file('main.h')} to a version "
+      f"listed by {flag.fv}")
   if args.framework:
     if fw_ver != pro_ver:
       written_reject(args, flag.f, utils.color_symbol("PRO_FRAMEWORK"))
       p.wrn(f"Project is pinned to {grey(pro_ver)}, "
         f"building with {utils.color_version(fw_ver)} until it loads without {flag.f}")
-      p.inf(f"Set {utils.color_symbol('PRO_FRAMEWORK')} in {utils.color_file('main.h')} "
+      p.tip(f"Set {utils.color_symbol('PRO_FRAMEWORK')} in {utils.color_file('main.h')} "
         "to keep it")
     return fw_ver
   if pro_ver != fw_ver:
@@ -291,7 +292,7 @@ def config_load(args, projects:dict, fw_ver:str, forge_cfg:dict) -> Config:
     setup = (args.board, args.chip, args.opt_level, args.memory, args.plc, args.drv, args.boot)
     if any(setup):
       p.err(f"{utils.color_file(args.name)} is a Core, its own tests run on this computer")
-      p.run("Configure a project in it instead, e.g. "
+      p.tip("Configure a project in it instead: "
         f"{utils.color_command(f'opencplc {args.name}/{DIR_TESTS}/<name> -c <chip>')}")
       sys.exit(1)
     if utils.project_key(projects, args.name) is None:
@@ -338,13 +339,13 @@ def main_h_hardware(name:str, board:str, chip:str, plc:str, core:str) -> Hardwar
   if board and board != title:
     p.err(f"Definition {utils.color_symbol(f'PRO_BOARD_{board}')} spells board "
       f"{utils.color_board(title)} otherwise than Core")
-    p.run(f"Open {utils.color_main_h(name)} "
+    p.tip(f"Open {utils.color_main_h(name)} "
       f"and set {utils.color_symbol(f'#define PRO_BOARD_{title}')}")
     sys.exit(1)
   # A main.h without `PRO_PLC` leaves the layer to the board, as at creation
   if hardware.plc and plc not in ("", "true"):
     p.err(f"Board {utils.color_board(title)} runs on the PLC layer")
-    p.run(f"Open {utils.color_main_h(name)} and set {utils.color_symbol('#define PRO_PLC true')}")
+    p.tip(f"Open {utils.color_main_h(name)} and set {utils.color_symbol('#define PRO_PLC true')}")
     sys.exit(1)
   return hardware
 
@@ -363,14 +364,14 @@ def load_hardware(args, info:dict, core:str) -> tuple[Hardware, bool]:
   if not (args.board or args.chip):
     if board or chip: return main_h_hardware(args.name, board, chip, plc, core), True
     p.err(f"File {utils.color_main_h(args.name)} names no board or chip")
-    p.run(f"Load the project with {flag.b} or {flag.c}, the reloads of make keep it")
+    p.tip(f"Load the project with {flag.b} or {flag.c}, the reloads of make keep it")
     sys.exit(1)
   hardware = hardware_config(args.board, args.chip, plc == "true", core)
   if not (board or chip):
     if args.memory:
       p.err(f"Flag {flag.m} sets memory of hardware main.h names, "
         f"and {utils.color_main_h(args.name)} names none")
-      p.run(f"Load it without {flag.m}, each load takes memory of the hardware it names")
+      p.tip(f"Load it without {flag.m}, each load takes memory of the hardware it names")
       sys.exit(1)
     return hardware, False
   # Flags naming what `main.h` names: a plain load, its checks included
@@ -383,7 +384,7 @@ def load_hardware(args, info:dict, core:str) -> tuple[Hardware, bool]:
   new = hardware_text(hardware.board_title, hardware.chip.name)
   p.wrn(f"Project is set up for {hardware_text(board, chip)}, building for {new} "
     f"until it loads without {used}")
-  p.inf(f"Set {board_chip} in {utils.color_file('main.h')} to keep it")
+  p.tip(f"Set {board_chip} in {utils.color_file('main.h')} to keep it")
   return hardware, False
 
 OPT_LEVELS = ("O0", "Og", "O1", "O2", "O3", "Os")

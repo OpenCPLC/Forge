@@ -12,7 +12,6 @@ from opencplc.templates import load_templates
 def workspace(tmp_path, monkeypatch):
   """Empty directory as cwd and file root, with refs not yet fetched in this run."""
   monkeypatch.chdir(tmp_path)
-  monkeypatch.setattr(forge, "_refs_fresh", False)
   monkeypatch.setattr(forge.utils, "ensure_git", lambda yes: None)
   with file_context(root_path=str(tmp_path)):
     yield tmp_path

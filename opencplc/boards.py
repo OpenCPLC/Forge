@@ -38,7 +38,7 @@ class Board:
   freq_Hz: int
   drivers: list[str] = field(default_factory=list)
 
-def board_list(boards:dict[str, "Board"]) -> str:
+def board_list(boards:dict[str, Board]) -> str:
   """Board names of a Core, colored and comma separated, for a message."""
   listed = ", ".join(utils.color_board(b.title) for b in boards.values())
   return listed or grey("none")
@@ -54,7 +54,7 @@ def parse_drivers(value:str) -> list[str]:
 def parse_board(ini_path:str, name:str, board_dir:str) -> Board:
   """Board from its manifest; raises `ValueError` naming what is wrong."""
   if not NAME_RX.match(name):
-    raise ValueError(f"board name '{name}' - use lowercase letters, digits and '_'")
+    raise ValueError(f"board name '{name}' takes lowercase letters, digits and '_'")
   if board_key(name) == "none":
     raise ValueError("board name 'None' is reserved for a project without a board")
   section = INI.load(ini_path) # plain key = value lines, each read as bool, int or text
@@ -65,7 +65,7 @@ def parse_board(ini_path:str, name:str, board_dir:str) -> Board:
     raise ValueError(f"unknown chip '{section['chip']}'")
   title = str(section["name"])
   if not TITLE_RX.match(title):
-    raise ValueError(f"name '{title}' - use letters and digits, no separators")
+    raise ValueError(f"name '{title}' takes letters and digits, no separators")
   if board_key(title) != board_key(name):
     raise ValueError(f"name '{title}' does not match directory '{name}'")
   if not isinstance(section["plc"], bool):

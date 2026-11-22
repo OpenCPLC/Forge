@@ -26,7 +26,7 @@ from .lock import lock_board
 from .configure import config_new, config_load, opt_normalize
 from .workspace import (
   enter_workspace, forge_config, persist_config, ensure_refs, framework_version,
-  ensure_framework, makefile_info, reload_from_cwd, reload_from_makefile,
+  ensure_framework, makefile_info, target_from_cwd, target_from_dispatcher,
   is_path, path_name, project_inventory, project_select, stlink_bind,
 )
 from . import utils
@@ -70,9 +70,9 @@ def name_project(args, cwd:str, forge_cfg:dict) -> bool:
   # -n, -d and -g name a project of their own, never the active one
   on_project = bool(given(args) & ON_PROJECT) and not (args.new or args.delete or args.get)
   if not args.name and on_project:
-    scoped = reload_from_cwd(args, cwd)
+    scoped = target_from_cwd(args, cwd)
     if not scoped:
-      reload_from_makefile(args, makefile_info())
+      target_from_dispatcher(args, makefile_info())
   return scoped
 
 def fetch_project(args, fw_ver:str, forge_cfg:dict):
@@ -99,7 +99,7 @@ def pick_project(args, forge_cfg:dict) -> dict:
   project_select(args, projects, forge_cfg.get("ignore", []))
   if not args.name and not args.reload and not args.info:
     p.err("Project name not given")
-    p.run(f"Load one with {utils.color_command('opencplc <name>')}, "
+    p.tip(f"Load one with {utils.color_command('opencplc <name>')}, "
       f"or reload the active project with {flag.r}")
     sys.exit(1)
   # A local project goes by its folder, not by a name of the workspace

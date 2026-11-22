@@ -21,7 +21,7 @@ as `OPENCPLC_TOOLS` moves the packages.
 import os, re, sys, getpass, hashlib, secrets
 from typing import NamedTuple
 from xaeian import Print, DIR, FILE, JSON, PATH, grey
-from .palette import color_folder, color_key, color_key_file, color_symbol
+from .palette import color_command, color_folder, color_key, color_key_file, color_symbol
 from . import ed25519
 
 p = Print()
@@ -198,6 +198,23 @@ def sign_name(public:bytes) -> str|None:
     if FILE.load(path).strip() == public.hex(): return PATH.stem(path)
   return None
 
+def sign_needed(public:bytes):
+  """
+  Key that signs for `public` lies here, as `seed_for` takes it, or the run exits.
+
+  A sign key needs its whole `.key`, since `.pub` alone signs nothing,
+  and without a sign key the development key of this computer may be the one.
+  """
+  name = sign_name(public)
+  if name and FILE.exists(f"{keys_dir()}/{name}.key"):
+    sign_record(name) # a damaged `.key` raises here, as signing would
+    return
+  if not name and FILE.exists(f"{machine_dir()}/{DEV_KEY}") and dev_public() == public: return
+  if name: p.err(f"Sign key {color_key(name)} has no {color_key_file('.key')} in {keys_shown()}")
+  else: p.err(f"No sign key {fingerprint(public)} in {keys_shown()}")
+  p.tip(f"Restore it from its offline copy, or set {color_symbol(KEYS_ENV)}")
+  sys.exit(1)
+
 def console() -> bool:
   """
   A person can type at the prompt: stdin is a terminal, which it never is under CI.
@@ -216,8 +233,9 @@ def secret(prompt:str, password:Password) -> str:
   Password typed or pasted at `prompt`, a `*` for each character where Python shows one.
 
   Without a console only the variable of `password` gives it, so the run stops and names it.
-  A control character is a keystroke that reached the prompt instead of text, as Ctrl+V in an old
-  console, and a password holding one could never be typed again, so it stops the run.
+  A control character is a keystroke that reached the prompt instead of text,
+  as Ctrl+V in an old console, and a password holding one could never be typed again,
+  so it stops the run.
   """
   if not console():
     p.err(f"No console to ask for {password.kind} password, set {color_symbol(password.env)}")
@@ -298,6 +316,13 @@ def cipher_record(name:str) -> dict|None:
   """Contents of `<name>.cipher`, `None` without such a key here; a damaged one raises."""
   path = cipher_path(name)
   return key_record(path, {"cipher": 32, "id": 8}) if FILE.exists(path) else None
+
+def cipher_needed(name:str):
+  """Cipher key `name` lies here, or the run exits saying how to make it."""
+  if cipher_record(name) is not None: return
+  p.err(f"No cipher key {color_key(name)} in {keys_shown()}")
+  p.tip(f"Make it: {color_command(f'opencplc --cipher {name}')}")
+  sys.exit(1)
 
 def cipher_key(name:str) -> bytes:
   """
