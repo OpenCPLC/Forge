@@ -26,25 +26,28 @@ from . import utils
 
 p = Print()
 
-OPTR, WRP1AR = 0x20, 0x2C          # offsets in flash registers, alike on G0 and WB
+OPTR, WRP1AR = 0x20, 0x2C          # offsets in flash registers, alike on G0, G4 and WB
 RDP = {0: 0xAA, 1: 0xBB, 2: 0xCC}  # any value but 0xAA and 0xCC is level 1
 # `OPTR` bits booting main flash whatever BOOT0 pin says: value, mask
 BOOT_BITS = {
   "G0": (0x05000000, 0x05000000),  # nBOOT_SEL and nBOOT0 set
+  "G4": (0x08000000, 0x0C000000),  # nBOOT0 set, nSWBOOT0 clear
   "WB": (0x08000000, 0x0C000000),  # nBOOT0 set, nSWBOOT0 clear
 }
 # WRP areas of each chip, A and B of every bank, and the page bits of their start and end fields
 WRP_AREAS = {
   "STM32G081": ((0x2C, 0x30), 0x3F),
   "STM32G0C1": ((0x2C, 0x30, 0x4C, 0x50), 0x7F),
+  "STM32G474": ((0x2C, 0x30, 0x4C, 0x50), 0x7F),
   "STM32WB55": ((0x2C, 0x30), 0xFF),
 }
 
-FLASH_SR = {"G0": 0x40022010, "WB": 0x58004010}  # status register of each family
-SR_ERRORS = 0x0000C3FB                           # every error flag, `OPTVERR` too
-SR_BUSY = 0x00050000                             # `BSY` and `CFGBSY`
-OPTION_WAIT_s = 30                               # an unlock erases whole flash first
-SUPPLY_MIN_V = 1.6                               # below the lowest supply of G0 and WB
+# Status register of each family
+FLASH_SR = {"G0": 0x40022010, "G4": 0x40022010, "WB": 0x58004010}
+SR_ERRORS = 0x0000C3FB  # every error flag, `OPTVERR` too
+SR_BUSY = 0x00050000    # `BSY` and `CFGBSY`
+OPTION_WAIT_s = 30      # an unlock erases whole flash first
+SUPPLY_MIN_V = 1.6      # below the lowest supply of G0, G4 and WB
 
 def define(pro:Project, name:str) -> str:
   """Value of the `name=value` define the project builds with."""
@@ -173,6 +176,9 @@ def lock_board(pro:Project, level:int, yes:bool):
   """`--lock`: option bytes of `level` written, then read back."""
   if pro.platform != "STM32":
     p.err(f"Flag {flag.lock} needs an STM32 project")
+    sys.exit(1)
+  if pro.chip not in WRP_AREAS:
+    p.err(f"Flag {flag.lock} knows no option bytes of {utils.color_chip(pro.chip)}")
     sys.exit(1)
   check_chip(pro, probe_chip(pro))
   confirm(pro, level, yes)

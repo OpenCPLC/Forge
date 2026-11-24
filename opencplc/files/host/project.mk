@@ -21,7 +21,8 @@ SHELL := cmd.exe
 .SHELLFLAGS := /c
 # Forge packages first, so what the console has on `PATH` plays no part in a build
 export PATH := ${TOOLS_PATH};$(PATH)
-MKDIR = if not exist "$(subst /,\,$1)" mkdir "$(subst /,\,$1)"
+# A folder a parallel job has just made refuses `mkdir`, so its presence decides
+MKDIR = mkdir "$(subst /,\,$1)" 2>nul & if exist "$(subst /,\,$1)" (exit 0) else (exit 1)
 RMDIR = if exist "$(subst /,\,$1)" rmdir /s /q "$(subst /,\,$1)"
 RMFILE = if exist "$(subst /,\,$1)" del /q "$(subst /,\,$1)"
 COPY = copy /y "$(subst /,\,$1)" "$(subst /,\,$2)" >nul

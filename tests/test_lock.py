@@ -8,8 +8,9 @@ from opencplc import lock
 from opencplc.resolver import resolve_project
 from dataclasses import replace
 from conftest import build_workspace, uno_cfg, resolve_key_uno, resolve_key_wb55
-from conftest import resolve_uno, wb55_cfg
+from conftest import resolve_uno, wb55_cfg, key_boot
 from opencplc.platforms import parse_chip
+from opencplc.project import ANSI
 
 @pytest.fixture()
 def ws(tmp_path):
@@ -160,3 +161,25 @@ def wb_unlock_without_cubeprogrammer_exits(ws, monkeypatch):
   monkeypatch.setattr(lock, "probe_chip", lambda pro: 0x495)
   with pytest.raises(SystemExit):
     lock.lock_board(resolve_key_wb55(), 0, yes=True)
+
+def lock_refuses_a_chip_without_its_option_bytes(ws, monkeypatch, capsys):
+  """Option bytes of a chip `--lock` has no table for stay unwritten, the probe unasked."""
+  monkeypatch.setattr(lock, "openocd", lambda pro, *cmds: pytest.fail("probe asked"))
+  h7 = parse_chip("STM32H743")
+  pro = resolve_project(replace(wb55_cfg(), chip=h7, flash_kB=h7.flash_kB, ram_kB=h7.ram_kB))
+  with pytest.raises(SystemExit):
+    lock.lock_board(pro, 1, yes=True)
+  assert "knows no option bytes of STM32H743" in ANSI.sub("", capsys.readouterr().out)
+
+def level_1_on_g4_boots_the_flash_as_wb_and_protects_as_g0c1(ws):
+  """nBOOT0 set and nSWBOOT0 clear as on WB, two banks of 7-bit page fields as on G0C1."""
+  g4 = parse_chip("STM32G474")
+  cfg = replace(wb55_cfg(), chip=g4, flash_kB=g4.flash_kB, ram_kB=g4.ram_kB, **key_boot())
+  wrp, optr = lock.option_writes(resolve_project(cfg), 1)
+  assert wrp == "stm32l4x option_write 0 0x2C 0x000E0000 0x007F007F" # mailbox page 15 left out
+  assert optr == "stm32l4x option_write 0 0x20 0x080000BB 0x0C0000FF"
+
+def every_chip_with_option_bytes_has_those_of_its_family():
+  for name in lock.WRP_AREAS:
+    family = parse_chip(name).family
+    assert family in lock.BOOT_BITS and family in lock.FLASH_SR, name

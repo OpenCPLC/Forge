@@ -1,5 +1,11 @@
 # Changes `opencplc`
 
+## `0.6.2` New chips
+
+- STM32G474, STM32H743 and STM32C562 join `-c`: Cortex-M4F, M7 and M33
+- `--lock` covers G4 too, refuses H7 and C5
+- Fix: G0C1 debugger without registers on Linux
+
 ## `0.6.1` Release
 
 - `make dist` builds same image from same commit on any computer, `make verify` checks it

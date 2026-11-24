@@ -109,7 +109,7 @@ option("-g", "--get", nargs="+", metavar=("URL", "REF"), default=[],
 option("-b", "--board", type=str, metavar="BOARD", default="",
   help="Board from the Core (uno); without it the project has no board")
 option("-c", "--chip", type=str, metavar="CHIP", default="",
-  help="Target MCU: STM32G0C1, STM32G081, STM32WB55, HOST")
+  help="Target MCU: STM32G0C1, STM32G081, STM32G474, STM32WB55, STM32H743, STM32C562, HOST")
 option("--plc", action="store_true", help="Add the PLC layer to a project without a board")
 option("--drv", type=str, metavar="DRIVERS", default="",
   help="Add Core drivers to the project, comma separated")

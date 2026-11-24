@@ -345,7 +345,7 @@ Pełna lista:
 ### Konfiguracja sprzętu
 
 - `-b --board`: Płytka z framework'a _(`uno`)_. Ustawia chip, pamięć, zegar i warstwę PLC nowego projektu; `-c` i `--plc` to nadpisują. Przy istniejącym projekcie wybiera inną płytkę, aż do ładowania bez niej.
-- `-c --chip`: Mikrokontroler lub platforma: `STM32G081`, `STM32G0C1`, `STM32WB55`, `HOST`. Bez `-b` projekt działa bez warstwy PLC, tylko HAL i biblioteki standardowe. Przydatne dla Nucleo lub własnego hardware. Przy istniejącym projekcie wybiera inny układ, aż do ładowania bez niego.
+- `-c --chip`: Mikrokontroler lub platforma: `STM32G081`, `STM32G0C1`, `STM32G474`, `STM32WB55`, `STM32H743`, `STM32C562`, `HOST`. Bez `-b` projekt działa bez warstwy PLC, tylko HAL i biblioteki standardowe. Przydatne dla Nucleo lub własnego hardware. Przy istniejącym projekcie wybiera inny układ, aż do ładowania bez niego.
 - `--plc`: Dokłada warstwę PLC do projektu bez płytki, na własnym sprzęcie.
 - `--drv`: Dopisuje drivery framework'a do `PRO_DRIVERS` w `main.h`, po przecinku _(`shtc3, hd44780`)_.
 - `--boot`: Projekt działa za bootloaderem z Core: `boot.h` obok `main.h` i jego `#include`, patrz [Bootloader](#-bootloader).

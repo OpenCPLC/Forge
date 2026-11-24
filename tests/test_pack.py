@@ -65,6 +65,13 @@ def image_without_header_is_refused(tmp_path):
   with pytest.raises(ValueError, match="no image header"):
     pack(str(tmp_path / "app.hex"), str(tmp_path / "app-dist.hex"), str(tmp_path / "boot.hex"))
 
+def header_past_a_long_vector_table_is_found(tmp_path):
+  """150 interrupts of H743 take its vector table to 0x298, so the header stands at 0x400."""
+  write_app_image(tmp_path / "app.hex", ORIGIN, 2 * SIZE, header_at=0x400, vectors_B=0x298)
+  write_boot_image(tmp_path / "boot.hex", BOOT)
+  pack(str(tmp_path / "app.hex"), str(tmp_path / "app-dist.hex"), str(tmp_path / "boot.hex"))
+  assert len((tmp_path / "app-dist.bin").read_bytes()) == 2 * SIZE + TRAILER
+
 def application_over_the_bootloader_is_refused(tmp_path):
   write_app_image(tmp_path / "app.hex", FLASH_BASE, SIZE)
   write_boot_image(tmp_path / "boot.hex", BOOT)

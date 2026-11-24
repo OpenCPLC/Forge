@@ -347,7 +347,7 @@ Full list:
 ### Hardware config
 
 - `-b --board`: Board from the framework _(`uno`)_. It sets chip, memory, clock and PLC layer of new projects; `-c` and `--plc` override that. On an existing project it picks another board until a load without it.
-- `-c --chip`: Microcontroller or platform: `STM32G081`, `STM32G0C1`, `STM32WB55`, `HOST` _(compile for PC)_. Without `-b --board` a project has no PLC layer, only HAL and standard framework libraries, as on Nucleo boards or custom hardware. On an existing project it picks another chip until a load without it.
+- `-c --chip`: Microcontroller or platform: `STM32G081`, `STM32G0C1`, `STM32G474`, `STM32WB55`, `STM32H743`, `STM32C562`, `HOST` _(compile for PC)_. Without `-b --board` a project has no PLC layer, only HAL and standard framework libraries, as on Nucleo boards or custom hardware. On an existing project it picks another chip until a load without it.
 - `--plc`: Adds PLC layer to projects without a board, on your own hardware.
 - `--drv`: Adds framework drivers to `PRO_DRIVERS` in `main.h`, comma separated _(`shtc3, hd44780`)_.
 - `--boot`: Puts the project behind Core's bootloader: `boot.h` beside `main.h` and its `#include`, see [Bootloader](#-bootloader).

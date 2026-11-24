@@ -125,6 +125,15 @@ def boot_drop(cfg:Config) -> str:
   if cfg.boot_new: return f"load without {flag.boot}"
   return f"remove {utils.color_include(BOOT_LINE)}"
 
+def chip_constants(cfg:Config) -> list[str]:
+  """`BOOT_*` constants of the chip, alike for the image and its bootloader."""
+  boot_kB, page_kB = boot_region_kB(cfg), cfg.chip.page_kB
+  defines = [f"BOOT_PAGES={boot_kB // page_kB}"] if boot_kB and page_kB else []
+  if cfg.chip.dev_id:
+    defines.append(f"BOOT_CHIP=0x{cfg.chip.dev_id:03X}")
+    defines.append(f"BOOT_HEADER=0x{cfg.chip.header_offset:03X}")
+  return defines
+
 def flash_layout(cfg:Config) -> tuple[int, int, list[str]]:
   """
   Link origin, link length [kB] and `BOOT_*` defines of the image.
@@ -132,13 +141,12 @@ def flash_layout(cfg:Config) -> tuple[int, int, list[str]]:
   Without a bootloader the image takes the whole region, a bootloader its code region.
   Under the bootloader the flash past its region splits into two equal slots of whole pages.
   Image is linked into the application slot, an update lands in the staging one first.
-  Every STM32 build carries `BOOT_PAGES` and `BOOT_CHIP`, chip constants.
+  Every STM32 build carries the constants of its chip.
   `BOOT_SLOT_PAGES` marks the image as one in a slot.
   """
   flash_kB = cfg.flash_kB
   boot_kB, page_kB = boot_region_kB(cfg), cfg.chip.page_kB
-  defines = [f"BOOT_PAGES={boot_kB // page_kB}"] if boot_kB and page_kB else []
-  if cfg.chip.dev_id: defines.append(f"BOOT_CHIP=0x{cfg.chip.dev_id:03X}")
+  defines = chip_constants(cfg)
   if not cfg.boot: return FLASH_BASE, flash_kB, defines
   if not boot_kB:
     p.err(f"Chip {utils.color_chip(cfg.chip.name)} has no bootloader")
@@ -176,8 +184,7 @@ def boot_build(cfg:Config, core_dir:str, pro_dir:str) -> dict:
     "boot_c_sources": sorted(core_sources(bare, core_dir, ".c") + [f"{core_dir}/{BOOT_MAIN}"]),
     "boot_asm_sources": core_sources(bare, core_dir, ".s"),
     "boot_include_dirs": [f"{core_dir}/{DIR_BOOT}", pro_dir] + core_includes(bare, core_dir),
-    "boot_defines": cfg.chip.defines + [f"FORGE_VERSION={forge_version()}",
-      f"BOOT_PAGES={boot_kB // page_kB}", f"BOOT_CHIP=0x{cfg.chip.dev_id:03X}"],
+    "boot_defines": cfg.chip.defines + [f"FORGE_VERSION={forge_version()}", *chip_constants(cfg)],
   }
 
 NO_BOOT = {"boot_kB": 0, "boot_c_sources": [], "boot_asm_sources": [],
@@ -232,7 +239,7 @@ def resolve_project(cfg:Config) -> Project:
   pro_dir = utils.project_dir(name)
   cpu_flags = f"-mcpu={chip.cpu}" if is_embedded else ""
   if is_embedded and chip.fpu:
-    mcu_flags = f"{cpu_flags} -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard"
+    mcu_flags = f"{cpu_flags} -mthumb -mfpu={chip.fpu} -mfloat-abi=hard"
   elif is_embedded:
     mcu_flags = f"{cpu_flags} -mthumb -mfloat-abi=soft"
   else:
@@ -283,6 +290,8 @@ def resolve_project(cfg:Config) -> Project:
     flash_kB=cfg.flash_kB,
     image_kB=image_kB,
     ram_kB=cfg.ram_kB,
+    ram_base=chip.ram_base,
+    header_offset=chip.header_offset,
     freq_Hz=cfg.freq_Hz,
     opt_level=cfg.opt_level,
     log_level=cfg.log_level,

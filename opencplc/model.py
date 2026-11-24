@@ -84,6 +84,7 @@ class Project:
   flash_kB: int  # `PRO_FLASH_kB`, the flash region of the project
   image_kB: int  # what the image may take: the region, or its slot under the bootloader
   ram_kB: int
+  ram_base: int  # RAM the image runs in, `ram_base` of the chip
   freq_Hz: int
   opt_level: str
   log_level: str
@@ -105,6 +106,8 @@ class Project:
   stack_script: str  # script of Core that flashes the radio stack, "" when the chip has none
   boot: bool         # image runs under the bootloader, linked into the application slot
   flash_origin: int  # address the image is linked at
+  # Image header past the vector table, `BOOT_HEADER` of Core
+  header_offset: int
   boot_keys: str     # `BOOT_KEYS` as written, "" for a `plain` bootloader
   signing_key: int   # `PRO_SIGNING_KEY`, the number of the key `dist` signs with
   stlink: str

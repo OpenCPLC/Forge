@@ -28,8 +28,7 @@ from . import utils
 
 p = Print()
 
-BOOT_FREQ_Hz = 16000000  # bare metal starts on the internal oscillator
-PLC_FREQ_Hz = 64000000   # the PLC layer sets the clock up before `PLC_Main` runs
+PLC_FREQ_Hz = 64000000 # the PLC layer sets the clock up before `PLC_Main` runs
 # Flags that write main.h, by the field each fills in `Args`
 WRITING = {"o": "opt_level", "m": "memory", "plc": "plc", "drv": "drv", "boot": "boot"}
 
@@ -51,7 +50,7 @@ def load_flags(args, own_core:bool, own_hardware:bool) -> str:
 def boardless_freq(chip:Chip, plc:bool) -> int:
   """Clock a project starts with when no board sets one."""
   if chip.platform != "STM32": return 0
-  return PLC_FREQ_Hz if plc else BOOT_FREQ_Hz
+  return PLC_FREQ_Hz if plc else chip.freq_Hz
 
 def reject_existing(args, projects:dict):
   """A new project needs a free name, a free path and a writable parent."""

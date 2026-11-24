@@ -16,7 +16,7 @@ def load_templates() -> dict:
       "test.mk": FILE.load("test.mk"),
       "boot.mk": FILE.load("boot.mk"),
       "flash": {
-        "stm32g0.ld": FILE.load("flash/stm32g0.ld"),
+        "stm32.ld": FILE.load("flash/stm32.ld"),
         "stm32wb.ld": FILE.load("flash/stm32wb.ld"),
       },
       "properties.json": FILE.load("properties.json"),

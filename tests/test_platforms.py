@@ -3,13 +3,15 @@
 """Chip table: parsing, defines and HAL directories."""
 
 import pytest
-from opencplc.platforms import CHIPS, parse_chip, get_hal_dirs
+from opencplc.platforms import CHIPS, HAL_DIRS, parse_chip, get_hal_dirs
+from opencplc.templates import load_templates
 
 def parse_chip_is_case_insensitive():
   assert parse_chip("stm32g0c1").name == "STM32G0C1"
 
 def parse_chip_builds_defines():
   assert parse_chip("STM32G081").defines == ["STM32", "STM32G0", "STM32G081xx"]
+  assert parse_chip("STM32G474").defines == ["STM32", "STM32G4", "STM32G474xx"]
   host = parse_chip("HOST")
   assert host.defines[0] == "HOST"
   assert host.platform == "Host"
@@ -31,6 +33,16 @@ def every_stm32_chip_reserves_whole_bootloader_pages():
       continue
     assert chip.page_kB > 0 and chip.boot_kB % chip.page_kB == 0, name
     assert chip.boot_kB >= 2 * chip.page_kB, name
+
+def every_stm32_chip_builds_from_its_row():
+  """A row names a linker template and HAL that exist, an FPU its core has, memory in bounds."""
+  flash = load_templates()["flash"]
+  for name, chip in CHIPS.items():
+    if chip.platform != "STM32": continue
+    assert chip.ld in flash and chip.hal in HAL_DIRS, name
+    assert (chip.fpu == "") == (chip.cpu == "cortex-m0plus"), name
+    assert chip.boot_key_kB % chip.page_kB == 0, name
+    assert 0 < chip.flash_kB <= chip.flash_max_kB and chip.ram_kB > 0 and chip.dev_id, name
 
 def wb55_flash_stops_below_the_wireless_stack():
   """CPU1 must not be offered flash that belongs to CPU2."""

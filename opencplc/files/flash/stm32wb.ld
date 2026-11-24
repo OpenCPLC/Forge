@@ -8,7 +8,7 @@ _Min_Stack_Size = 0x400;
 /* RAM opens with 16 bytes no image owns: the bootloader leaves its report there */
 MEMORY
 {
-  RAM(xrw)        : ORIGIN = 0x20000010, LENGTH = ${RAM}K - 16
+  RAM(xrw)        : ORIGIN = ${RAM_BASE} + 16, LENGTH = ${RAM}K - 16
   FLASH(rx)       : ORIGIN = ${FLASH_ORIGIN}, LENGTH = ${FLASH}K
   RAM_SHARED(xrw) : ORIGIN = 0x20030000, LENGTH = 10K
 }
@@ -23,8 +23,8 @@ SECTIONS
     . = ALIGN(4);
   } >FLASH
 
-  /* Image header at a fixed offset, read by the bootloader and the update tool */
-  .app_header ORIGIN(FLASH) + 0x200 : {
+  /* Image header past the vector table, read by the bootloader and the update tool */
+  .app_header ORIGIN(FLASH) + ${HEADER_OFFSET} : {
     KEEP(*(.app_header))
   } >FLASH
 

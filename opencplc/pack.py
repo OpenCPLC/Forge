@@ -15,26 +15,33 @@ import sys
 from xaeian import Print, PATH, FILE, DIR
 from xaeian.crc import crc32_iso
 from .args import flag
-from .platforms import FLASH_BASE
+from .platforms import FLASH_BASE, CHIPS
 from .utils import hexfile, keys, ed25519
 from . import utils
 
 p = Print()
 
-HEADER_OFFSET = 0x200   # image header past every vector table, `BLD_HEADER_OFFSET` in Core
 HEADER_MAGIC = b"OPEN"  # `BLD_MAGIC` in Core
 SIGNATURE_OFFSET = 8    # signature in the trailer, past the CRC, `BLD_SIGNATURE_OFFSET` in Core
 TRAILER_SIZE = 72       # CRC and signature, `BLD_TRAILER_SIZE` in Core
 
+# Offsets an image header stands at, past the vector table of its chip, `BOOT_HEADER` of Core
+HEADER_OFFSETS = sorted({chip.header_offset for chip in CHIPS.values() if chip.dev_id})
+
 def image_size(image:hexfile.Memory, origin:int) -> int:
-  """Bytes before the trailer, as the image header at `origin` names them."""
-  try:
-    header = image.read(origin + HEADER_OFFSET, 8)
-  except ValueError:
-    header = b""
-  if header[:4] != HEADER_MAGIC:
-    raise ValueError(f"no image header at 0x{origin + HEADER_OFFSET:08X}")
-  return int.from_bytes(header[4:], "little")
+  """
+  Bytes before the trailer, as the image header names them.
+
+  The header stands at the offset of its chip, the first of `HEADER_OFFSETS` holding the magic:
+  a vector table holds handler addresses, never `OPEN`.
+  """
+  for offset in HEADER_OFFSETS:
+    try:
+      header = image.read(origin + offset, 8)
+    except ValueError:
+      continue
+    if header[:4] == HEADER_MAGIC: return int.from_bytes(header[4:], "little")
+  raise ValueError(f"no image header past 0x{origin:08X}")
 
 def update_path(out_path:str) -> str:
   """Update binary beside the flash image, under its name: `app-dist.hex` → `app-dist.bin`."""

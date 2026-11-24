@@ -11,6 +11,7 @@ from opencplc.project import generate, prepare_project
 from opencplc.resolver import resolve_project
 from opencplc.utils import keys
 from opencplc.utils.palette import CHOICE_COLOR
+from opencplc.platforms import parse_chip
 from dataclasses import replace
 from conftest import build_workspace, uno_cfg, wb55_cfg, parse_dispatcher, resolve_uno
 from conftest import KEY, key_boot, resolve_key_uno, read_makefile
@@ -196,6 +197,28 @@ def prepare_creates_skeleton_once(ws, tmp_path):
   main_c.write_text("// user edit\n")
   prepare_project(cfg)
   assert main_c.read_text() == "// user edit\n"
+
+def chip_ahead_of_its_hal_in_core_is_told_once_per_load(ws, capsys):
+  """Forge knows H743 before any Core has `hal/stm32h7`: the load says why its build fails."""
+  h7 = parse_chip("STM32H743")
+  cfg = replace(wb55_cfg(), chip=h7, flash_kB=h7.flash_kB, ram_kB=h7.ram_kB)
+  resolve_project(cfg) # a load resolves twice, around the skeleton it writes
+  prepare_project(cfg)
+  resolve_project(cfg)
+  assert project.ANSI.sub("", capsys.readouterr().out).count("lacks hal/stm32h7") == 1
+  prepare_project(uno_cfg())
+  assert "lacks" not in capsys.readouterr().out
+
+def image_ram_starts_where_the_chip_keeps_it(ws):
+  """H7 runs its image in AXI SRAM, the others from the start of SRAM, 16 bytes left to boot."""
+  h7 = parse_chip("STM32H743")
+  generate(resolve_project(replace(wb55_cfg(), chip=h7, flash_kB=h7.flash_kB, ram_kB=h7.ram_kB)))
+  ld = ws / "projects" / "myapp" / "flash.ld"
+  assert "ORIGIN = 0x24000000 + 16, LENGTH = 512K - 16" in ld.read_text()
+  assert ".app_header ORIGIN(FLASH) + 0x400" in ld.read_text()
+  assert "-DBOOT_HEADER=0x400" in read_makefile(ws)
+  generate(resolve_uno())
+  assert "ORIGIN = 0x20000000 + 16, LENGTH = 144K - 16" in ld.read_text()
 
 def plain_project_links_at_the_start_of_flash(ws):
   generate(resolve_uno())

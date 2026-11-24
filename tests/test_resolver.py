@@ -7,10 +7,10 @@ from xaeian import file_context
 from opencplc import resolver
 from opencplc.resolver import resolve_project, available_drivers, forge_version
 from opencplc.platforms import parse_chip
-from opencplc.configure import config_core
+from opencplc.configure import config_core, boardless_freq
 from dataclasses import replace
 from conftest import build_workspace, uno_cfg, resolve_uno, KEY
-from conftest import resolve_key_uno, resolve_key_wb55
+from conftest import resolve_key_uno, resolve_key_wb55, wb55_cfg
 
 @pytest.fixture()
 def ws(tmp_path):
@@ -76,7 +76,8 @@ def test_build_trades_the_platform_for_the_host(ws):
     (ws / "opencplc" / "1.0.0" / rel).write_text("")
   pro = resolve_uno()
   assert pro.test_defines == ["HOST", "HOST_TEST", "STM32G0C1xx",
-    f"FORGE_VERSION={forge_version()}", "OpenCPLC", "BOOT_PAGES=6", "BOOT_CHIP=0x467"]
+    f"FORGE_VERSION={forge_version()}", "OpenCPLC",
+    "BOOT_PAGES=6", "BOOT_CHIP=0x467", "BOOT_HEADER=0x200"]
   assert pro.test_core_sources == ["opencplc/1.0.0/hal/host/sys.c",
     "opencplc/1.0.0/lib/log/log.c", "opencplc/1.0.0/lib/sh/test.c"]
   assert pro.test_include_dirs[0] == "projects/myapp/.tests"
@@ -127,11 +128,11 @@ def identity_and_flash_fields(ws):
   assert pro.core_dir == "opencplc/1.0.0"
   assert pro.erase_command == "stm32g0x mass_erase 0"
   assert pro.openocd_target == "stm32g0x"
-  assert pro.linker == "stm32g0.ld"
+  assert pro.linker == "stm32.ld"
   assert pro.stlink == "ABC123"
   assert pro.defines == [
     "STM32", "STM32G0", "STM32G0C1xx", f"FORGE_VERSION={forge_version()}", "OpenCPLC",
-    "BOOT_PAGES=6", "BOOT_CHIP=0x467",
+    "BOOT_PAGES=6", "BOOT_CHIP=0x467", "BOOT_HEADER=0x200",
   ]
   assert pro.mcu_flags == "-mcpu=cortex-m0plus -mthumb -mfloat-abi=soft"
 
@@ -191,7 +192,7 @@ def bootloader_of_core_builds_from_the_chip_alone(ws):
   assert pro.boot_asm_sources == [f"{core}/hal/arm/startup.s"]
   # Its own place in flash: no slot until a request names one
   assert pro.boot_defines == ["STM32", "STM32G0", "STM32G0C1xx",
-    f"FORGE_VERSION={forge_version()}", "BOOT_PAGES=16", "BOOT_CHIP=0x467"]
+    f"FORGE_VERSION={forge_version()}", "BOOT_PAGES=16", "BOOT_CHIP=0x467", "BOOT_HEADER=0x200"]
 
 def bootloader_takes_main_h_of_core_and_boot_h_of_the_project(ws):
   """`.boot/` first, so its `main.h` stands for the one of the application."""
@@ -288,3 +289,38 @@ def a_board_prefix_is_not_the_board(ws, tmp_path):
   assert "opencplc/1.0.0/brd/uno/opencplc_uno.c" in pro.core_c_sources
   assert not any("uno_mini" in f for f in pro.core_c_sources)
   assert not any("uno_mini" in d for d in pro.include_dirs)
+
+def g474_builds_for_cortex_m4f_on_hal_of_g4(ws):
+  g4 = parse_chip("STM32G474")
+  pro = resolve_project(replace(wb55_cfg(), chip=g4, flash_kB=g4.flash_kB, ram_kB=g4.ram_kB))
+  assert pro.mcu_flags == "-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard"
+  assert pro.defines[:3] == ["STM32", "STM32G4", "STM32G474xx"]
+  assert (pro.linker, pro.openocd_target) == ("stm32.ld", "stm32g4x")
+
+def each_core_builds_with_its_own_fpu(ws):
+  """M7 of H7 has a double-precision FPU, M33 of C5 a single-precision one, M0+ of G0 none."""
+  flags = {}
+  for name in ("STM32H743", "STM32C562", "STM32G081"):
+    chip = parse_chip(name)
+    cfg = replace(wb55_cfg(), chip=chip, flash_kB=chip.flash_kB, ram_kB=chip.ram_kB)
+    flags[name] = resolve_project(cfg).mcu_flags
+  assert flags == {
+    "STM32H743": "-mcpu=cortex-m7 -mthumb -mfpu=fpv5-d16 -mfloat-abi=hard",
+    "STM32C562": "-mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard",
+    "STM32G081": "-mcpu=cortex-m0plus -mthumb -mfloat-abi=soft",
+  }
+
+def bootloader_builds_with_the_chip_constants_of_its_image(ws):
+  """Bootloader of H743 looks for the image header past its long vector table, at 0x400."""
+  h7 = parse_chip("STM32H743")
+  cfg = replace(wb55_cfg(), chip=h7, flash_kB=h7.flash_kB, ram_kB=h7.ram_kB, boot=True)
+  pro = resolve_project(cfg)
+  constants = ["BOOT_PAGES=2", "BOOT_CHIP=0x450", "BOOT_HEADER=0x400"]
+  assert set(constants) <= set(pro.defines) and set(constants) <= set(pro.boot_defines)
+
+def a_project_without_board_starts_on_the_clock_of_its_chip():
+  """H7 runs HSI at 64MHz after reset, C5 its 144MHz HSI divided by 3, G0 and G4 HSI16."""
+  clocks = {name: boardless_freq(parse_chip(name), False)
+    for name in ("STM32H743", "STM32C562", "STM32G474", "STM32G081")}
+  assert clocks == {"STM32H743": 64000000, "STM32C562": 48000000,
+    "STM32G474": 16000000, "STM32G081": 16000000}

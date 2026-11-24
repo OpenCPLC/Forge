@@ -6,6 +6,7 @@ import re
 from xaeian import DIR, FILE, PATH
 import opencplc
 from opencplc.args import PARSER, Args, given, flag
+from opencplc.platforms import CHIPS
 
 def parser_and_args_agree_on_every_field_and_default():
   assert Args(**vars(PARSER.parse_args([]))) == Args()
@@ -23,3 +24,7 @@ def every_flag_the_package_names_exists():
   for path in DIR.iter_files(PATH.dirname(opencplc.__file__), exts=[".py"]):
     for name in re.findall(r"\bflag\.(\w+)", FILE.load(path)):
       assert hasattr(flag, name), f"{PATH.basename(path)} names flag.{name}"
+
+def chip_help_names_every_chip():
+  shown = PARSER.format_help()
+  assert all(name in shown for name in CHIPS)

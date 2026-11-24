@@ -193,6 +193,11 @@ def project_header(cfg:Config):
     p.gap(f"bootloader takes {utils.color_value(cfg.chip.boot_kB)}kB, "
       f"image at {utils.color_value(f'0x{origin:08X}')} "
       f"in one of two {utils.color_value(slot_kB)}kB slots")
+  # A chip may run ahead of its HAL in Core, so its project comes with a warning, not a refusal
+  hal = f"hal/{cfg.chip.hal}"
+  if cfg.chip.platform == "STM32" and not DIR.exists(f"{utils.core_dir(cfg.fw_ver)}/{hal}"):
+    p.wrn(f"Core {utils.color_version(cfg.fw_ver)} lacks {utils.color_folder(hal)}, "
+      f"builds for {utils.color_chip(cfg.chip.name)} fail until it comes")
 
 def prepare_project(cfg:Config):
   """
@@ -357,6 +362,8 @@ def generate(pro:Project, activate:bool=True):
     "${BOOT_KEYS}": pro.boot_keys,
     "${SIGNING_KEY}": pro.signing_key if pro.boot_keys else "",
     "${RAM}": pro.ram_kB,
+    "${RAM_BASE}": f"0x{pro.ram_base:08X}",
+    "${HEADER_OFFSET}": f"0x{pro.header_offset:03X}",
     "${FREQ}": pro.freq_Hz,
     "${HAL}": pro.hal,
     "${PLATFORM}": pro.platform,
@@ -387,7 +394,7 @@ def generate(pro:Project, activate:bool=True):
   } | editor | utils.template_paths(pro.platform == "STM32", pro.tests)
   # Linker script and makefile live inside the project, so parallel builds stay disjoint
   if pro.linker:
-    ld_template = templates["flash"].get(pro.linker, templates["flash"]["stm32g0.ld"])
+    ld_template = templates["flash"][pro.linker]
     utils.create_file("flash.ld", ld_template, pro.pro_dir, subs)
     # The bootloader links in the build folder, so a reload after `make clean` brings it back
     if pro.boot:

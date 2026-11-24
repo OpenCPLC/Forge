@@ -332,21 +332,25 @@ def frozen_forge(tmp_path, monkeypatch, version="9.9.9"):
   monkeypatch.setattr(actions.utils, "download", lambda url, *a, **k: b"new")
   return exe
 
-def write_app_image(path, origin:int, size:int, header:bool=True, trailer:int=72):
+def write_app_image(
+  path, origin:int, size:int,
+  header:bool = True, trailer:int = 72,
+  header_at:int = 0x200, vectors_B:int = 0xC0,
+):
   """
   Application hex laid out as linked.
 
-  Vector table, gap up to the header at 0x200, code up to `size`, erased trailer.
+  Vector table, gap up to the header at `header_at`, code up to `size`, erased trailer.
   """
   from opencplc.utils.hexfile import Memory, save_hex
   app = Memory()
   stack, reset = 0x20008000, origin + 0x301
   vectors = stack.to_bytes(4, "little") + reset.to_bytes(4, "little")
-  app.add(origin, vectors + bytes(0xC0 - len(vectors)))
+  app.add(origin, vectors + bytes(vectors_B - len(vectors)))
   body = b"OPEN" + size.to_bytes(4, "little") if header else bytes(8)
   code = bytes(range(256))
-  body += code + bytes(size - 0x200 - len(body) - len(code))
-  app.add(origin + 0x200, body + b"\xff" * trailer)
+  body += code + bytes(size - header_at - len(body) - len(code))
+  app.add(origin + header_at, body + b"\xff" * trailer)
   app.start = reset
   save_hex(app, str(path))
 
