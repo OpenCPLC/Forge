@@ -218,7 +218,7 @@ endif
 ifneq ($(CIPHER),)
 	@$(call CD,$(WORKSPACE)) && $(FORGE) --cipher $(CIPHER) $(PROJECT)/$(DIST).bin
 endif
-	@$(call CD,$(WORKSPACE)) && $(FORGE) --record $(RELEASE)/$(TARGET).bin $(PROJECT)/$(DIST) $(OPENCPLC) $(if $(BOOT_KEYS),$(BOOT_KEYS) $(SIGNING_KEY) $(CIPHER))
+	@$(call CD,$(WORKSPACE)) && $(FORGE) --record $(RELEASE)/$(TARGET).bin $(PROJECT)/$(DIST) $(OPENCPLC) "$(TAG)" $(if $(BOOT_KEYS),$(BOOT_KEYS) $(SIGNING_KEY) $(CIPHER))
 ifeq ($(BOOT),true)
 	@echo Full image ${HEX_COLOR}$(DIST).hex${END} to ${PROJECT_COLORED}
 	@echo Update image ${BIN_COLOR}$(DIST)$(if $(CIPHER),.$(CIPHER)).bin${END} to ${PROJECT_COLORED}

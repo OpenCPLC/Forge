@@ -1,5 +1,10 @@
 # Changes `opencplc`
 
+## `0.6.3` Record
+
+- Release record names tag, firmware version and board variant
+- `release` field gone from record, `make verify` names release by record file
+
 ## `0.6.2` New chips
 
 - STM32G474, STM32H743 and STM32C562 join `-c`: Cortex-M4F, M7 and M33

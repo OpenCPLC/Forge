@@ -98,7 +98,7 @@ def dist_packs_the_image_again_with_the_bootloader_of_dist(ws):
   dist = make[make.index("\ndist:"):make.index("\nverify:")]
   packed = ("--pack $(RELEASE)/$(TARGET).hex $(PROJECT)/$(DIST).hex $(RELEASE_BOOT) "
     "$(if $(BOOT_KEYS),$(BOOT_KEYS) $(SIGNING_KEY) dist $(CIPHER))")
-  recorded = ("--record $(RELEASE)/$(TARGET).bin $(PROJECT)/$(DIST) $(OPENCPLC) "
+  recorded = ('--record $(RELEASE)/$(TARGET).bin $(PROJECT)/$(DIST) $(OPENCPLC) "$(TAG)" '
     "$(if $(BOOT_KEYS),$(BOOT_KEYS) $(SIGNING_KEY) $(CIPHER))")
   assert dist.index(packed) < dist.index(recorded) < dist.index("Full image")
   assert dist.index("ifeq ($(BOOT),true)") < dist.index("Full image")

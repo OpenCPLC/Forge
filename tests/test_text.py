@@ -28,9 +28,9 @@ def get_vars_makefile_form():
   }
 
 def get_vars_define_space_form_strips_quotes():
-  lines = ['PRO_FRAMEWORK "1.0.2"', "PRO_FLASH_kB 492"]
-  got = get_vars(lines, ["PRO_FRAMEWORK", "PRO_FLASH_kB"], " ", required=False)
-  assert got == {"PRO_FRAMEWORK": "1.0.2", "PRO_FLASH_kB": "492"}
+  lines = ['PRO_FRAMEWORK "1.0.2"', "PRO_FLASH_kB 492", "PRO_RAM_kB\t36"]
+  got = get_vars(lines, ["PRO_FRAMEWORK", "PRO_FLASH_kB", "PRO_RAM_kB"], " ", required=False)
+  assert got == {"PRO_FRAMEWORK": "1.0.2", "PRO_FLASH_kB": "492", "PRO_RAM_kB": "36"}
 
 def get_vars_define_underscore_form():
   lines = ["#define PRO_BOARD_UNO", "#define PRO_CHIP_STM32G0C1"]

@@ -53,7 +53,9 @@ def get_vars(
     lines = [re.sub(f"^{re.escape(trim_start)}+", "", ln).lstrip() for ln in lines]
   filtered = [ln for ln in lines if any(ln.startswith(pf) for pf in prefixes)]
   result = {}
-  pattern = rf"^\s*(\w+)\s*{re.escape(sep)}\s*(.*)"
+  # A space between name and value stands for any blanks, a tab too, as C reads them
+  gap = r"\s+" if sep == " " else rf"\s*{re.escape(sep)}\s*"
+  pattern = rf"^\s*(\w+){gap}(.*)"
   for ln in filtered:
     m = re.match(pattern, ln)
     if m:

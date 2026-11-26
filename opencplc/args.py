@@ -139,7 +139,7 @@ option("-p", "--pack", nargs="+", metavar="FILE",
 option("--keys", nargs="+", metavar="KEY",
   help="Check keys of a release before its build: [KEYS NUMBER] [CIPHER], a makefile step")
 option("--record", nargs="+", metavar="FILE",
-  help="Record a release: APP.bin OUT CORE [KEYS NUMBER [CIPHER]], a makefile step")
+  help="Record a release: APP.bin OUT CORE TAG [KEYS NUMBER [CIPHER]], a makefile step")
 option("--verify", nargs=2, metavar=("APP", "RECORD"),
   help="Compare the image of a build with a release record, a makefile step")
 option("--test", nargs="+", metavar="PATH",

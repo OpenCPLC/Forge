@@ -131,6 +131,7 @@ def dist_and_verify_build_in_a_release_tree_dated_by_the_commit(tmp_path):
     assert "myapp/release/project/main.o" in shown[goal]
   dist, verify = shown["dist"], shown["verify"]
   assert dist.index("--pack") < dist.index("--record") < dist.index("Release record")
+  assert '"1.2.0"' in dist[dist.index("--record"):] # the tag goes into the record
   assert "--verify" in verify and "myapp-1.2.0.json" in verify
   # Keys go first, so a missing one stops the release before its build
   res = make_run(tmp_path, "-n", "dist", "CIPHER=acme", project="myapp")
